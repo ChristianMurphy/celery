@@ -26,6 +26,28 @@ and service data. The exit code is 0 when the history is valid.
 With `--jepsen-jar` (see `jepsen_bridge/`), single-task runs are also checked
 by Jepsen's own `total-queue` checker, as an independent cross-check.
 
+## Workloads and profiles
+
+`--workload` picks what each client operation publishes:
+
+* `single`: one task.
+* `chord`: `--chord-size` headers and a body that records its input.
+* `retry`: a task that calls `self.retry()` `--retry-fails` times, then succeeds.
+* `eta`: a task published with a countdown drawn from `--eta-range`.
+* `chain`: `--chain-length` steps, each recording its parent's return value.
+
+`--profile` sets the options whose documented promise differs:
+
+| profile | options | promise checked |
+|---|---|---|
+| `p0` | defaults: early ack, prefetch x4 | a running task may be lost on a crash; nothing reserved but unstarted is lost |
+| `p1` | `acks_late`, `reject_on_worker_lost`, prefetch x1, `confirm_publish` on RabbitMQ | no accepted task is lost; duplicates allowed |
+| `p2` | p1 + `worker_deduplicate_successful_tasks` | as p1 |
+| `p3` | p1 + `worker_cancel_long_running_tasks_on_connection_loss` | as p1 |
+
+`--track-started` and `--always-retry` (`result_backend_always_retry`) cut
+across profiles.
+
 ## What happens in a run
 
 1. Start a broker, a result backend and a *recorder* Redis that faults never
@@ -43,8 +65,8 @@ by Jepsen's own `total-queue` checker, as an independent cross-check.
    `blackhole-broker|backend` (stall traffic, as in a partition shorter than
    TCP's timeouts), `kill-broker|backend`, `pause-broker|backend`.
    `--crash-hook POINT=P` kills workers at protocol steps that random faults
-   rarely hit: `after_store_before_ack`, `before_execute`,
-   `child_exit_after_store`.
+   rarely hit: `after_store_before_ack`, `after_retry_before_ack`,
+   `before_execute`, `child_exit_after_store`.
 5. Recovery: heal everything, restart workers, and wait until the broker holds
    no ready or unacked messages and nothing has happened for `--settle`
    seconds. With Redis, abandoned messages come back only after the
@@ -74,6 +96,15 @@ by Jepsen's own `total-queue` checker, as an independent cross-check.
 | `chord-early` | chord body started before every header completed | violation |
 | `chord-stuck` | all headers succeeded, body never ran | violation |
 | `chord-body-without-headers` | body ran although a header never completed | violation |
+| `stalled-in-broker` | still held by the broker when recovery gave up | violation (stall) |
+| `retry-out-of-order` | attempt k started before attempt k-1 raised Retry | violation |
+| `retry-exceeded` | more attempts than `max_retries` allows | violation |
+| `retry-fanout` | more executions than attempts (duplicates retried independently) | reported |
+| `eta-early` | ran before its ETA | violation |
+| `eta-late` | first ran more than 5s after its ETA | reported |
+| `chain-impossible-input` | a step ran with an input no parent execution produced | violation |
+| `chain-fork` | a step ran with two different inputs (its parent ran twice) | reported |
+| `chain-cut` | a step never ran because its parent never completed | reported |
 
 A killed execution is assumed to have run until its worker was killed, not
 forever, when looking for overlaps.

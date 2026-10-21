@@ -40,6 +40,8 @@ app.conf.update(
     task_track_started=CONFIG.get('track_started', False),
     worker_prefetch_multiplier=CONFIG.get('prefetch_multiplier', 1),
     worker_deduplicate_successful_tasks=CONFIG.get('deduplicate_successful_tasks', False),
+    worker_cancel_long_running_tasks_on_connection_loss=CONFIG.get('cancel_on_connection_loss', False),
+    result_backend_always_retry=CONFIG.get('result_backend_always_retry', False),
     broker_transport_options=transport_options,
     result_backend_transport_options=result_transport_options,
     result_expires=None,
@@ -91,6 +93,35 @@ def body(self, results, op):
     return token
 
 
+@app.task(bind=True)
+def flaky(self, op, fails, duration, countdown):
+    """Fails ``fails`` times through ``self.retry`` before succeeding."""
+    token, process, value, meta = _execution('execute-retry', {'op': op}, self)
+    time.sleep(duration)
+    if self.request.retries < fails:
+        record(dict(meta, process=process, type='ok', f='execute-retry', value=dict(value, outcome='retry')))
+        raise self.retry(countdown=countdown, max_retries=fails)
+    record(dict(meta, process=process, type='ok', f='execute-retry', value=dict(value, outcome='success')))
+    return token
+
+
+@app.task(bind=True)
+def scheduled(self, op, eta):
+    """Published with a countdown; ``eta`` is the wall-clock time it was due."""
+    token, process, value, meta = _execution('execute-eta', {'op': op, 'eta': eta}, self)
+    record(dict(meta, process=process, type='ok', f='execute-eta', value=value))
+    return token
+
+
+@app.task(bind=True)
+def step(self, previous, op, part, duration):
+    """One link of a chain; ``previous`` is the parent's return value."""
+    token, process, value, meta = _execution('execute-chain', {'op': op, 'part': part, 'input': previous}, self)
+    time.sleep(duration)
+    record(dict(meta, process=process, type='ok', f='execute-chain', value=value))
+    return token
+
+
 def _crash(point):
     """Protocol-step fault: SIGKILL this worker's whole process group."""
     record({'process': 'nemesis', 'type': 'info', 'f': 'crash-hook',
@@ -115,6 +146,13 @@ def _before_execute(sender=None, **kwargs):
     # Runs after the message was received (and early-acked, if enabled).
     if _maybe('before_execute'):
         _crash('before_execute')
+
+
+@signals.task_retry.connect
+def _after_retry_before_ack(sender=None, **kwargs):
+    # Runs after the retry message was published, before the original is acked.
+    if _maybe('after_retry_before_ack'):
+        _crash('after_retry_before_ack')
 
 
 @signals.task_postrun.connect

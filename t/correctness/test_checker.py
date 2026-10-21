@@ -165,3 +165,75 @@ def test_task_still_held_by_the_broker_is_stalled_not_lost():
     h = H().enqueue(1).op(process='nemesis', type='info', f='recovery-end',
                           value={'settled': False, 'residue': {'ready': [], 'unacked': ['t1']}})
     assert run(h)['violations'] == ['stalled-in-broker']
+
+
+def retry_history(attempts):
+    """attempts: list of (attempt, token, worker, outcome or None if killed)."""
+    h = H().enqueue(1)
+    for attempt, token, worker, outcome in attempts:
+        h.op(process=f'{worker}.{token}', type='invoke', f='execute-retry', worker=worker,
+             value={'op': 1, 'token': token, 'attempt': attempt})
+        if outcome:
+            h.op(process=f'{worker}.{token}', type='ok', f='execute-retry', worker=worker,
+                 value={'op': 1, 'token': token, 'attempt': attempt, 'outcome': outcome})
+        else:
+            h.kill(worker)
+    return h
+
+
+def test_retry_clean_and_duplicate_attempts():
+    h = retry_history([(0, 1, 'w0', 'retry'), (1, 2, 'w0', 'retry'), (2, 3, 'w1', 'success')])
+    h.read('t1', 'SUCCESS', 3, final=True)
+    assert check(h.ops, {'workload': 'retry', 'retry_fails': 2})['valid']
+    h = retry_history([(0, 1, 'w0', 'retry'), (0, 9, 'w1', 'retry'), (1, 2, 'w0', 'success'),
+                       (1, 8, 'w1', 'success')]).read('t1', 'SUCCESS', 2, final=True)
+    r = check(h.ops, {'workload': 'retry', 'retry_fails': 1, 'acks_late': True})
+    assert r['valid'] and {'duplicate-start', 'retry-fanout'} <= set(r['counts'])
+    assert not check(h.ops, {'workload': 'retry', 'retry_fails': 1})['valid']
+
+
+def test_retry_out_of_order_and_exceeded():
+    h = retry_history([(1, 2, 'w0', 'success')]).read('t1', 'SUCCESS', 2, final=True)
+    assert check(h.ops, {'workload': 'retry', 'retry_fails': 1})['violations'] == ['retry-out-of-order']
+    h = retry_history([(0, 1, 'w0', 'retry'), (1, 2, 'w0', 'retry'), (2, 3, 'w0', 'success')])
+    h.read('t1', 'SUCCESS', 3, final=True)
+    assert 'retry-exceeded' in check(h.ops, {'workload': 'retry', 'retry_fails': 1})['violations']
+
+
+def test_eta_early_is_a_violation_and_late_is_reported():
+    h = H().enqueue(1).start(1, 5, f='execute-eta', eta=10.0).finish(1, 5, f='execute-eta', eta=10.0)
+    h.read('t1', 'SUCCESS', 5, final=True)
+    assert check(h.ops, {'workload': 'eta'})['violations'] == ['eta-early']
+    h = H().enqueue(1)
+    h.op(time=20.0, process='w0.5', type='invoke', f='execute-eta', worker='w0', value={'op': 1, 'token': 5, 'attempt': 0, 'eta': 2.0})
+    h.op(time=21.0, process='w0.5', type='ok', f='execute-eta', worker='w0', value={'op': 1, 'token': 5, 'attempt': 0, 'eta': 2.0})
+    h.read('t1', 'SUCCESS', 5, final=True)
+    r = check(h.ops, {'workload': 'eta'})
+    assert r['valid'] and r['counts'] == {'eta-late': 1}
+
+
+def chain_history(steps):
+    """steps: list of (part, token, input, completed)."""
+    h = H().enqueue(1, tid='s2', extra={'step_tids': ['s0', 's1', 's2']})
+    for part, token, inp, completed in steps:
+        h.start(1, token, f'w{token}', f='execute-chain', part=part, input=inp)
+        if completed:
+            h.finish(1, token, f'w{token}', f='execute-chain', part=part, input=inp)
+        else:
+            h.kill(f'w{token}')
+    return h
+
+
+def test_chain_clean_fork_impossible_input_and_cut():
+    h = chain_history([(0, 1, None, True), (1, 2, 1, True), (2, 3, 2, True)])
+    for tid, token in (('s0', 1), ('s1', 2), ('s2', 3)):
+        h.read(tid, 'SUCCESS', token, final=True)
+    assert check(h.ops, {'workload': 'chain'})['valid']
+    h = chain_history([(0, 1, None, True), (0, 4, None, True), (1, 2, 1, True), (1, 5, 4, True), (2, 3, 2, True)])
+    r = check(h.ops, {'workload': 'chain', 'acks_late': True})
+    assert r['valid'] and 'chain-fork' in r['counts']
+    h = chain_history([(0, 1, None, True), (1, 2, 77, True), (2, 3, 2, True)])
+    assert 'chain-impossible-input' in check(h.ops, {'workload': 'chain'})['violations']
+    h = chain_history([(0, 1, None, False)])
+    r = check(h.ops, {'workload': 'chain'})
+    assert r['valid'] and r['counts'] == {'lost-killed': 1, 'chain-cut': 2}

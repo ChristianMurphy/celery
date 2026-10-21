@@ -26,6 +26,16 @@ from .services import MySQLService, PostgresService, RabbitMQService, RedisServi
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 QUEUE = 'correctness'
+# Configurations whose documented promise differs; see README.
+PROFILES = {
+    'p0': ('defaults: early ack, prefetch x4', {'acks_late': False, 'reject_on_worker_lost': False, 'prefetch': 4}),
+    'p1': ('at-least-once: acks_late, reject_on_worker_lost, prefetch x1 (+confirm_publish on RabbitMQ)',
+           {'acks_late': True, 'reject_on_worker_lost': True, 'prefetch': 1}),
+    'p2': ('p1 + worker_deduplicate_successful_tasks',
+           {'acks_late': True, 'reject_on_worker_lost': True, 'prefetch': 1, 'dedup': True}),
+    'p3': ('p1 + worker_cancel_long_running_tasks_on_connection_loss',
+           {'acks_late': True, 'reject_on_worker_lost': True, 'prefetch': 1, 'cancel_on_connection_loss': True}),
+}
 FAULTS = ('kill-worker', 'pause-worker', 'partition-broker', 'blackhole-broker',
           'partition-backend', 'blackhole-backend', 'kill-broker', 'kill-backend',
           'pause-broker', 'pause-backend')
@@ -50,7 +60,16 @@ def parse_args(argv=None):
     p.add_argument('--chord-unordered', action='store_true', help='result_chord_ordered=False')
     p.add_argument('--workers', type=int, default=3)
     p.add_argument('--concurrency', type=int, default=2)
-    p.add_argument('--workload', choices=['single', 'chord'], default='single')
+    p.add_argument('--profile', choices=sorted(PROFILES),
+                   help='preset ack/prefetch options: ' + '; '.join(f'{k}: {v[0]}' for k, v in sorted(PROFILES.items())))
+    p.add_argument('--cancel-on-connection-loss', action='store_true',
+                   help='worker_cancel_long_running_tasks_on_connection_loss')
+    p.add_argument('--always-retry', action='store_true', help='result_backend_always_retry')
+    p.add_argument('--workload', choices=['single', 'chord', 'retry', 'eta', 'chain'], default='single')
+    p.add_argument('--retry-fails', type=int, default=2, help='retry workload: retries before success')
+    p.add_argument('--retry-countdown', type=float, default=1.0)
+    p.add_argument('--eta-range', default='1,15', help='eta workload: min,max countdown seconds')
+    p.add_argument('--chain-length', type=int, default=3)
     p.add_argument('--chord-size', type=int, default=3)
     p.add_argument('--ops', type=int, default=300)
     p.add_argument('--rate', type=float, default=5.0, help='ops per second, all clients')
@@ -69,7 +88,13 @@ def parse_args(argv=None):
     p.add_argument('--seed', type=int, default=None)
     p.add_argument('--jepsen-jar', default=os.environ.get('JEPSEN_BRIDGE_JAR'),
                    help='jepsen_bridge standalone jar: also check the queue with jepsen total-queue')
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.profile:
+        for key, value in PROFILES[args.profile][1].items():
+            setattr(args, key, value)
+        if args.broker == 'rabbitmq' and args.acks_late:
+            args.confirm_publish = True
+    return args
 
 
 class Test:
@@ -127,6 +152,8 @@ class Test:
             'queue': QUEUE, 'queue_type': a.queue_type if a.queue_type == 'quorum' else None,
             'result_chord_ordered': not a.chord_unordered,
             'crash_hooks': {k: float(v) for k, v in hooks.items()},
+            'cancel_on_connection_loss': a.cancel_on_connection_loss,
+            'result_backend_always_retry': a.always_retry,
         }
 
     def service_url(self, service, port=None):
@@ -186,17 +213,38 @@ class Test:
         from celery import chord
         from kombu.exceptions import EncodeError
 
-        from .app import body, execute, header
+        from celery import chain
+
+        from .app import body, execute, flaky, header, scheduled, step
         lo, hi = map(float, self.args.task_duration.split(','))
+        eta_lo, eta_hi = map(float, self.args.eta_range.split(','))
         while not self.stop.is_set():
             op = next(counter)
             if op >= self.args.ops:
                 return
             self.record(process=process, type='invoke', f='enqueue', value=op)
             try:
-                if self.args.workload == 'single':
+                workload = self.args.workload
+                if workload == 'single':
                     r = execute.apply_async((op, self.rng.uniform(lo, hi)))
                     tids, extra = [r.id], {}
+                elif workload == 'retry':
+                    r = flaky.apply_async((op, self.args.retry_fails, self.rng.uniform(lo, hi),
+                                           self.args.retry_countdown))
+                    tids, extra = [r.id], {}
+                elif workload == 'eta':
+                    countdown = self.rng.uniform(eta_lo, eta_hi)
+                    r = scheduled.apply_async((op, time.time() + countdown), countdown=countdown)
+                    tids, extra = [r.id], {'countdown': countdown}
+                elif workload == 'chain':
+                    c = chain(step.s(None, op, 0, self.rng.uniform(lo, hi)),
+                              *[step.s(op, i, self.rng.uniform(lo, hi)) for i in range(1, self.args.chain_length)])
+                    r = c.apply_async()
+                    step_tids, node = [], r
+                    while node is not None:
+                        step_tids.insert(0, node.id)
+                        node = node.parent
+                    tids, extra = step_tids, {'step_tids': step_tids}
                 else:
                     c = chord([header.s(op, i, self.rng.uniform(lo, hi)) for i in range(self.args.chord_size)],
                               body.s(op))
@@ -362,7 +410,8 @@ class Test:
             for name in self.workers:
                 self.kill_worker(name, f='teardown')
         history = self.collect()
-        cfg = dict(vars(a), workload=a.workload, result_chord_ordered=not a.chord_unordered)
+        cfg = dict(vars(a), workload=a.workload, result_chord_ordered=not a.chord_unordered,
+                   eta_max=float(a.eta_range.split(',')[1]))
         results = checker.check(history, cfg)
         results.update(seed=self.seed, settled=settled, config=vars(a))
         if a.jepsen_jar and a.workload == 'single':
@@ -390,6 +439,8 @@ class Test:
         with open(os.path.join(self.out, 'history.jsonl'), 'w') as f:
             for i, op in enumerate(ops):
                 op['index'], op['time'] = i, op['time'] - self.t0
+                if op['f'] == 'execute-eta':  # task argument: absolute wall-clock time
+                    op['value']['eta'] -= self.t0
                 f.write(json.dumps(op, default=str) + '\n')
         return ops
 

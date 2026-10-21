@@ -23,6 +23,7 @@ ALWAYS_INVALID = (
     'unexpected', 'g1a', 'impossible-result', 'result-changed', 'state-regression',
     'result-missing', 'chord-wrong-input', 'chord-early', 'chord-stuck',
     'chord-body-without-headers', 'orphan-execution', 'running-at-end', 'stalled-in-broker',
+    'retry-exceeded', 'retry-out-of-order', 'eta-early', 'chain-impossible-input',
 )
 # Faults that can legitimately destroy broker or backend data.
 BROKER_DATA_LOSS = ('kill-broker',)
@@ -152,15 +153,19 @@ def check(history, config):
     anomalies = defaultdict(list)
     workload = config.get('workload', 'single')
 
-    def check_task(key, execs, enq_type, tid, label):
-        done = [e for e in execs if e['completed']]
+    def check_task(key, execs, enq_type, tid, label, done=None, duplicates=True, upstream_lost=False):
+        if done is None:
+            done = [e for e in execs if e['completed']]
         if enq_type is None and execs:
             anomalies['unexpected'].append(label)
         if enq_type == 'fail' and execs:
             anomalies['g1a'].append(label)
         if enq_type == 'info' and execs:
             anomalies['recovered'].append(label)
-        if enq_type == 'ok' and not done:
+        if enq_type == 'ok' and not done and upstream_lost:
+            # A chain step whose parent never completed: a consequence, not a separate loss.
+            anomalies['chain-cut'].append(label)
+        elif enq_type == 'ok' and not done:
             if tid in residue:
                 # Still held by the broker when recovery gave up: stalled, not (yet) lost.
                 anomalies['stalled-in-broker'].append(label)
@@ -171,9 +176,9 @@ def check(history, config):
                 anomalies['running-at-end'].append(label)
             elif not e['completed'] and e['killed_by'] is None:
                 anomalies['orphan-execution'].append(label)
-        if len(execs) > 1:
+        if duplicates and len(execs) > 1:
             anomalies['duplicate-start'].append(label)
-        if len(done) > 1:
+        if duplicates and len(done) > 1:
             anomalies['duplicate-complete'].append(label)
         if len(execs) > 1 and concurrent(execs):
             anomalies['concurrent'].append(label)
@@ -229,6 +234,59 @@ def check(history, config):
                     anomalies['chord-wrong-input'].append(body_label)
                 if b['start'] < max(header_done):
                     anomalies['chord-early'].append(body_label)
+    elif workload == 'retry':
+        rx = executions(history, 'execute-retry')
+        fails = config.get('retry_fails', 2)
+        for op in sorted(set(enq) | set(rx), key=str):
+            e, execs = enq.get(op, {}), rx.get(op, [])
+            success = [x for x in execs if x['completed'] and x['value'].get('outcome') == 'success']
+            check_task(op, execs, e.get('type'), e.get('tid'), op, done=success, duplicates=False)
+            by_attempt = defaultdict(list)
+            for x in execs:
+                by_attempt[x['value']['attempt']].append(x)
+            if any(len(v) > 1 for v in by_attempt.values()):
+                anomalies['duplicate-start'].append(op)
+            if len(success) > 1:
+                anomalies['duplicate-complete'].append(op)
+            if len(execs) > fails + 1:
+                anomalies['retry-fanout'].append(op)
+            if by_attempt and max(by_attempt) > fails:
+                anomalies['retry-exceeded'].append(op)
+            for k in sorted(by_attempt):
+                if k == 0:
+                    continue
+                retried = [x['end'] for x in by_attempt.get(k - 1, [])
+                           if x['completed'] and x['value'].get('outcome') == 'retry']
+                if not retried or min(x['start'] for x in by_attempt[k]) < min(retried):
+                    anomalies['retry-out-of-order'].append(op)
+                    break
+    elif workload == 'eta':
+        ex = executions(history, 'execute-eta')
+        for op in sorted(set(enq) | set(ex), key=str):
+            e, execs = enq.get(op, {}), ex.get(op, [])
+            check_task(op, execs, e.get('type'), e.get('tid'), op)
+            if execs:
+                first, eta = min(x['start'] for x in execs), execs[0]['value']['eta']
+                if first < eta - 0.5:  # same host clock; allow scheduling granularity
+                    anomalies['eta-early'].append(op)
+                elif first > eta + config.get('eta_tolerance', 5):
+                    anomalies['eta-late'].append(op)
+    elif workload == 'chain':
+        cx = executions(history, 'execute-chain')
+        for op in sorted(set(enq) | {k[0] for k in cx}, key=str):
+            e = enq.get(op, {})
+            step_tids = e.get('extra', {}).get('step_tids', [])
+            for part, tid in enumerate(step_tids):
+                execs = cx.get((op, part), [])
+                parents = [x for x in cx.get((op, part - 1), []) if x['completed']] if part else []
+                check_task((op, part), execs, e.get('type'), tid, f'{op}.s{part}',
+                           upstream_lost=bool(part) and not parents)
+                allowed = {x['token'] for x in parents} if part else {None}
+                inputs = {x['value'].get('input') for x in execs}
+                if inputs - allowed:
+                    anomalies['chain-impossible-input'].append(f'{op}.s{part}')
+                if len(inputs) > 1:
+                    anomalies['chain-fork'].append(f'{op}.s{part}')
     else:
         raise ValueError(workload)
 
@@ -240,8 +298,20 @@ def check(history, config):
             explained[kind] = None
         elif kind in ('concurrent', 'recovered', 'duplicate-body'):
             explained[kind] = 'allowed: at-least-once delivery has no mutual exclusion'
+        elif kind in ('retry-fanout', 'chain-fork'):
+            explained[kind] = 'consequence of a duplicate execution'
+        elif kind == 'chain-cut':
+            explained[kind] = 'an earlier step of the chain never completed'
+        elif kind == 'eta-late':
+            explained[kind] = 'reported: delayed by faults or redelivery'
         elif kind in ('duplicate-start', 'duplicate-complete'):
-            explained[kind] = 'allowed under acks_late (at-least-once)' if acks_late else None
+            if acks_late:
+                explained[kind] = 'allowed under acks_late (at-least-once)'
+            elif (workload == 'eta' and config.get('broker', 'redis') == 'redis'
+                  and config.get('eta_max', 0) > config.get('visibility_timeout', 3600)):
+                explained[kind] = 'documented: ETA beyond the Redis visibility_timeout is redelivered'
+            else:
+                explained[kind] = None
         elif kind == 'lost-killed':
             if not acks_late:
                 explained[kind] = 'documented: early ack loses the task running on a killed worker'
