@@ -41,7 +41,6 @@ app.conf.update(
     worker_prefetch_multiplier=CONFIG.get('prefetch_multiplier', 1),
     worker_deduplicate_successful_tasks=CONFIG.get('deduplicate_successful_tasks', False),
     worker_cancel_long_running_tasks_on_connection_loss=CONFIG.get('cancel_on_connection_loss', False),
-    result_backend_always_retry=CONFIG.get('result_backend_always_retry', False),
     broker_transport_options=transport_options,
     result_backend_transport_options=result_transport_options,
     result_expires=None,
@@ -49,6 +48,9 @@ app.conf.update(
     broker_connection_retry_on_startup=True,
     task_default_queue=CONFIG.get('queue', 'correctness'),
 )
+if CONFIG.get('result_backend_always_retry'):
+    # Only set when asked: leaving it unset keeps each backend's own default.
+    app.conf.result_backend_always_retry = True
 if CONFIG.get('queue_type'):
     app.conf.task_default_queue_type = CONFIG['queue_type']
     app.conf.worker_detect_quorum_queues = True
