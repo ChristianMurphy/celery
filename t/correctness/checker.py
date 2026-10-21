@@ -174,7 +174,7 @@ def check(history, config):
         for e in execs:
             if e['completed'] or e['killed_by'] not in ('teardown', None):
                 continue
-            if any(x['completed'] and x['start'] > e['start'] for x in execs):
+            if e['killed_by'] == 'teardown' and any(x['completed'] and x['start'] > e['start'] for x in execs):
                 # The worker gave up on it (e.g. cancelled on connection loss) and it ran again.
                 anomalies['abandoned'].append(label)
             elif e['killed_by'] == 'teardown':
