@@ -92,7 +92,10 @@ class RedisService:
             if c.type(k) == b'list':
                 out['ready'] += [json.loads(m)['headers'].get('id') for m in c.lrange(k, 0, -1)]
         for raw in c.hvals('unacked'):
-            out['unacked'].append(json.loads(json.loads(raw)[0])['headers'].get('id'))
+            message = json.loads(raw)[0]  # kombu stores [message, exchange, routing_key]
+            if isinstance(message, (str, bytes)):
+                message = json.loads(message)
+            out['unacked'].append(message['headers'].get('id'))
         if c.exists('unacked_mutex'):
             out['unacked_mutex_ttl'] = c.pttl('unacked_mutex') / 1000
         return out
