@@ -22,7 +22,7 @@ INF = float('inf')
 ALWAYS_INVALID = (
     'unexpected', 'g1a', 'impossible-result', 'result-changed', 'state-regression',
     'result-missing', 'chord-wrong-input', 'chord-early', 'chord-stuck',
-    'chord-body-without-headers', 'orphan-execution', 'running-at-end',
+    'chord-body-without-headers', 'orphan-execution', 'running-at-end', 'stalled-in-broker',
 )
 # Faults that can legitimately destroy broker or backend data.
 BROKER_DATA_LOSS = ('kill-broker',)
@@ -141,6 +141,12 @@ def check(history, config):
     broker_loss_possible = bool(fault_kinds & set(BROKER_DATA_LOSS)) and not persistent_broker
     backend_loss_possible = bool(fault_kinds & set(BACKEND_DATA_LOSS)) and not persistent_backend
 
+    residue = set()
+    for o in nemesis:
+        if o['f'] == 'recovery-end':
+            r = (o.get('value') or {}).get('residue') or {}
+            residue |= set(r.get('ready', [])) | set(r.get('unacked', []))
+
     enq = enqueues(history)
     rd = reads(history)
     anomalies = defaultdict(list)
@@ -155,7 +161,11 @@ def check(history, config):
         if enq_type == 'info' and execs:
             anomalies['recovered'].append(label)
         if enq_type == 'ok' and not done:
-            anomalies['lost-never-started' if not execs else 'lost-killed'].append(label)
+            if tid in residue:
+                # Still held by the broker when recovery gave up: stalled, not (yet) lost.
+                anomalies['stalled-in-broker'].append(label)
+            else:
+                anomalies['lost-never-started' if not execs else 'lost-killed'].append(label)
         for e in execs:
             if not e['completed'] and e['killed_by'] == 'teardown':
                 anomalies['running-at-end'].append(label)

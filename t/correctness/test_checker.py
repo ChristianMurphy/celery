@@ -159,3 +159,9 @@ def test_chord_stuck():
     h.start(1, 10, f='execute-header', part=0).finish(1, 10, f='execute-header', part=0)
     h.read('h0', 'SUCCESS', 10, final=True)
     assert check(h.ops, {'workload': 'chord'})['violations'] == ['chord-stuck']
+
+
+def test_task_still_held_by_the_broker_is_stalled_not_lost():
+    h = H().enqueue(1).op(process='nemesis', type='info', f='recovery-end',
+                          value={'settled': False, 'residue': {'ready': [], 'unacked': ['t1']}})
+    assert run(h)['violations'] == ['stalled-in-broker']

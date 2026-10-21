@@ -295,7 +295,10 @@ class Test:
             for name, proc in self.workers.items():
                 if proc.poll() is not None:
                     self.start_worker(name)
-        timeout = self.args.recovery_timeout or (self.args.visibility_timeout + 120)
+        # A worker killed while holding kombu's Redis `unacked_mutex` blocks every
+        # restore until the lock expires (unacked_mutex_expire, 300s by default).
+        default = self.args.visibility_timeout + (360 if self.args.broker == 'redis' else 120)
+        timeout = self.args.recovery_timeout or default
         deadline = time.monotonic() + timeout
         rec = self.recorder.client()
         last, quiet_since = None, time.monotonic()
@@ -343,7 +346,13 @@ class Test:
             bp.set_mode('pass'), rp.set_mode('pass')
         self.nemesis('recovery-start')
         settled = self.recover()
-        self.nemesis('recovery-end', settled=settled, depth=self.depth())
+        residue = None
+        if not settled:
+            try:
+                residue = self.broker.residue(QUEUE)
+            except Exception as exc:  # pylint: disable=broad-except
+                residue = {'error': repr(exc)}
+        self.nemesis('recovery-end', settled=settled, depth=self.depth(), residue=residue)
         with self.lock:
             tids = list(dict.fromkeys(self.known_tids))
         for tid in tids:

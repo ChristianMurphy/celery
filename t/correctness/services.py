@@ -84,6 +84,19 @@ class RedisService:
         ready = sum(c.llen(k) for k in c.scan_iter(match=f'{queue}*') if c.type(k) == b'list')
         return ready + c.hlen('unacked')
 
+    def residue(self, queue):
+        """Task ids of the messages the broker still holds, by where they are."""
+        c = self.client()
+        out = {'ready': [], 'unacked': []}
+        for k in c.scan_iter(match=f'{queue}*'):
+            if c.type(k) == b'list':
+                out['ready'] += [json.loads(m)['headers'].get('id') for m in c.lrange(k, 0, -1)]
+        for raw in c.hvals('unacked'):
+            out['unacked'].append(json.loads(json.loads(raw)[0])['headers'].get('id'))
+        if c.exists('unacked_mutex'):
+            out['unacked_mutex_ttl'] = c.pttl('unacked_mutex') / 1000
+        return out
+
 
 class DockerService:
     """A service in a docker container; ``kill`` is SIGKILL, data survives."""
@@ -173,6 +186,18 @@ class RabbitMQService(DockerService):
                 return 0
             raise
         return q.get('messages_ready', 0) + q.get('messages_unacknowledged', 0)
+
+    def residue(self, queue):
+        """Task ids of ready messages (peeked and requeued); unacked ones can't be listed."""
+        req = urllib.request.Request(
+            f'http://127.0.0.1:{self.mgmt_port}/api/queues/%2F/{queue}/get', method='POST',
+            data=json.dumps({'count': 10000, 'ackmode': 'reject_requeue_true', 'encoding': 'auto'}).encode())
+        req.add_header('Authorization', 'Basic ' + base64.b64encode(b'cx:cx').decode())
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            msgs = json.load(resp)
+        return {'ready': [m['properties'].get('headers', {}).get('id') for m in msgs],
+                'unacked_count': self.depth(queue) - len(msgs)}
 
 
 class PostgresService(DockerService):
