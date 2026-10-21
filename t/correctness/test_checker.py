@@ -237,3 +237,12 @@ def test_chain_clean_fork_impossible_input_and_cut():
     h = chain_history([(0, 1, None, False)])
     r = check(h.ops, {'workload': 'chain'})
     assert r['valid'] and r['counts'] == {'lost-killed': 1, 'chain-cut': 2}
+
+
+def test_chord_stuck_even_when_a_header_result_was_lost():
+    h = H().enqueue(1, tid='b', extra={'header_tids': ['h0', 'h1'], 'body_tid': 'b'})
+    for part, token in enumerate((10, 20)):
+        h.start(1, token, f='execute-header', part=part).finish(1, token, f='execute-header', part=part)
+    h.read('h0', 'SUCCESS', 10, final=True).read('h1', 'PENDING', final=True)
+    r = check(h.ops, {'workload': 'chord', 'acks_late': True})
+    assert set(r['violations']) == {'chord-stuck', 'result-missing'}

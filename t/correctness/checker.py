@@ -221,7 +221,10 @@ def check(history, config):
             if len(bodies) > 1:
                 anomalies['duplicate-body'].append(body_label)
             all_headers_ok = header_tids and all(s is not None for s in stored)
-            if e.get('type') == 'ok' and all_headers_ok and not bodies:
+            # Header tasks in this workload never raise, so once every header
+            # has run the body must run, even if a header's result was lost.
+            all_headers_ran = header_tids and None not in header_done
+            if e.get('type') == 'ok' and all_headers_ran and not bodies:
                 anomalies['chord-stuck'].append(body_label)
             for b in bodies:
                 got = b['value'].get('input')
