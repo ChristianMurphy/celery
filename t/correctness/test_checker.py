@@ -246,3 +246,10 @@ def test_chord_stuck_even_when_a_header_result_was_lost():
     h.read('h0', 'SUCCESS', 10, final=True).read('h1', 'PENDING', final=True)
     r = check(h.ops, {'workload': 'chord', 'acks_late': True})
     assert set(r['violations']) == {'chord-stuck', 'result-missing'}
+
+
+def test_incomplete_execution_superseded_by_a_completed_one_is_abandoned_not_orphaned():
+    h = H().enqueue(1).start(1, 11).start(1, 12, 'w1').finish(1, 12, 'w1').kill('w0', f='teardown')
+    h.read('t1', 'SUCCESS', 12, final=True)
+    r = run(h, acks_late=True)
+    assert r['valid'] and 'abandoned' in r['counts']

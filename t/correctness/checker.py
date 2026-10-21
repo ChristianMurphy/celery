@@ -172,9 +172,14 @@ def check(history, config):
             else:
                 anomalies['lost-never-started' if not execs else 'lost-killed'].append(label)
         for e in execs:
-            if not e['completed'] and e['killed_by'] == 'teardown':
+            if e['completed'] or e['killed_by'] not in ('teardown', None):
+                continue
+            if any(x['completed'] and x['start'] > e['start'] for x in execs):
+                # The worker gave up on it (e.g. cancelled on connection loss) and it ran again.
+                anomalies['abandoned'].append(label)
+            elif e['killed_by'] == 'teardown':
                 anomalies['running-at-end'].append(label)
-            elif not e['completed'] and e['killed_by'] is None:
+            else:
                 anomalies['orphan-execution'].append(label)
         if duplicates and len(execs) > 1:
             anomalies['duplicate-start'].append(label)
@@ -301,6 +306,8 @@ def check(history, config):
             explained[kind] = None
         elif kind in ('concurrent', 'recovered', 'duplicate-body'):
             explained[kind] = 'allowed: at-least-once delivery has no mutual exclusion'
+        elif kind == 'abandoned':
+            explained[kind] = 'a later execution of the same task completed'
         elif kind in ('retry-fanout', 'chain-fork'):
             explained[kind] = 'consequence of a duplicate execution'
         elif kind == 'chain-cut':
