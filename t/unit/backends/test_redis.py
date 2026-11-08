@@ -48,13 +48,26 @@ class Pipeline:
     def __init__(self, client):
         self.client = client
         self.steps = []
+        # Like redis-py: after watch(), commands run at once until multi().
+        self.watched = None
+        self.immediate = False
 
     def __getattr__(self, attr):
+        if self.immediate:
+            return getattr(self.client, attr)
+
         def add_step(*args, **kwargs):
             self.steps.append((getattr(self.client, attr), args, kwargs))
             return self
 
         return add_step
+
+    def watch(self, *keys):
+        self.watched = {key: self.client.keyspace.get(key) for key in keys}
+        self.immediate = True
+
+    def multi(self):
+        self.immediate = False
 
     def __enter__(self):
         return self
@@ -63,7 +76,13 @@ class Pipeline:
         pass
 
     def execute(self):
-        return [step(*a, **kw) for step, a, kw in self.steps]
+        watched, self.watched = self.watched, None
+        if watched and any(self.client.keyspace.get(key) != value
+                           for key, value in watched.items()):
+            self.steps = []
+            raise exceptions.WatchError('watched key changed')
+        steps, self.steps = self.steps, []
+        return [step(*a, **kw) for step, a, kw in steps]
 
 
 class PubSub(conftest.MockCallbacks):
@@ -2063,6 +2082,43 @@ class test_RedisBackend(basetest_RedisBackend):
         assert self.b.get_result(tid) == 42
         self.b.forget(tid)
         assert self.b.get_state(tid) == states.PENDING
+
+    def test_store_result_keeps_first_success(self):
+        tid = uuid()
+        self.b.store_result(tid, 42, states.SUCCESS)
+        self.b.store_result(tid, None, states.STARTED)
+        self.b.store_result(tid, 43, states.SUCCESS)
+        assert self.b.get_task_meta(tid, cache=False)['status'] == states.SUCCESS
+        assert self.b.get_task_meta(tid, cache=False)['result'] == 42
+
+    @pytest.mark.parametrize('late_state', [states.STARTED, states.FAILURE, states.SUCCESS])
+    def test_store_result_racing_a_success_keeps_it(self, late_state):
+        # Another run stores SUCCESS after this write read the key but
+        # before it wrote: WATCH must abort the write, and the second look
+        # must see the SUCCESS.
+        tid = uuid()
+        key = self.b.get_key_for_task(tid)
+        client = self.b.client
+        other = self.Backend(app=self.app)
+        other.client = client
+        real_get = client.get
+        reads = []
+
+        def get(k):
+            value = real_get(k)
+            reads.append(k)
+            if len(reads) == 1:
+                other._set(key, other.encode(
+                    {'status': states.SUCCESS, 'result': 'first', 'task_id': tid}))
+            return value
+        client.get = get
+
+        self.b.store_result(tid, 'late', late_state)
+
+        client.get = real_get
+        assert len(reads) == 2
+        meta = self.b.get_task_meta(tid, cache=False)
+        assert (meta['status'], meta['result']) == (states.SUCCESS, 'first')
 
     def test_set_expires(self):
         self.b = self.Backend(expires=512, app=self.app)

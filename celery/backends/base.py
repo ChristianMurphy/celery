@@ -1358,23 +1358,34 @@ class BaseKeyValueStoreBackend(Backend):
                                      traceback=traceback, request=request)
         meta['task_id'] = bytes_to_str(task_id)
 
-        # Retrieve metadata from the backend, if the status
-        # is a success then we ignore any following update to the state.
-        # This solves a task deduplication issue because of network
-        # partitioning or lost workers. This issue involved a race condition
-        # making a lost task overwrite the last successful result in the
-        # result backend.
-        current_meta = self._get_task_meta_for(task_id)
-
-        if current_meta['status'] == states.SUCCESS:
-            return result
-
         try:
-            self._set_with_state(self.get_key_for_task(task_id), self.encode(meta), state)
+            self._set_unless_success(
+                task_id, self.get_key_for_task(task_id), self.encode(meta), state)
         except BackendStoreError as ex:
             raise BackendStoreError(str(ex), state=state, task_id=task_id) from ex
 
         return result
+
+    def _set_unless_success(self, task_id, key, value, state):
+        """Store ``value`` for a task, unless its stored state is SUCCESS.
+
+        Once a task's SUCCESS is stored, any later write for it is ignored.
+        This solves a task deduplication issue because of network
+        partitioning or lost workers: a second run of the task must not
+        overwrite the first one's result.
+
+        This reads the stored state and then writes, so a write that races
+        another run's SUCCESS can still replace it. Backends whose store can
+        compare and set in one step should override this.
+
+        Returns:
+            bool: whether ``value`` was stored.
+        """
+        current_meta = self._get_task_meta_for(task_id)
+        if current_meta['status'] == states.SUCCESS:
+            return False
+        self._set_with_state(key, value, state)
+        return True
 
     def _save_group(self, group_id, result):
         self._set_with_state(self.get_key_for_group(group_id),

@@ -824,6 +824,36 @@ class RedisBackend(BaseKeyValueStoreBackend, AsyncBackendMixin):
             pipe.publish(key, value)
             pipe.execute()
 
+    def _set_unless_success(self, task_id, key, value, state):
+        # Check and write in one transaction: WATCH makes the write fail if
+        # another run stores the key after we read it, and then we read again.
+        if isinstance(value, str) and len(value) > self._MAX_STR_VALUE_SIZE:
+            raise BackendStoreError('value too large for Redis backend')
+        expires = self.failure_expires if state == states.FAILURE else None
+        return self.ensure(self._set_unless_success_once, (key, value, expires))
+
+    def _set_unless_success_once(self, key, value, expires=None):
+        if expires is None:
+            expires = self.expires
+        with self.client.pipeline() as pipe:
+            while True:
+                try:
+                    pipe.watch(key)
+                    current = pipe.get(key)
+                    if (current is not None and
+                            self.decode_result(current)['status'] == states.SUCCESS):
+                        return False
+                    pipe.multi()
+                    if expires:
+                        pipe.setex(key, expires, value)
+                    else:
+                        pipe.set(key, value)
+                    pipe.publish(key, value)
+                    pipe.execute()
+                    return True
+                except redis.WatchError:
+                    continue
+
     def forget(self, task_id):
         super().forget(task_id)
         self.result_consumer.cancel_for(task_id)
