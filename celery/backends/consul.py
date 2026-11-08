@@ -114,7 +114,7 @@ class ConsulBackend(KeyValueStoreBackend):
             # Another session took the key, or the holder expired, after
             # we looked; try again with whichever session holds it now.
         raise BackendStoreError(
-            f'Consul refused to write {key}: it stays held by another session')
+            f'Consul refused to write {key} {self._max_set_attempts} times')
 
     _max_set_attempts = 5
 
@@ -131,9 +131,13 @@ class ConsulBackend(KeyValueStoreBackend):
                 return holder
         logger.debug('Trying to create Consul session %s with TTL %d',
                      session_name, self.expires)
+        # No lock-delay: when an expired session deletes the key, Consul
+        # would otherwise refuse to let any session acquire it for 15 s, and
+        # a task that outlives result_expires couldn't store its result.
         session_id = client.session.create(name=session_name,
                                            behavior='delete',
-                                           ttl=self.expires)
+                                           ttl=self.expires,
+                                           lock_delay=0)
         logger.debug('Created Consul session %s', session_id)
         return session_id
 

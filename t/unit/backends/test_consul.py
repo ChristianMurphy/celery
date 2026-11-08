@@ -49,6 +49,16 @@ class test_ConsulBackend:
         client.kv.put.assert_called_once_with(
             key='Key', value='SUCCESS', acquire='held')
 
+    def test_set_creates_sessions_without_lock_delay(self):
+        # After an expired session deletes a key, Consul refuses to let any
+        # session acquire it during the lock-delay (15 s by default), so a
+        # task that outlives result_expires would fail to store its result.
+        client = self.backend.one_client = Mock(name='c.client')
+        client.kv.get.return_value = (1, None)
+        client.kv.put.return_value = True
+        self.backend.set('Key', 'Value')
+        assert client.session.create.call_args.kwargs['lock_delay'] == 0
+
     def test_set_replaces_an_expired_holder(self):
         client = self.backend.one_client = Mock(name='c.client')
         client.kv.get.return_value = (1, {'Key': 'Key', 'Session': 'gone'})
