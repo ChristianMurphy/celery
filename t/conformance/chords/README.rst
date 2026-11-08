@@ -114,9 +114,14 @@ Each chord gets one outcome:
     publish.
 ``early_body``
     The body started while a header result wasn't ``SUCCESS`` in the backend,
-    or got results other than ``[0, 1, ..., n-1]``.
+    or got results other than ``[0, 1, ..., n-1]``. A state the body couldn't
+    read (backend down) doesn't count.
 ``body_and_error``
     The body started, and the chord's error callback also ran.
+``body_failed``
+    The body ran and then failed by itself, for example storing its result
+    while the backend was down; its error callback is the chord's. Not a
+    chord violation.
 ``spurious_error``
     The chord failed although every header task ended as ``SUCCESS``.
 ``stuck``

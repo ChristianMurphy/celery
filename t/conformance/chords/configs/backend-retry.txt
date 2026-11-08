@@ -1,0 +1,5 @@
+# Result backend restarts with result_backend_always_retry, so a store
+# waits for the backend instead of failing the task.
+redis redis prefork backend_restart --fault-every 8 15 --conf {"result_backend_always_retry":true}
+redis postgresql prefork backend_restart --fault-every 8 15 --conf {"result_backend_always_retry":true}
+rabbitmq postgresql prefork backend_restart --fault-every 8 15 --conf {"result_backend_always_retry":true}

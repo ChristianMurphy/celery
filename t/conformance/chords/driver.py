@@ -82,9 +82,10 @@ class Run:
             self.env['CHORDS_VISIBILITY'] = str(args.visibility)
         if args.broker == 'quorum':
             self.env['CHORDS_QUEUE_TYPE'] = 'quorum'
+        conf = dict(fmt(conf, run=self.run.replace('-', '_')))
+        conf.update(json.loads(args.conf))
         if conf:
-            self.env['CHORDS_BACKEND_CONF'] = json.dumps(
-                fmt(conf, run=self.run.replace('-', '_')))
+            self.env['CHORDS_BACKEND_CONF'] = json.dumps(conf)
         if args.fast_redelivery:
             self.env['CHORDS_FAST_REDELIVERY'] = '1'
         if args.fault == 'kill_after_store':
@@ -318,8 +319,11 @@ class Run:
             header_states = [state(t) for t in c['header_ids']]
             body_state = state(c['body_id'])
             expected = list(range(a.header))
+            # A state the body couldn't read (backend down) proves nothing.
             early = any(
-                e['results'] != expected or any(s != 'SUCCESS' for s in e['header_states'])
+                e['results'] != expected or any(
+                    s != 'SUCCESS' and not s.startswith('error:')
+                    for s in e['header_states'])
                 for e in body_starts)
             header_runs = {}
             for e in evs:
@@ -330,6 +334,12 @@ class Run:
                 outcome = 'duplicate_body'
             elif early:
                 outcome = 'early_body'
+            elif body_starts and errbacks and not any(
+                    e['exc'].startswith('ChordError') for e in errbacks):
+                # The body ran and failed on its own (its errback is the
+                # chord's), for example storing its result while the backend
+                # was down.
+                outcome = 'body_failed'
             elif body_starts and errbacks:
                 outcome = 'body_and_error'
             elif body_starts:
@@ -402,6 +412,9 @@ def parse(argv=None):
     p.add_argument('--submit-gap', type=float, default=0.0)
     p.add_argument('--fast-redelivery', type=int, default=0,
                    help='header tasks sleep only on their first delivery')
+    p.add_argument('--conf', default='{}',
+                   help='extra Celery settings as JSON, for example '
+                        '\'{"result_backend_always_retry": true}\'')
     p.add_argument('--seed', type=int, default=None)
     p.add_argument('--run', default=None)
     p.add_argument('--out', default=os.path.join(HERE, 'results'))
