@@ -1,0 +1,18 @@
+# The other backends: worker loss on RabbitMQ, broker restart, and duplicate
+# delivery on Redis.
+rabbitmq sqlite prefork kill_random
+rabbitmq mongodb prefork kill_random
+rabbitmq memcached prefork kill_random
+rabbitmq cassandra prefork kill_random
+rabbitmq couchdb prefork kill_random
+rabbitmq arangodb prefork kill_random
+rabbitmq elasticsearch prefork kill_random
+rabbitmq mongodb prefork broker_restart --fault-every 8 15
+rabbitmq memcached prefork broker_restart --fault-every 8 15
+redis mongodb prefork backend_restart --fault-every 8 15
+redis sqlite prefork none --visibility 3 --sleep 0.05 5 --fast-redelivery 1 --chords 40
+redis mongodb prefork none --visibility 3 --sleep 0.05 5 --fast-redelivery 1 --chords 40
+redis cassandra prefork none --visibility 3 --sleep 0.05 5 --fast-redelivery 1 --chords 40
+redis couchdb prefork none --visibility 3 --sleep 0.05 5 --fast-redelivery 1 --chords 40
+redis arangodb prefork none --visibility 3 --sleep 0.05 5 --fast-redelivery 1 --chords 40
+redis elasticsearch prefork none --visibility 3 --sleep 0.05 5 --fast-redelivery 1 --chords 40

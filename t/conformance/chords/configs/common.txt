@@ -1,0 +1,22 @@
+# Common configurations first: Redis and RabbitMQ brokers, Redis and
+# PostgreSQL backends, prefork pool.
+redis redis prefork kill_random
+redis postgresql prefork kill_random
+rabbitmq redis prefork kill_random
+rabbitmq postgresql prefork kill_random
+redis redis prefork kill_child
+redis postgresql prefork kill_child
+rabbitmq redis prefork kill_child
+rabbitmq postgresql prefork kill_child
+redis redis prefork kill_after_store --kill-ratio 0.5
+redis postgresql prefork kill_after_store --kill-ratio 0.5
+rabbitmq redis prefork kill_after_store --kill-ratio 0.5
+rabbitmq postgresql prefork kill_after_store --kill-ratio 0.5
+redis redis prefork broker_restart --fault-every 8 15
+redis postgresql prefork broker_restart --fault-every 8 15
+rabbitmq redis prefork broker_restart --fault-every 8 15
+rabbitmq postgresql prefork broker_restart --fault-every 8 15
+redis redis prefork backend_restart --fault-every 8 15
+redis postgresql prefork backend_restart --fault-every 8 15
+rabbitmq redis prefork backend_restart --fault-every 8 15
+rabbitmq postgresql prefork backend_restart --fault-every 8 15

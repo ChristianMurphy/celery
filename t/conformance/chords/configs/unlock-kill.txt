@@ -1,0 +1,9 @@
+# Repeats of the worker kill that duplicated chord_unlock on solo workers,
+# plus the same on prefork and RabbitMQ, and a chord_unlock backend other
+# than PostgreSQL.
+redis postgresql solo kill_random
+redis postgresql solo kill_random
+rabbitmq postgresql solo kill_random
+redis mongodb solo kill_random
+redis postgresql prefork kill_random
+redis postgresql threads kill_random

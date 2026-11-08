@@ -1,0 +1,7 @@
+# solo and threads pools on the common pairs.
+redis redis solo kill_random
+redis postgresql solo kill_random
+rabbitmq redis threads kill_random
+rabbitmq postgresql threads kill_random
+redis redis threads broker_restart --fault-every 8 15
+rabbitmq postgresql solo broker_restart --fault-every 8 15

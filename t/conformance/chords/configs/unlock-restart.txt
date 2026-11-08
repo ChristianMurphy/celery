@@ -1,0 +1,5 @@
+# Repeats of the broker restart that duplicated a chord_unlock.
+rabbitmq postgresql prefork broker_restart --fault-every 8 15
+rabbitmq postgresql prefork broker_restart --fault-every 8 15
+rabbitmq postgresql prefork broker_restart --fault-every 8 15
+rabbitmq postgresql prefork broker_restart --fault-every 8 15

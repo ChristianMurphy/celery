@@ -1,0 +1,5 @@
+# RabbitMQ quorum queues.
+quorum redis prefork kill_random
+quorum postgresql prefork kill_random
+quorum redis prefork broker_restart --fault-every 8 15
+quorum postgresql prefork broker_restart --fault-every 8 15
