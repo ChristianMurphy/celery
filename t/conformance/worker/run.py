@@ -161,6 +161,9 @@ def main():
             obs[task_id].append((t1 if t0 is None else t0, t1, source, state, token))
 
     def poller():
+        # app.backend is per thread; some clients (python-memcached) break
+        # when two threads share one.
+        backend = app.backend
         last_event = {}
         last_event_seen = []
         while not stop.is_set():
@@ -325,10 +328,11 @@ def classify(a, ids, events, obs, final):
         # read right after it stored, and the final read. A SUCCESS followed
         # by a read that started after it and shows anything else means the
         # SUCCESS was replaced.
-        seen = list(obs[task_id])
+        # A read that failed tells nothing about the stored state.
+        seen = [o for o in obs[task_id] if not str(o[3]).startswith('ERROR')]
         for v in r.values():
             p = v.get('post', {}).get('seen')
-            if p:
+            if p and not p['state'].startswith('ERROR'):
                 seen.append((p['t0'], p['t1'], 'self', p['state'], p['token']))
         seen.append((float('inf'), float('inf'), 'final', state, token))
         hits = set()
