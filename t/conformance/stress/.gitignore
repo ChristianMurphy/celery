@@ -1,0 +1,5 @@
+results/
+old/
+spec/*.qnt
+!spec/chord.qnt
+__pycache__/
