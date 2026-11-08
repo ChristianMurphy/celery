@@ -7,7 +7,7 @@ from kombu.utils.encoding import bytes_to_str
 from kombu.utils.url import parse_url
 
 from celery.backends.base import KeyValueStoreBackend
-from celery.exceptions import ImproperlyConfigured
+from celery.exceptions import BackendStoreError, ImproperlyConfigured
 from celery.utils.log import get_logger
 
 try:
@@ -93,22 +93,49 @@ class ConsulBackend(KeyValueStoreBackend):
         The key created afterwards will reference to the session's ID.
 
         If the session expires it will remove the key so that results
-        can auto expire from the K/V store
+        can auto expire from the K/V store.
+
+        A key held by one session can't be written with another: Consul
+        refuses the put and returns False. A task writes its key again for
+        every state change (STARTED, RETRY, update_state(), then the final
+        state), so a later write reuses the session that holds the key, and
+        renews it so the result expires ``expires`` seconds after this write.
         """
         session_name = bytes_to_str(key)
 
         key = self._key_to_consul_key(key)
+        client = self.client()
 
+        for _ in range(self._max_set_attempts):
+            session_id = self._session_for(client, key, session_name)
+            logger.debug('Writing key %s to Consul', key)
+            if client.kv.put(key=key, value=value, acquire=session_id):
+                return True
+            # Another session took the key, or the holder expired, after
+            # we looked; try again with whichever session holds it now.
+        raise BackendStoreError(
+            f'Consul refused to write {key}: it stays held by another session')
+
+    _max_set_attempts = 5
+
+    def _session_for(self, client, key, session_name):
+        """Return a live session that holds ``key``, or a new one."""
+        _, data = client.kv.get(key)
+        holder = data.get('Session') if data else None
+        if holder:
+            try:
+                client.session.renew(holder)
+            except consul.NotFound:
+                pass
+            else:
+                return holder
         logger.debug('Trying to create Consul session %s with TTL %d',
                      session_name, self.expires)
-        client = self.client()
         session_id = client.session.create(name=session_name,
                                            behavior='delete',
                                            ttl=self.expires)
         logger.debug('Created Consul session %s', session_id)
-
-        logger.debug('Writing key %s to Consul', key)
-        return client.kv.put(key=key, value=value, acquire=session_id)
+        return session_id
 
     def delete(self, key):
         key = self._key_to_consul_key(key)
