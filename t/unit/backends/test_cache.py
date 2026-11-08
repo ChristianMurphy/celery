@@ -105,9 +105,42 @@ class test_CacheBackend:
         tb.on_chord_part_return(task.request, 'SUCCESS', 10)
         deps.join_native.assert_not_called()
 
+        task.request.id = uuid()
         tb.on_chord_part_return(task.request, 'SUCCESS', 10)
         deps.join_native.assert_called_with(propagate=True, timeout=3.0)
         deps.delete.assert_called_with()
+
+    @pytest.mark.parametrize('order', [
+        pytest.param((0, 0, 1), id='copy-before-last-part'),
+        pytest.param((0, 1, 0), id='copy-after-body-sent'),
+    ])
+    def test_on_chord_part_return_counts_a_header_task_once(self, order):
+        # With acks_late a header task can run twice. Both runs are one part:
+        # the body is sent once, and the chord doesn't fail.
+        self.app.conf.result_backend = 'cache+memory://'
+        self.app.conf.result_chord_join_timeout = 0.1
+        tb = self.app.backend
+
+        @self.app.task(shared=False)
+        def body(results):
+            return results
+
+        gid, ids = uuid(), [uuid(), uuid()]
+        tb.apply_chord((gid, [self.app.AsyncResult(i) for i in ids]), body.s())
+
+        def part_returns(index):
+            request = Mock(id=ids[index], group=gid, group_index=index,
+                           chord=body.s())
+            tb.store_result(ids[index], index, states.SUCCESS)
+            tb.on_chord_part_return(request, states.SUCCESS, index)
+
+        with patch.object(self.app.amqp, '_retry_publish') as publish, \
+                patch.object(tb, 'chord_error_from_stack') as chord_error:
+            for index in order:
+                part_returns(index)
+        chord_error.assert_not_called()
+        publish.assert_called_once()
+        assert publish.call_args[0][1] == [0, 1]
 
     @pytest.mark.parametrize(
         'result_expires,chord_expires,expected_chord,expected_result', [
@@ -581,11 +614,14 @@ class test_pymemcache_integration(MockPyMemcacheMixin):
                 )
                 task.request.id = uuid()
                 task.request.group = result_args[0]
+                task.request.group_index = 0
                 b.apply_chord(result_args, None)
 
                 b.on_chord_part_return(task.request, 'SUCCESS', 10)
                 deps.join_native.assert_not_called()
 
+                task.request.id = uuid()
+                task.request.group_index = 1
                 b.on_chord_part_return(task.request, 'SUCCESS', 10)
                 deps.join_native.assert_called_with(propagate=True, timeout=3.0)
                 deps.delete.assert_called_with()

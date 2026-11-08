@@ -1240,6 +1240,15 @@ class BaseKeyValueStoreBackend(Backend):
     def incr(self, key):
         raise NotImplementedError('Does not implement incr')
 
+    def _add_chord_part(self, key):
+        """Record that a chord part returned, unless it already did.
+
+        Return :const:`True` if ``key`` was added, :const:`False` if it was
+        already there, or :const:`None` if this backend can't tell, in which
+        case every run of a header task is counted.
+        """
+        return None
+
     def expire(self, key, value):
         pass
 
@@ -1434,6 +1443,13 @@ class BaseKeyValueStoreBackend(Backend):
         if not gid:
             return
         key = self.get_key_for_chord(gid)
+        # With acks_late a header task can run twice. Count each header task
+        # once (by task id and header index, as the Redis backend does), and
+        # let a copy that arrives after the body was sent do nothing.
+        part = self.get_key_for_chord(
+            gid, f'.p.{request.id}.{getattr(request, "group_index", None)}')
+        if self._add_chord_part(part) is False:
+            return
         try:
             deps = GroupResult.restore(gid, backend=self)
         except Exception as exc:  # pylint: disable=broad-except
