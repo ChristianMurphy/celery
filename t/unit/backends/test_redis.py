@@ -1,3 +1,4 @@
+import hashlib
 import itertools
 import json
 import random
@@ -24,7 +25,8 @@ from kombu.utils.encoding import ensure_bytes
 from celery import signature, states, uuid
 from celery.app.amqp import _callback_publish_retry
 from celery.backends.base import COMPRESSED_PAYLOAD_MAGIC
-from celery.backends.redis import CHORD_CLAIM_EXTEND_LUA, CHORD_CLEANUP_LUA, CHORD_PART_RETURN_LUA
+from celery.backends.redis import (CHORD_CLAIM_EXTEND_LUA, CHORD_CLEANUP_LUA, CHORD_PART_RETURN_LUA,
+                                   SET_IF_UNCHANGED_LUA)
 from celery.canvas import Signature
 from celery.contrib.testing.mocks import ContextMock
 from celery.exceptions import BackendStoreError, ChordError, ImproperlyConfigured, WorkerLostError
@@ -48,26 +50,13 @@ class Pipeline:
     def __init__(self, client):
         self.client = client
         self.steps = []
-        # Like redis-py: after watch(), commands run at once until multi().
-        self.watched = None
-        self.immediate = False
 
     def __getattr__(self, attr):
-        if self.immediate:
-            return getattr(self.client, attr)
-
         def add_step(*args, **kwargs):
             self.steps.append((getattr(self.client, attr), args, kwargs))
             return self
 
         return add_step
-
-    def watch(self, *keys):
-        self.watched = {key: self.client.keyspace.get(key) for key in keys}
-        self.immediate = True
-
-    def multi(self):
-        self.immediate = False
 
     def __enter__(self):
         return self
@@ -76,13 +65,7 @@ class Pipeline:
         pass
 
     def execute(self):
-        watched, self.watched = self.watched, None
-        if watched and any(self.client.keyspace.get(key) != value
-                           for key, value in watched.items()):
-            self.steps = []
-            raise exceptions.WatchError('watched key changed')
-        steps, self.steps = self.steps, []
-        return [step(*a, **kw) for step, a, kw in steps]
+        return [step(*a, **kw) for step, a, kw in self.steps]
 
 
 class PubSub(conftest.MockCallbacks):
@@ -213,6 +196,19 @@ class Redis(conftest.MockCallbacks):
         return 1
 
     def register_script(self, script):
+        if script == SET_IF_UNCHANGED_LUA:
+            def set_if_unchanged(keys, args, client=None):
+                (key,), (expected, value, expires) = keys, args
+                current = self.get(key)
+                found = hashlib.sha1(ensure_bytes(current)).hexdigest() if current is not None else ''
+                if found != expected:
+                    return 0
+                if int(expires) > 0:
+                    self.setex(key, int(expires), value)
+                else:
+                    self.set(key, value)
+                return 1
+            return set_if_unchanged
         if script == CHORD_CLEANUP_LUA:
             def chord_cleanup(keys, args, client=None):
                 ckey, jkey, tkey, skey, dkey = keys
@@ -2094,8 +2090,7 @@ class test_RedisBackend(basetest_RedisBackend):
     @pytest.mark.parametrize('late_state', [states.STARTED, states.FAILURE, states.SUCCESS])
     def test_store_result_racing_a_success_keeps_it(self, late_state):
         # Another run stores SUCCESS after this write read the key but
-        # before it wrote: WATCH must abort the write, and the second look
-        # must see the SUCCESS.
+        # before it wrote: the write must not replace it.
         tid = uuid()
         key = self.b.get_key_for_task(tid)
         client = self.b.client
@@ -2116,7 +2111,6 @@ class test_RedisBackend(basetest_RedisBackend):
         self.b.store_result(tid, 'late', late_state)
 
         client.get = real_get
-        assert len(reads) == 2
         meta = self.b.get_task_meta(tid, cache=False)
         assert (meta['status'], meta['result']) == (states.SUCCESS, 'first')
 

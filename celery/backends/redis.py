@@ -1,4 +1,5 @@
 """Redis result store backend."""
+import hashlib
 import math
 import select
 import selectors
@@ -12,6 +13,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from kombu.utils import symbol_by_name
+from kombu.utils.encoding import ensure_bytes
 from kombu.utils.functional import retry_over_time
 from kombu.utils.objects import cached_property
 from kombu.utils.url import _parse_url, maybe_sanitize_url
@@ -179,6 +181,25 @@ if not redis.call('GET', ckey) and redis.call('EXISTS', skey) == 1 then
     return redis.call('SET', ckey, token, 'EX', expires, 'NX') and 1 or 0
 end
 return 0
+"""
+
+# Store a task's state only if its key still holds what the caller read:
+# ARGV[1] is the SHA1 of that value, or '' if the key was missing. Returns 1
+# when stored, 0 when the key changed after the read.
+SET_IF_UNCHANGED_LUA = """
+local key = KEYS[1]
+local expected, value, expires = ARGV[1], ARGV[2], tonumber(ARGV[3])
+local current = redis.call('GET', key)
+if (current and redis.sha1hex(current) or '') ~= expected then
+    return 0
+end
+if expires > 0 then
+    redis.call('SETEX', key, expires, value)
+else
+    redis.call('SET', key, value)
+end
+redis.call('PUBLISH', key, value)
+return 1
 """
 
 logger = get_logger(__name__)
@@ -825,34 +846,25 @@ class RedisBackend(BaseKeyValueStoreBackend, AsyncBackendMixin):
             pipe.execute()
 
     def _set_unless_success(self, task_id, key, value, state):
-        # Check and write in one transaction: WATCH makes the write fail if
-        # another run stores the key after we read it, and then we read again.
+        # Read, decide, then write only if the key is unchanged since the
+        # read, in one script. If another run wrote in between, read again.
         if isinstance(value, str) and len(value) > self._MAX_STR_VALUE_SIZE:
             raise BackendStoreError('value too large for Redis backend')
-        expires = self.failure_expires if state == states.FAILURE else None
-        return self.ensure(self._set_unless_success_once, (key, value, expires))
+        expires = self.failure_expires if state == states.FAILURE else self.expires
+        return self.ensure(self._set_unless_success_once, (key, value, expires or 0))
 
-    def _set_unless_success_once(self, key, value, expires=None):
-        if expires is None:
-            expires = self.expires
-        with self.client.pipeline() as pipe:
-            while True:
-                try:
-                    pipe.watch(key)
-                    current = pipe.get(key)
-                    if (current is not None and
-                            self.decode_result(current)['status'] == states.SUCCESS):
-                        return False
-                    pipe.multi()
-                    if expires:
-                        pipe.setex(key, expires, value)
-                    else:
-                        pipe.set(key, value)
-                    pipe.publish(key, value)
-                    pipe.execute()
-                    return True
-                except redis.WatchError:
-                    continue
+    def _set_unless_success_once(self, key, value, expires):
+        while True:
+            current = self.client.get(key)
+            if (current is not None and
+                    self.decode_result(current)['status'] == states.SUCCESS):
+                return False
+            # With decode_responses the value comes back as str; Redis hashes
+            # the stored bytes, which are its UTF-8 encoding.
+            expected = (hashlib.sha1(ensure_bytes(current)).hexdigest()
+                        if current is not None else '')
+            if self._set_if_unchanged_script(keys=[key], args=[expected, value, expires]):
+                return True
 
     def forget(self, task_id):
         super().forget(task_id)
@@ -926,6 +938,10 @@ class RedisBackend(BaseKeyValueStoreBackend, AsyncBackendMixin):
     @cached_property
     def _chord_cleanup_script(self):
         return self.client.register_script(CHORD_CLEANUP_LUA)
+
+    @cached_property
+    def _set_if_unchanged_script(self):
+        return self.client.register_script(SET_IF_UNCHANGED_LUA)
 
     @cached_property
     def _chord_claim_extend_script(self):

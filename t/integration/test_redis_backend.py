@@ -39,6 +39,44 @@ def test_decode_responses_disables_compression(app):
         backend.forget(task_id)
 
 
+@pytest.mark.parametrize('decode_responses', [False, True])
+@pytest.mark.parametrize('late_state', [states.STARTED, states.FAILURE, states.SUCCESS])
+def test_store_result_racing_a_success_keeps_it(app, late_state, decode_responses):
+    # A late run reads the key, another run stores SUCCESS, then the late
+    # run writes. SET_IF_UNCHANGED_LUA must refuse that write. (fakeredis has
+    # no redis.sha1hex, so the script runs here rather than in unit tests.)
+    url = app.conf.result_backend
+    if not url.startswith('redis'):
+        pytest.skip('Requires redis result backend.')
+    if decode_responses:
+        separator = '&' if '?' in url else '?'
+        app.conf.result_backend = f'{url}{separator}decode_responses=true'
+    backend = app.backend
+    task_id = uuid()
+    key = backend.get_key_for_task(task_id)
+    backend.store_result(task_id, None, states.STARTED)
+    real_get = backend.client.get
+    reads = []
+
+    def get(k):
+        value = real_get(k)
+        reads.append(k)
+        if len(reads) == 1:
+            backend._set(key, backend.encode(
+                {'status': states.SUCCESS, 'result': 'first', 'task_id': task_id}))
+        return value
+
+    backend.client.get = get
+    try:
+        backend.store_result(task_id, 'late', late_state)
+        backend.client.get = real_get
+        meta = backend.get_task_meta(task_id, cache=False)
+        assert (meta['status'], meta['result']) == (states.SUCCESS, 'first')
+    finally:
+        backend.client.get = real_get
+        backend.forget(task_id)
+
+
 @pytest.mark.celery(result_expires=60, result_failure_expires=600)
 def test_failure_expires(app):
     if not app.conf.result_backend.startswith('redis'):
