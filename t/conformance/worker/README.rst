@@ -62,7 +62,10 @@ What it counts
     The final ``SUCCESS`` came from a run that stored it more than 50 ms after
     another run stored its ``SUCCESS``.
 ``final_not_success``, ``stuck``
-    The final state isn't ``SUCCESS``, or isn't a ready state.
+    The final state isn't ``SUCCESS``, or isn't a ready state. In the
+    ``time-limit`` scenario a final ``FAILURE`` is expected for tasks the
+    limit killed; there only the ``success_changed_*`` counts mean a lost
+    ``SUCCESS``.
 ``near_misses``
     For duplicated ids, how many had one run's ``SUCCESS`` write within 1 ms,
     5 ms, ... of another run's write. It shows how often runs come close
