@@ -69,3 +69,36 @@ the load average is recorded before and after (the machine is shared).
   chord's `<gid>.c` dispatch claim, or the worker's own `TaskPool: Apply`
   debug line for chord_unlock. The kill lands 0.01 to 0.05 ms after the
   notification is read.
+
+## Results on main 768e476 (2026-11-08)
+
+`summaries.jsonl` has the summary of every run kept (rates with Wilson
+intervals, windows, load). Load average was 3 to 10 on 4 shared cores.
+
+| Finding | Targeted (natural fault, timed from outside) | Random / natural | Controls | Window |
+| --- | --- | --- | --- | --- |
+| incr double count (memcached) | headers 3 s and 12 s, vt 2 s: 20 of 20 chords fail with the join timeout; minimal script 3 of 3 | 3 headers of 0.1 to 12 s: 6 of 30 | Redis backend 0 of 10; vt 60 s 0 of 10 | deterministic once a header outlives vt while another runs 3 s past the double count |
+| lost child after SUCCESS (Redis) | kill at SUCCESS write 20 of 20 pending (early ack 10 of 10); at claim 19 of 20; hard time limit at 0.99 s of 1 s: 24 of 30 | child killed about every 2 s, 50 x 20 KB headers: 4 of 300 + 6 of 300 (minimal); OOM in 400 MiB: 5 of 5 | kill while running 0 of 20; 2 GiB 0 of 5 | SUCCESS write to cleanup p50 5.4 ms (4 headers), 41 ms (50 x 20 KB); predicted 1.1%, seen 1.7% |
+| claim held by a lost worker (Redis + RabbitMQ) | kill worker at claim: 20 of 20 pending; at SUCCESS write: 6 of 20 (the 6 had the claim) | worker killed every 5 s on average: 0 of 200 | Redis broker, vt 10 s: 0 of 10 | claim held p50 22 ms, p90 45 ms (50 x 20 KB); redelivery 5 to 27 ms after the claim |
+| chord_unlock lost (PostgreSQL) | kill on `TaskPool: Apply`: early ack 10 of 10, acks_late 5 of 10, + reject_on_worker_lost 0 of 10 (1 body twice) | child killed every 1 s, 200 headers: early ack 7 of 40 + 6 of 40 (minimal), acks_late 6 of 40, + reject 0 of 40 | no kill 0 of 15 | poll p50 54 to 137 ms, p90 300 ms (200 headers) |
+| stale RETRY over FAILURE (Redis) | n/a | retry(countdown=0) 8 of 5,500; autoretry + retry_backoff 10 of 6,000 | Elasticsearch 0 of 3,000; 2/5/20 ms RTT: 1 of 500, 11 of 3,500, 8 of 3,500 | publish to RETRY write p50 9.4 ms, p99 36 ms; next attempt's FAILURE p1 35 ms, p50 126 ms |
+
+Corrections to the plan:
+
+- Stale RETRY: backend latency doesn't open the window. Both the RETRY and
+  the FAILURE write pay the same round trips; the window is the retrying
+  child's own time from publish to write, stretched by CPU contention, and
+  the race happens with no added latency (8 of 5,500).
+- Hard time limits don't go through the lost-child path (`Request.on_timeout`
+  runs `mark_as_failure` in the main process), but they lose the chord
+  through the Redis claim when the limit lands after the claim.
+- Random whole-worker kills can't show the claim finding in a few hundred
+  chords at a realistic kill rate (expected about 0.2% per chord); the
+  targeted runs and the measured window carry it.
+- Short visibility timeouts on one Redis DB affect every worker on it (see
+  above), so each experiment needs its own DB.
+
+Side observation, not investigated: with the memcached backend and pool
+children SIGKILLed about every 2 s, replacement children raised
+`MemcacheUnknownError(b'TOUCHED')` and `(b'STORED')`, which looks like a
+pymemcache connection shared across fork; 65 of 300 chords failed that way.

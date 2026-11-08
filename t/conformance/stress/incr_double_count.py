@@ -64,7 +64,7 @@ def drain(run, gid, tag, quiet, limit):
         starts = sum(e['kind'] == 'start' for e in g)
         ends = sum(e['kind'] == 'end' for e in g)
         last = max((e['t'] for e in g), default=time.time())
-        if done and starts == ends and time.time() - last > quiet:
+        if done and (not quiet or (starts == ends and time.time() - last > quiet)):
             return True
         time.sleep(0.5)
     return False
@@ -80,27 +80,36 @@ def main(argv=None):
     ap.add_argument('--durations', default='3,12',
                     help='shape mode: header durations in seconds')
     ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--broker-db', type=int, default=20,
+                    help='a DB of its own per visibility_timeout: the unacked '
+                         'hash is per DB and every worker restores from it')
     ap.add_argument('--settle', type=float, default=20)
     a = ap.parse_args(argv)
 
     run = f'incr-{a.mode}-{a.backend}-vt{a.vt:g}-{uuid.uuid4().hex[:6]}'
     backend = C.MEMCACHED if a.backend == 'memcached' else f'{C.REDIS}/21'
-    env = C.base_env(broker=f'{C.REDIS}/20', backend=backend, queue=run, vt=a.vt,
+    env = C.base_env(broker=f'{C.REDIS}/{a.broker_db}', backend=backend, queue=run, vt=a.vt,
                      acks_late=1, ev=run, join_timeout=3)
     C.apply_env(env)
     from celery import chord
 
     import stress_app as S
     print(C.proof())
-    log = C.RESULTS / f'{run}.worker.log'
     C.RESULTS.mkdir(exist_ok=True)
     load0 = C.load()
-    w = C.Worker(env, log, concurrency=a.concurrency)
-    w.wait_ready()
     rng = random.Random(a.seed)
     chords = []
-    try:
-        for i in range(a.chords):
+    for i in range(a.chords):
+        # One chord per queue and worker: with a visibility timeout shorter
+        # than the tasks, the Redis broker keeps redelivering each copy that
+        # outlives it, so copies of one chord's headers would otherwise
+        # crowd out the next chord. The old queue is left behind.
+        q = f'{run}-{i}'
+        wenv = dict(env, STRESS_QUEUE=q)
+        w = C.Worker(wenv, C.RESULTS / f'{run}.{i}.worker.log',
+                     concurrency=a.concurrency)
+        try:
+            w.wait_ready()
             if a.mode == 'shape':
                 # H1 outlives the visibility timeout, H2 runs much longer.
                 durations = [float(x) for x in a.durations.split(',')]
@@ -109,15 +118,16 @@ def main(argv=None):
                 durations = [rng.choice([0.1, 0.5, 1, 3, 6, 12])
                              for _ in range(3)]
             tag = f'{run}-{i}'
-            res = chord([S.header.s(h + 1, d) for h, d in enumerate(durations)])(
-                S.body.s(tag).on_error(S.errback.s(tag=tag)))
+            res = chord([S.header.s(h + 1, d).set(queue=q)
+                         for h, d in enumerate(durations)])(
+                S.body.s(tag).set(queue=q).on_error(S.errback.s(tag=tag).set(queue=q)))
             chords.append(dict(tag=tag, body=res.id, durations=durations,
                                gid=res.parent.id))
-            drain(run, res.parent.id, tag, quiet=a.vt + 4,
-                  limit=max(durations) * 6 + 60)
-        time.sleep(a.settle)     # late redeliveries
-    finally:
-        w.stop()
+            drain(run, res.parent.id, tag, quiet=0,
+                  limit=max(durations) * 3 + 30)
+            time.sleep(a.settle)     # late redeliveries
+        finally:
+            w.stop()
     load1 = C.load()
 
     evs = C.events(run)
