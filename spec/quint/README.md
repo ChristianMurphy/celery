@@ -131,7 +131,29 @@ chord.qnt
 
 `neverDispatched` is a witness: violated means the instance does dispatch the
 body. Simulation is not exhaustive: `redis_wlost_late.quietDone` shows `ok`
-but `scenarios.qnt` (`lostClaimHangsTest`) is a behavior that violates it.
+here, but Apalache finds a violation (below) and `scenarios.qnt`
+(`lostClaimHangsTest`) is such a behavior.
+
+### Bounded model checking (Apalache 0.62.4, `quint verify --apalache-config=apalache.json`)
+
+`apalache.json` turns off deadlock checks (a run that used up its budget
+stops). The checks ran one at a time: parallel `quint verify` calls gave wrong
+answers.
+
+| instance | property | bound | result | time |
+|---|---|---|---|---|
+| rtw | successStable | 12 steps | violated | 9 s |
+| rtw | readySticky | 12 steps | violated | 10 s |
+| mongo | successStable | 12 steps | holds | 33 s |
+| mongo | readySticky | 12 steps | violated | 9 s |
+| sql | successStable | 12 steps | holds | 40 s |
+| sql | readySticky | 12 steps | violated | 8 s |
+| es | successStable | 12 steps | holds | 33 s |
+| es | readySticky | 12 steps | holds | 43 s |
+| redis_wlost_late (chord) | quietDone | 16 steps | violated | 35 min |
+
+These agree with the simulator on every result-state cell, and confirm the
+chord liveness violation the simulator missed (finding 5).
 
 ### Spec to code (replay)
 
