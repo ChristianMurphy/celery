@@ -192,8 +192,14 @@ module chordtypes {
     | DoneExpires
 
   // ---- configuration of an instance ----
-  // Fault budgets, and how much of each was used.
-  type Faults = { dups: int, workerLost: int, childLost: int, refusals: int }
+  // Budgets, and how much of each was used: the four fault classes, and the
+  // polls of chord_unlock that find the header unfinished and retry. The
+  // real task polls for as long as it takes; a budget makes every run
+  // finite, and a poll that changes nothing adds no behavior beyond the
+  // first (see "quiet" below).
+  type Faults = {
+    dups: int, workerLost: int, childLost: int, refusals: int, idlePolls: int,
+  }
   type Config = {
     proto: Proto,
     acksLate: bool,
@@ -205,7 +211,37 @@ module chordtypes {
     max: Faults,
   }
   pure val NO_FAULTS: Faults =
-    { dups: 0, workerLost: 0, childLost: 0, refusals: 0 }
+    { dups: 0, workerLost: 0, childLost: 0, refusals: 0, idlePolls: 2 }
+  pure val NONE_USED: Faults =
+    { dups: 0, workerLost: 0, childLost: 0, refusals: 0, idlePolls: 0 }
+
+  // ---- progress measure (variant): what a state can still do, in steps.
+  // Every action lowers it by at least one (checked as the invariant
+  // "progress"), so no run loops, redelivery and re-polling included.
+  pure def headerRank(pc: HeaderPc): int = match pc {
+    | Running => 11 | Stored(_) => 10
+    | RedisClaimed => 7 | RedisJoined(_) => 6 | RedisExtended(_) => 3
+    | RedisPublished => 2
+    | KvComplete => 4 | KvJoined(_) => 3 | KvClean => 2
+    | HeaderDone => 1
+  }
+  pure def unlockRank(pc: UnlockPc): int = match pc {
+    | Polling => 3 | UnlockJoined(_) => 2 | UnlockDone => 1
+  }
+  pure def execRank(e: Exec): int = match e {
+    | Free => 0
+    | HeaderTask(r) => headerRank(r.pc)
+    | UnlockTask(u) => unlockRank(u.pc)
+  }
+  // Taking the claim costs two steps of slack (it can expire, or become the
+  // done marker, which expires too), so the pcs around it are 3 apart.
+  pure def claimRank(c: Claim): int = match c {
+    | NoClaim => 0 | Claimed(_) => 2 | Done => 1
+  }
+  pure val QUEUED_HEADER: int = 12    // deliver, then Running
+  pure val QUEUED_UNLOCK: int = 4     // deliver, then Polling
+  pure val FAULT: int = 13            // a fault can requeue one message
+  pure val IDLE_POLL: int = 5         // a retry queues one chord_unlock
   // acks_late, no reject_on_worker_lost, a safe lease, no faults.
   pure def lateAck(p: Proto): Config = {
     proto: p, acksLate: true, rejectOnWorkerLost: false, leaseSafe: true,
@@ -247,6 +283,9 @@ module chord {
   // ---- fault budgets used ----
   var used: Faults
   var lastAction: Action
+  // Number of actions taken: makes "every run ends within D steps" an
+  // invariant (steps <= D).
+  var steps: int
 
   def allReady: bool = HEADERS.forall(h => results.get(h) != Pending)
   def anyFailed: bool = HEADERS.exists(h => results.get(h) == Failure)
@@ -267,11 +306,13 @@ module chord {
     counter' = 0, groupSaved' = CFG.proto == Kv,
     dispatched' = 0, bodyArgs' = Set(), bodyArgsSize' = 0,
     chordError' = false, errorAfterDispatch' = false,
-    used' = NO_FAULTS,
-    lastAction' = Init,
+    used' = NONE_USED,
+    lastAction' = Init, steps' = 0,
   }
 
   // ---- frame helpers ----
+  // Every action records itself and counts one step.
+  action did(a: Action): bool = all { lastAction' = a, steps' = steps + 1 }
   action keepRedis: bool = all {
     jset' = jset, dset' = dset, skey' = skey, ckey' = ckey,
   }
@@ -298,7 +339,7 @@ module chord {
                                    pc: Running })),
     nextTok' = nextTok + 1,
     uq' = uq, results' = results, keepRedis, keepKv, keepObs, used' = used,
-    lastAction' = Deliver({ w: w, h: h }),
+    did(Deliver({ w: w, h: h })),
   }
 
   action deliverUnlock(w: ExecId): bool = all {
@@ -307,7 +348,7 @@ module chord {
     execs' = execs.set(w, UnlockTask({ acked: not(CFG.acksLate), pc: Polling })),
     queue' = queue, nextTok' = nextTok, results' = results, keepRedis, keepKv,
     keepObs, used' = used,
-    lastAction' = DeliverUnlock(w),
+    did(DeliverUnlock(w)),
   }
 
   // ---- header task stores its result ----------------------------------------
@@ -324,7 +365,7 @@ module chord {
         ...r, pc: if (CFG.proto == Unlock) HeaderDone else Stored(Succeeded) })),
       queue' = queue, uq' = uq, nextTok' = nextTok, keepRedis, keepKv,
       keepObs, used' = used,
-      lastAction' = Store({ w: w, h: r.h }),
+      did(Store({ w: w, h: r.h })),
     }
   }
 
@@ -338,7 +379,7 @@ module chord {
         // done marker: late duplicate, return -1 (redis.py:104-107, 976-977)
         execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
         jset' = jset, dset' = dset, ckey' = ckey,
-        lastAction' = PartReturn({ w: w, h: r.h, outcome: SawDone }),
+        did(PartReturn({ w: w, h: r.h, outcome: SawDone })),
       } else {
         // add the result once per task id and header index (redis.py:111-119)
         val fresh = not(dset.contains(r.h))
@@ -356,10 +397,10 @@ module chord {
           // if readycount == total and claimed (redis.py:984)
           execs' = execs.set(w, HeaderTask({
             ...r, pc: if (claim) RedisClaimed else HeaderDone })),
-          lastAction' = PartReturn({
+          did(PartReturn({
             w: w, h: r.h,
             outcome: if (claim) TookClaim
-                     else if (complete) CompleteNoClaim else Counted }),
+                     else if (complete) CompleteNoClaim else Counted })),
         }
       },
       skey' = skey, queue' = queue, uq' = uq, results' = results,
@@ -378,13 +419,13 @@ module chord {
       if (failed) all {
         markError, skey' = false,
         execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
-        lastAction' = Join({ w: w, h: r.h, outcome: JoinError }),
+        did(Join({ w: w, h: r.h, outcome: JoinError })),
       } else all {
         keepObs, skey' = skey,
         execs' = execs.set(w, HeaderTask({
           ...r, pc: RedisJoined({ args: jset.map(x => x.h),
                                   nargs: jset.size() }) })),
-        lastAction' = Join({ w: w, h: r.h, outcome: JoinOk }),
+        did(Join({ w: w, h: r.h, outcome: JoinOk })),
       },
       jset' = jset, dset' = dset, ckey' = ckey,
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
@@ -404,10 +445,10 @@ module chord {
       execs' = execs.set(w, HeaderTask({
         ...r, pc: if (mine or reacquire) RedisExtended(joinedOf(r.pc))
                   else HeaderDone })),
-      lastAction' = Extend({
+      did(Extend({
         w: w, h: r.h,
         outcome: if (mine) Extended
-                 else if (reacquire) Reacquired else ClaimLost }),
+                 else if (reacquire) Reacquired else ClaimLost })),
       jset' = jset, dset' = dset, skey' = skey,
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
       keepKv, keepObs, used' = used,
@@ -442,7 +483,7 @@ module chord {
         markError, used' = { ...used, refusals: used.refusals + 1 },
       },
       execs' = execs.set(w, afterPublish(CFG.proto, e)),
-      lastAction' = Publish({ w: w, outcome: if (ok) Sent else Refused }),
+      did(Publish({ w: w, outcome: if (ok) Sent else Refused })),
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
       keepRedis, keepKv,
     }
@@ -458,8 +499,8 @@ module chord {
       if (mine) all { jset' = Set(), dset' = Set(), skey' = false, ckey' = Done }
       else keepRedis,
       execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
-      lastAction' = Cleanup({ w: w, h: r.h,
-                              outcome: if (mine) Cleaned else NotOwner }),
+      did(Cleanup({ w: w, h: r.h,
+                              outcome: if (mine) Cleaned else NotOwner })),
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
       keepKv, keepObs, used' = used,
     }
@@ -475,16 +516,16 @@ module chord {
         // GroupResult.restore() is None: ChordError (base.py:1446-1455)
         markError, counter' = counter,
         execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
-        lastAction' = Count({ w: w, h: r.h, outcome: NoGroup }),
+        did(Count({ w: w, h: r.h, outcome: NoGroup })),
       } else all {
         // val = self.incr(key); val == size -> join (base.py:1456-1466)
         keepObs, counter' = counter + 1,
         execs' = execs.set(w, HeaderTask({
           ...r, pc: if (counter + 1 == N) KvComplete else HeaderDone })),
-        lastAction' = Count({
+        did(Count({
           w: w, h: r.h,
           outcome: if (counter + 1 == N) CountComplete
-                   else if (counter + 1 > N) CountOver else CountedOne }),
+                   else if (counter + 1 > N) CountOver else CountedOne })),
       },
       groupSaved' = groupSaved, keepRedis,
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
@@ -504,14 +545,14 @@ module chord {
         keepObs,
         execs' = execs.set(w, HeaderTask({
           ...r, pc: KvJoined({ args: HEADERS, nargs: N }) })),
-        lastAction' = Join({ w: w, h: r.h, outcome: JoinOk }),
+        did(Join({ w: w, h: r.h, outcome: JoinOk })),
       } else all {
         // join raises: a header FAILURE propagates, or a header result is
         // still missing when result_chord_join_timeout runs out
         anyFailed or (not(ok) and not(allReady)),
         markError,
         execs' = execs.set(w, HeaderTask({ ...r, pc: KvClean })),
-        lastAction' = Join({ w: w, h: r.h, outcome: JoinError }),
+        did(Join({ w: w, h: r.h, outcome: JoinError })),
       },
       keepRedis, keepKv,
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
@@ -527,7 +568,7 @@ module chord {
       CFG.proto == Kv, isHeader(e), r.pc == KvClean,
       groupSaved' = false, counter' = 0,
       execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
-      lastAction' = Cleanup({ w: w, h: r.h, outcome: Cleaned }),
+      did(Cleanup({ w: w, h: r.h, outcome: Cleaned })),
       keepRedis, keepObs,
       queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
       used' = used,
@@ -548,24 +589,27 @@ module chord {
         if (anyFailed) all {
           // join(propagate=True) raises: builtins.py:114-122
           markError, execs' = execs.set(w, UnlockTask({ ...u, pc: UnlockDone })),
-          lastAction' = Poll({ w: w, outcome: PollError }),
+          did(Poll({ w: w, outcome: PollError })),
         } else all {
           keepObs,
           execs' = execs.set(w, UnlockTask({
             ...u, pc: UnlockJoined({ args: HEADERS, nargs: N }) })),
-          lastAction' = Poll({ w: w, outcome: PollReady }),
+          did(Poll({ w: w, outcome: PollReady })),
         },
         uq' = uq, used' = used,
       } else if (ok) all {
-        keepObs, uq' = uq + 1, used' = used,
+        // the real task retries without limit; see Faults.idlePolls
+        used.idlePolls < CFG.max.idlePolls,
+        keepObs, uq' = uq + 1,
+        used' = { ...used, idlePolls: used.idlePolls + 1 },
         execs' = execs.set(w, UnlockTask({ ...u, pc: UnlockDone })),
-        lastAction' = Poll({ w: w, outcome: PollRetry }),
+        did(Poll({ w: w, outcome: PollRetry })),
       } else all {
         used.refusals < CFG.max.refusals,
         markError, uq' = uq,
         used' = { ...used, refusals: used.refusals + 1 },
         execs' = execs.set(w, UnlockTask({ ...u, pc: UnlockDone })),
-        lastAction' = Poll({ w: w, outcome: PollRefused }),
+        did(Poll({ w: w, outcome: PollRefused })),
       },
       keepRedis, keepKv,
       queue' = queue, results' = results, nextTok' = nextTok,
@@ -576,7 +620,7 @@ module chord {
   action finish(w: ExecId): bool = all {
     isFinishing(execs.get(w)),
     execs' = execs.set(w, Free),
-    lastAction' = Finish(w),
+    did(Finish(w)),
     queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
     keepRedis, keepKv, keepObs, used' = used,
   }
@@ -590,7 +634,7 @@ module chord {
     used' = { ...used, dups: used.dups + 1 },
     uq' = uq, execs' = execs, results' = results, nextTok' = nextTok,
     keepRedis, keepKv, keepObs,
-    lastAction' = Dup(h),
+    did(Dup(h)),
   }
 
   // The message of a run goes back to its queue.
@@ -611,8 +655,8 @@ module chord {
       uq' = if (not(isAcked(e)) and isUnlock(e)) uq + 1 else uq,
       used' = { ...used, workerLost: used.workerLost + 1 },
       results' = results, nextTok' = nextTok, keepRedis, keepKv, keepObs,
-      lastAction' = LoseWorker({
-        w: w, outcome: if (isAcked(e)) MessageLost else MessageRequeued }),
+      did(LoseWorker({
+        w: w, outcome: if (isAcked(e)) MessageLost else MessageRequeued })),
     }
   }
 
@@ -636,12 +680,12 @@ module chord {
       used' = { ...used, childLost: used.childLost + 1 },
       if (isHeader(e) and results.get(r.h) == Success) all {
         execs' = execs.set(w, Free), queue' = queue, uq' = uq, results' = results,
-        lastAction' = LoseChild({ w: w, outcome: SuccessStored }),
+        did(LoseChild({ w: w, outcome: SuccessStored })),
       } else if (CFG.acksLate and CFG.rejectOnWorkerLost and not(isAcked(e))) all {
         execs' = execs.set(w, Free), results' = results,
         queue' = requeued(queue, e),
         uq' = if (isUnlock(e)) uq + 1 else uq,
-        lastAction' = LoseChild({ w: w, outcome: ChildRequeued }),
+        did(LoseChild({ w: w, outcome: ChildRequeued })),
       } else if (isHeader(e)) all {
         // store_result keeps a stored SUCCESS (resultstate.qnt)
         results' = if (results.get(r.h) == Success) results
@@ -650,10 +694,10 @@ module chord {
           ...r, main: true, acked: true,
           pc: if (CFG.proto == Unlock) HeaderDone else Stored(Failed) })),
         queue' = queue, uq' = uq,
-        lastAction' = LoseChild({ w: w, outcome: MarkedFailure }),
+        did(LoseChild({ w: w, outcome: MarkedFailure })),
       } else all {
         execs' = execs.set(w, Free), queue' = queue, uq' = uq, results' = results,
-        lastAction' = LoseChild({ w: w, outcome: ChildAcked }),
+        did(LoseChild({ w: w, outcome: ChildAcked })),
       },
       nextTok' = nextTok, keepRedis, keepKv, keepObs,
     }
@@ -672,7 +716,7 @@ module chord {
     jset' = jset, dset' = dset, skey' = skey,
     queue' = queue, uq' = uq, execs' = execs, results' = results, nextTok' = nextTok,
     keepKv, keepObs, used' = used,
-    lastAction' = ClaimExpires,
+    did(ClaimExpires),
   }
 
   // The "done" marker expires (done_expires, redis.py:966).
@@ -682,19 +726,35 @@ module chord {
     jset' = jset, dset' = dset, skey' = skey,
     queue' = queue, uq' = uq, execs' = execs, results' = results, nextTok' = nextTok,
     keepKv, keepObs, used' = used,
-    lastAction' = DoneExpires,
+    did(DoneExpires),
   }
 
-  action step: bool = {
-    nondet w = EXECS.oneOf()
-    nondet h = HEADERS.oneOf()
-    nondet ok = Set(true, false).oneOf()
-    any {
-      deliver(w, h), deliverUnlock(w), store(w), partReturn(w), redisJoin(w),
-      extend(w), publish(w, ok), cleanup(w), count(w), kvJoin(w, ok),
-      kvClean(w), unlockPoll(w, ok), finish(w),
-      dup(h), loseWorker(w), loseChild(w), claimExpires, doneExpires,
-    }
+  // The choices are made next to the actions that use them: the simulator
+  // and TLC try every combination of the choices in scope for every action.
+  action step: bool = any {
+    {
+      nondet w = EXECS.oneOf()
+      any {
+        deliverUnlock(w), store(w), partReturn(w), redisJoin(w), extend(w),
+        cleanup(w), count(w), kvClean(w), finish(w), loseWorker(w),
+        loseChild(w),
+      }
+    },
+    {
+      nondet w = EXECS.oneOf()
+      nondet h = HEADERS.oneOf()
+      deliver(w, h)
+    },
+    {
+      nondet w = EXECS.oneOf()
+      nondet ok = Set(true, false).oneOf()
+      any { publish(w, ok), kvJoin(w, ok), unlockPoll(w, ok) }
+    },
+    {
+      nondet h = HEADERS.oneOf()
+      dup(h)
+    },
+    claimExpires, doneExpires,
   }
 
   // ---- properties --------------------------------------------------------------
@@ -715,14 +775,76 @@ module chord {
   val noSpuriousError: bool = chordError implies (anyFailed or used.refusals > 0)
   // Witness (expected to be violated): some behavior dispatches the body.
   val neverDispatched: bool = dispatched == 0
-  // Bounded liveness: once nothing can run any more (no message queued, no
-  // process busy, no claim left to expire), the chord has ended: the body
-  // was dispatched or the chord was failed. Fault budgets are finite, so
-  // every behavior reaches such a state if it runs long enough.
-  val quiet: bool = EXECS.forall(w => isFree(execs.get(w)))
-                    and HEADERS.forall(h => queue.get(h) == 0) and uq == 0
-                    and not(isClaimed(ckey))
+  // Witnesses (expected to be violated in some instance): the chord is
+  // failed; the chord is both failed and dispatched; a run ends.
+  val neverFailed: bool = not(chordError)
+  val neverQuiet: bool = not(quiet)
+
+  // ---- liveness, in layers ------------------------------------------------
+  // 1. Every run is finite: each action lowers "measure", which is never
+  //    negative, so steps + measure never exceeds what the instance starts
+  //    with. The exact longest run D of each instance is measured by
+  //    exhaustive search and checked as steps <= D.
+  // 2. A run stops only in a quiet state: the search reports any other
+  //    state without a successor (stepOrQuiet below).
+  // 3. A quiet state has ended: the body was dispatched or the chord was
+  //    failed (quietDone).
+  // Together: every run ends, within D steps, with the body dispatched or
+  // the chord failed. An instance that breaks 3 has a run that hangs.
+  val remaining: Faults = {
+    dups: CFG.max.dups - used.dups,
+    workerLost: CFG.max.workerLost - used.workerLost,
+    childLost: CFG.max.childLost - used.childLost,
+    refusals: CFG.max.refusals - used.refusals,
+    idlePolls: if (CFG.proto == Unlock) CFG.max.idlePolls - used.idlePolls
+               else 0,
+  }
+  pure def budgetRank(b: Faults): int =
+    FAULT * (b.dups + b.workerLost + b.childLost) + IDLE_POLL * b.idlePolls
+  val measure: int =
+    QUEUED_HEADER * HEADERS.fold(0, (s, h) => s + queue.get(h))
+    + QUEUED_UNLOCK * uq
+    + EXECS.fold(0, (s, w) => s + execRank(execs.get(w)))
+    + claimRank(ckey) + budgetRank(remaining)
+  pure val MEASURE0: int =
+    QUEUED_HEADER * N + (if (CFG.proto == Unlock) QUEUED_UNLOCK else 0)
+    + budgetRank({ ...CFG.max, idlePolls: if (CFG.proto == Unlock)
+                                             CFG.max.idlePolls else 0 })
+  val progress: bool = measure >= 0 and steps + measure <= MEASURE0
+
+  // Quiet: nothing is left that could change the chord's outcome without a
+  // new fault.
+  //   redis, kv  no message queued, no process busy, no claim left to
+  //              expire (a claim that expires lets a later copy claim).
+  //   unlock     no header message queued or running, and either every
+  //              header result is stored and no chord_unlock is queued or
+  //              running, or a result is missing and chord_unlock can only
+  //              poll again: it would retry forever.
+  def headersSettled: bool =
+    HEADERS.forall(h => queue.get(h) == 0)
+    and EXECS.forall(w => not(isHeader(execs.get(w))))
+  def unlockIdle: bool = EXECS.forall(w =>
+    isUnlock(execs.get(w)) implies unlockOf(execs.get(w)).pc == Polling)
+  val quiet: bool =
+    if (CFG.proto == Unlock)
+      headersSettled
+      and (if (allReady) uq == 0 and EXECS.forall(w => isFree(execs.get(w)))
+           else unlockIdle)
+    else
+      EXECS.forall(w => isFree(execs.get(w)))
+      and HEADERS.forall(h => queue.get(h) == 0) and not(isClaimed(ckey))
   val quietDone: bool = quiet implies (dispatched > 0 or chordError)
+
+  // The step the exhaustive search runs: a quiet state may stutter, so the
+  // only states without a successor are runs that stopped without being
+  // quiet, which the search reports as deadlocks.
+  action stutter: bool = all {
+    quiet,
+    queue' = queue, uq' = uq, execs' = execs, results' = results,
+    nextTok' = nextTok, keepRedis, keepKv, keepObs, used' = used,
+    lastAction' = lastAction, steps' = steps,
+  }
+  action stepOrQuiet: bool = any { step, stutter }
 
   val safety: bool =
     atMostOnce and noPremature and argsComplete and noErrorAfterDispatch

@@ -107,6 +107,12 @@ module resultstate {
   // What was stored before the last step, for the two-state property.
   var prev: Stored
   var lastAction: Action
+  // Number of actions taken: makes "every run ends within D steps" an
+  // invariant (steps <= D).
+  var steps: int
+
+  // Every action records itself and counts one step.
+  action did(a: Action): bool = all { lastAction' = a, steps' = steps + 1 }
 
   action init: bool = all {
     stored' = Absent,
@@ -115,7 +121,7 @@ module resultstate {
     forgets' = 0,
     observed' = NotObserved,
     prev' = Absent,
-    lastAction' = Init,
+    lastAction' = Init, steps' = 0,
   }
 
   // ---- begin: the read a backend does before it writes -----------------
@@ -133,7 +139,7 @@ module resultstate {
     forgets' = forgets,
     observed' = observed,
     prev' = stored,
-    lastAction' = Begin({ rn: r, status: s }),
+    did(Begin({ rn: r, status: s })),
   }
 
   // What the write does to the store, given what the run read at begin.
@@ -190,7 +196,7 @@ module resultstate {
     all {
       isBegun(pc.get(r)),
       stored' = eff._1,
-      lastAction' = Commit({ rn: r, status: b.writing, outcome: eff._2 }),
+      did(Commit({ rn: r, status: b.writing, outcome: eff._2 })),
       pc' = pc.set(r, Idle),
       writes' = writes,
       forgets' = forgets,
@@ -211,7 +217,7 @@ module resultstate {
     observed' = NotObserved,
     pc' = pc, writes' = writes,
     prev' = stored,
-    lastAction' = Forget,
+    did(Forget),
   }
 
   pure val NO_META: Meta = { status: Pending, by: R(0) }
@@ -229,13 +235,20 @@ module resultstate {
     observed' = Saw(metaOf(stored)),
     stored' = stored, pc' = pc, writes' = writes, forgets' = forgets,
     prev' = stored,
-    lastAction' = Observe(metaOf(stored)),
+    did(Observe(metaOf(stored))),
   }
 
-  action step: bool = {
-    nondet r = RUNS.oneOf()
-    nondet s = WRITES.oneOf()
-    any { begin(r, s), commit(r), forget, observe }
+  action step: bool = any {
+    {
+      nondet r = RUNS.oneOf()
+      nondet s = WRITES.oneOf()
+      begin(r, s)
+    },
+    {
+      nondet r = RUNS.oneOf()
+      commit(r)
+    },
+    forget, observe,
   }
 
   // ---- properties -------------------------------------------------------
@@ -255,8 +268,35 @@ module resultstate {
 
   // Sanity: the spec can reach a stored SUCCESS (witness, should be violated)
   val noSuccessEver: bool = statusOf(stored) != Success
+
+  // ---- every run ends ---------------------------------------------------
+  // Each action lowers "measure" (a begin uses up a write, a commit ends a
+  // store, forget and observe happen a bounded number of times), so
+  // steps + measure never exceeds its initial value. The exact longest run
+  // D is measured by exhaustive search and checked as steps <= D.
+  val measure: int =
+    RUNS.fold(0, (s, r) => s + 2 * (MAX_WRITES - writes.get(r))
+                           + (if (isBegun(pc.get(r))) 1 else 0))
+    + 3 * (MAX_FORGETS - forgets)
+    + (if (observed == NotObserved) 1 else 0)
+  pure val MEASURE0: int = 2 * MAX_WRITES * RUNS.size() + 3 * MAX_FORGETS + 1
+  val progress: bool = measure >= 0 and steps + measure <= MEASURE0
+
+  // Quiet: every run wrote all it had to write. A run stops only then: the
+  // exhaustive search runs stepOrQuiet and reports any other state without
+  // a successor as a deadlock.
+  val quiet: bool =
+    RUNS.forall(r => pc.get(r) == Idle and writes.get(r) == MAX_WRITES)
+  action stutter: bool = all {
+    quiet,
+    stored' = stored, pc' = pc, writes' = writes, forgets' = forgets,
+    observed' = observed, prev' = prev, lastAction' = lastAction,
+    steps' = steps,
+  }
+  action stepOrQuiet: bool = any { step, stutter }
 }
 
+// ---- instances: one per store --------------------------------------------
 module rtw {
   import resulttypes.*
   import resultstate(STORE = Rtw, READY_STICKY = false).*

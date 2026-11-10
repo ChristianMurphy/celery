@@ -1,21 +1,41 @@
 #!/usr/bin/env bash
-# Regenerate traces, check every property, replay against the real backends,
-# record histories and check them, and run the mutation checks.
-# Needs: quint (npm i -g @informalsystems/quint), Java 17+ for --verify,
-# Redis 6379, MongoDB 27017, Postgres 5432 (postgres/pw, db celery),
-# Elasticsearch 9200, memcached 11211.
+# Check the specs, in tiers. Each tier includes the ones before it.
+#
+#   ./run_all.sh fast   typecheck, type errors, simulator, scenarios
+#                       (about a minute; needs only quint)
+#   ./run_all.sh full   exhaustive search with TLC and Apalache at the proven
+#                       depth, spec mutants, replay of generated traces on
+#                       the real backends, recorded histories against the
+#                       specs, code mutants (tens of minutes)
+#   ./run_all.sh long   Apalache on the large instances, a larger simulator
+#                       sample, and new histories recorded from a real worker
+#
+# Needs: quint 0.33.1 (npm i -g @informalsystems/quint), Java 17+ from the
+# full tier on, and for the replays Redis 6379, MongoDB 27017, Postgres 5432
+# (postgres/pw, db celery), Elasticsearch 9200, memcached 11211.
 set -euo pipefail
 cd "$(dirname "$0")"
+TIER=${1:-fast}
 ROOT=$(git rev-parse --show-toplevel)
 PY=${PY:-/home/user/.venv314/bin/python}
 export PYTHONPATH="$ROOT:$PWD"
-$PY -c 'import celery; print("celery from", celery.__file__)'
+START=$SECONDS
+tier_done() { echo "== $1 tier done in $((SECONDS - START)) s"; }
 
-echo '== 1. properties (simulator), scenarios'
-python3 check.py --samples 2000 --steps 40 --jobs 4
+echo '== fast: typecheck, type errors, simulator, scenarios'
+python3 check.py --tier fast
 for m in redisLost kvDup unlockChild; do quint test --main=$m scenarios.qnt; done
+tier_done fast
+[ "$TIER" = fast ] && exit 0
 
-echo '== 2a. spec -> code: generate traces and replay them'
+echo "== $TIER: exhaustive search (TLC), Apalache at the proven depth"
+python3 check.py --tier "$TIER"
+echo '== spec mutants'
+python3 mutate_spec.py
+
+$PY -c 'import celery; print("celery from", celery.__file__)'
+echo '== spec -> code: generate traces and replay them'
+python3 check.py --cex
 for m in rtw mongo sql es; do
   mkdir -p traces/$m
   quint run --backend=typescript --main=$m resultstate.qnt --max-steps=14 \
@@ -42,16 +62,22 @@ $PY -m adapter.replay_chord --instance redis_wlost_late traces/scenarios/redisLo
 $PY -m adapter.replay_chord --instance redis_child_late traces/scenarios/redisLost_child*.json
 $PY -m adapter.replay_chord --instance kv_dup traces/scenarios/kvDup_*.json
 
-echo '== 2b. code -> spec: record histories and check them'
-for b in redis mongo es; do
-  $PY -m adapter.record_results --backend $b --n 200 --seed 1 > histories/$b.jsonl
-done
+echo '== code -> spec: recorded histories against the specs'
+if [ "$TIER" = long ]; then
+  for b in redis mongo es; do
+    $PY -m adapter.record_results --backend $b --n 200 --seed 1 > histories/$b.jsonl
+  done
+fi
 $PY -m adapter.check_histories histories/redis.jsonl histories/mongo.jsonl histories/es.jsonl
-$PY -m adapter.record_chords --proto redis --chords 12
-$PY -m adapter.record_chords --proto kv --chords 12
+if [ "$TIER" = long ]; then
+  $PY -m adapter.record_chords --proto redis --chords 12
+  $PY -m adapter.record_chords --proto kv --chords 12
+else
+  $PY -m adapter.record_chords --proto redis --no-record
+  $PY -m adapter.record_chords --proto kv --no-record
+fi
 
-echo '== 2c. mutations'
-python3 mutate_spec.py
+echo '== code mutants'
 m() { $PY -m adapter.$2 --mutate "$1" "${@:3}" | tail -1; }
 m kv_no_success_check replay_results --backend redis traces/rtw/*.json
 m mongo_no_filter replay_results --backend mongo traces/mongo/*.json
@@ -65,3 +91,4 @@ m redis_extend_any_owner replay_chord --instance redis_lease traces/chord/redis_
 m kv_count_early replay_chord --instance kv_dup traces/chord/kv_dup/*.json
 m kv_keep_counter replay_chord --instance kv_dup traces/chord/kv_dup/*.json
 m worker_lost_ignores_success replay_chord --instance redis_child_late traces/chord/redis_child_late/*.json
+tier_done "$TIER"

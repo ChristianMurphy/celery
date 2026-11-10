@@ -7,3 +7,5 @@ _apalache-out/
 .mutant_*
 __pycache__/
 tmp/
+.cache/
+.typeerr_*

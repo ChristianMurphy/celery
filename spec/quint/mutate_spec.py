@@ -48,6 +48,14 @@ MUTANTS = [
     ('lost child counted again (before celery PR 10752)', 'chord.qnt', 'kv_child_late', 'noSpuriousError',
      'if (isHeader(e) and results.get(r.h) == Success) all {',
      'if (false) all {'),
+    # A loop: the layered liveness checks must see it.
+    ('unlock: a retry that uses no budget (re-polls forever)', 'chord.qnt', 'unlock_none', 'progress',
+     "keepObs, uq' = uq + 1,\n        used' = { ...used, idlePolls: used.idlePolls + 1 },",
+     "keepObs, uq' = uq + 1,\n        used' = used,"),
+    ('a redelivery that uses no budget (redelivers forever)', 'chord.qnt', 'redis_dup', 'progress',
+     "used' = { ...used, dups: used.dups + 1 },", "used' = used,"),
+    ('results: a commit that leaves the run begun (commits forever)', 'resultstate.qnt', 'rtw', 'progress',
+     "pc' = pc.set(r, Idle),", "pc' = pc,"),
 ]
 
 
@@ -59,7 +67,7 @@ def violated(spec_text: str, instance: str, prop: str, samples: int) -> bool:
     try:
         p = subprocess.run(
             ['quint', 'run', f'--main={instance}', str(path),
-             f'--invariant={prop}', '--max-steps=40',
+             f'--invariant={prop}', '--max-steps=60',
              f'--max-samples={samples}', '--seed=23'],
             cwd=HERE, capture_output=True, text=True)
         return '[violation]' in p.stdout + p.stderr

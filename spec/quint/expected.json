@@ -1,0 +1,241 @@
+{
+ "chord.qnt": {
+  "kv_child_early": {
+   "D": 11,
+   "violated": {
+    "neverDispatched": 9,
+    "neverFailed": 8,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "kv_child_late": {
+   "D": 11,
+   "violated": {
+    "neverDispatched": 9,
+    "neverFailed": 8,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "kv_child_reject": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 9,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "kv_dup": {
+   "D": 21,
+   "violated": {
+    "neverDispatched": 9,
+    "neverFailed": 9,
+    "neverQuiet": 12,
+    "noErrorAfterDispatch": 14,
+    "noSpuriousError": 9
+   }
+  },
+  "kv_none": {
+   "D": 11,
+   "violated": {
+    "neverDispatched": 9,
+    "neverQuiet": 12
+   }
+  },
+  "kv_refuse": {
+   "D": 11,
+   "violated": {
+    "neverDispatched": 9,
+    "neverFailed": 9,
+    "neverQuiet": 12
+   }
+  },
+  "kv_wlost_early": {
+   "D": 11,
+   "violated": {
+    "neverDispatched": 9,
+    "neverQuiet": 7,
+    "quietDone": 7
+   }
+  },
+  "kv_wlost_late": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 9,
+    "neverFailed": 9,
+    "neverQuiet": 12,
+    "noErrorAfterDispatch": 14,
+    "noSpuriousError": 9,
+    "quietDone": 13
+   }
+  },
+  "redis_child_early": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "redis_child_late": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "redis_child_reject": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "redis_dup": {
+   "D": 23,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 13
+   }
+  },
+  "redis_lease": {
+   "D": 25,
+   "violated": {
+    "atMostOnce": 18,
+    "neverDispatched": 10,
+    "neverQuiet": 13
+   }
+  },
+  "redis_none": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 13
+   }
+  },
+  "redis_refuse": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 10,
+    "neverQuiet": 13
+   }
+  },
+  "redis_wlost_early": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 7,
+    "quietDone": 7
+   }
+  },
+  "redis_wlost_late": {
+   "D": 21,
+   "violated": {
+    "atMostOnce": 18,
+    "neverDispatched": 10,
+    "neverQuiet": 13,
+    "quietDone": 14
+   }
+  },
+  "unlock_child_early": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 8,
+    "neverFailed": 7,
+    "neverQuiet": 9,
+    "quietDone": 9
+   }
+  },
+  "unlock_child_late": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 8,
+    "neverFailed": 7,
+    "neverQuiet": 9,
+    "quietDone": 9
+   }
+  },
+  "unlock_child_reject": {
+   "D": 20,
+   "violated": {
+    "atMostOnce": 12,
+    "neverDispatched": 8,
+    "neverQuiet": 11
+   }
+  },
+  "unlock_dup": {
+   "D": 24,
+   "violated": {
+    "neverDispatched": 8,
+    "neverQuiet": 11
+   }
+  },
+  "unlock_none": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 8,
+    "neverQuiet": 11
+   }
+  },
+  "unlock_refuse": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 8,
+    "neverFailed": 3,
+    "neverQuiet": 10
+   }
+  },
+  "unlock_wlost_early": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 8,
+    "neverQuiet": 6,
+    "quietDone": 6
+   }
+  },
+  "unlock_wlost_late": {
+   "D": 20,
+   "violated": {
+    "atMostOnce": 12,
+    "neverDispatched": 8,
+    "neverQuiet": 11
+   }
+  }
+ },
+ "resultstate.qnt": {
+  "es": {
+   "D": 11,
+   "violated": {
+    "noSuccessEver": 3
+   }
+  },
+  "mongo": {
+   "D": 11,
+   "violated": {
+    "noSuccessEver": 3,
+    "readySticky": 5
+   }
+  },
+  "rtw": {
+   "D": 11,
+   "violated": {
+    "noSuccessEver": 3,
+    "readySticky": 5,
+    "successStable": 6
+   }
+  },
+  "sql": {
+   "D": 11,
+   "violated": {
+    "noSuccessEver": 3,
+    "readySticky": 5
+   }
+  }
+ }
+}
