@@ -22,8 +22,18 @@ def fmt(state: dict, prev: dict | None) -> str:
             if k == 'jset':
                 v = sorted((dict(d)['h'], dict(d)['res'], dict(d)['tok'])
                            for d in v)
+            elif isinstance(v, itf.Variant):
+                v = f'{v.tag}({v.value})'
             parts.append(f'{k}={v}')
     return ' '.join(parts)
+
+
+def label(action) -> str:
+    kind, value = itf.split(action)
+    if isinstance(value, dict):
+        return kind + ' ' + ' '.join(f'{k}={itf.tag(v)}'
+                                     for k, v in sorted(value.items()))
+    return kind if value is None else f'{kind} {value}'
 
 
 def main() -> None:
@@ -31,10 +41,7 @@ def main() -> None:
         print(f'== {path}')
         prev = None
         for i, st in enumerate(itf.load(path)):
-            a = st['lastAction']
-            label = ' '.join(f'{k}={v}' for k, v in sorted(a.items())
-                             if v not in ('', 0))
-            print(f'{i:3} {label:45} {fmt(st, prev)}')
+            print(f'{i:3} {label(st["lastAction"]):45} {fmt(st, prev)}')
             prev = st
 
 

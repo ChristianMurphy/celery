@@ -22,8 +22,17 @@ SPEC_STORE = {'redis': 'rtw', 'mongo': 'mongo', 'sql': 'sql', 'es': 'es'}
 STICKY = {'es': 'true'}
 
 
+def status(s: str) -> str:
+    """'SUCCESS' -> the spec's constructor Success."""
+    return s.capitalize()
+
+
 def meta(m: dict) -> str:
-    return f'{{ status: "{m["status"]}", v: {m["v"]} }}'
+    """What was read back, as the spec's Stored (a missing result reads as
+    PENDING)."""
+    if m['status'] == 'PENDING':
+        return 'Absent'
+    return f'Present({{ status: {status(m["status"])}, by: R({m["v"]}) }})'
 
 
 def to_run(i: int, events: list) -> str:
@@ -31,9 +40,9 @@ def to_run(i: int, events: list) -> str:
     for e in events:
         k = e['kind']
         if k == 'begin':
-            act = f'begin({e["rn"]}, "{e["status"]}")'
+            act = f'begin(R({e["rn"]}), {status(e["status"])})'
         elif k == 'commit':
-            act = f'commit({e["rn"]})'
+            act = f'commit(R({e["rn"]}))'
         elif k == 'forget':
             act = 'forget'
         elif k == 'observe':
@@ -72,8 +81,10 @@ def main() -> int:
         mod = f'hist_{backend}' + (f'_as_{store}' if args.as_store else '')
         body = '\n\n'.join(to_run(i, h['events']) for i, h in enumerate(hists))
         src = (f'module {mod} {{\n'
-               f'  import resultstate(STORE = "{store}", READY_STICKY = '
-               f'{STICKY.get(backend, "false")}).* from "../resultstate"\n\n'
+               f'  import resulttypes.* from "../resultstate"\n'
+               f'  import resultstate(STORE = {store.capitalize()}, '
+               f'READY_STICKY = {STICKY.get(backend, "false")}).* '
+               f'from "../resultstate"\n\n'
                f'{body}\n}}\n')
         out = HERE / 'histories' / f'{mod}.qnt'
         out.write_text(src)

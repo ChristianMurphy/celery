@@ -11,66 +11,111 @@
 //
 // STORE selects how a backend implements the write:
 //
-//   "rtw"     BaseKeyValueStoreBackend._store_result: read, then an
+//   Rtw       BaseKeyValueStoreBackend._store_result: read, then an
 //             unconditional set (redis, memcached, couchdb, cassandra,
 //             arangodb, consul, ...). base.py:1355-1377
-//   "mongo"   replace_one with filter status $ne SUCCESS, one atomic
+//   Mongo     replace_one with filter status $ne SUCCESS, one atomic
 //             operation. mongodb.py:189-217
-//   "sql"     unlocked read, then SELECT ... FOR UPDATE, check, update.
+//   Sql       unlocked read, then SELECT ... FOR UPDATE, check, update.
 //             database/__init__.py:169-197
-//   "es"      base read, then create, or get + update with if_seq_no
+//   Es        base read, then create, or get + update with if_seq_no
 //             (optimistic CAS) that also refuses ready -> unready.
 //             elasticsearch.py:128-230
 //
 // READY_STICKY: the store refuses to replace a ready state (SUCCESS, FAILURE,
-// REVOKED) with an unready one (STARTED, RETRY). Only "es" does this
+// REVOKED) with an unready one (STARTED, RETRY). Only Es does this
 // (elasticsearch.py:195); it is a parameter so the property can be checked
 // against every store.
-module resultstate {
-  const STORE: str
-  const READY_STICKY: bool
-
+//
+// Types: states, stores, outcomes and actions are sum types, so a misspelled
+// state or an action with another action's fields does not typecheck. They
+// live in their own module because an instance passes a constructor
+// (STORE = Rtw), which must be in scope where the instance is made.
+module resulttypes {
+  // states.py:20-44
+  type Status = Pending | Received | Started | Rejected | Retry | Success
+              | Failure | Revoked
   // states.py:144-145
-  pure val READY = Set("SUCCESS", "FAILURE", "REVOKED")
-  pure val UNREADY = Set("PENDING", "RECEIVED", "STARTED", "REJECTED", "RETRY")
-  // What a duplicate run of a task writes: trace.py marks STARTED
-  // (track_started), then RETRY, SUCCESS or FAILURE.
-  pure val WRITES = Set("STARTED", "RETRY", "SUCCESS", "FAILURE")
+  pure def isReady(s: Status): bool = match s {
+    | Success => true | Failure => true | Revoked => true | _ => false
+  }
+  pure def isUnready(s: Status): bool = not(isReady(s))
 
-  pure val RUNS = Set(1, 2)
-  pure val MAX_WRITES = 2
-  pure val MAX_FORGETS = 1
-
-  type Meta = { status: str, v: int }
-  pure val NOTHING: Meta = { status: "PENDING", v: 0 }
-
-  // What is stored for the task id. NOTHING = no key / no row / no document,
+  type Store = Rtw | Mongo | Sql | Es
+  // One of the duplicate runs of the task: a one-field record, not a bare
+  // int, so a run id does not typecheck as a count or the other way round.
+  // (A one-variant sum type would read the same, but Quint 0.33.1 gives it
+  // an open row type that Apalache and TLC reject.)
+  type RunId = { rn: int }
+  pure def R(i: int): RunId = { rn: i }
+  type Meta = { status: Status, by: RunId }
+  // What is stored for the task id. Absent = no key / no row / no document,
   // which every backend reads back as PENDING (base.py:1390,
   // mongodb.py:251, database/__init__.py:245-247).
-  var stored: Meta
-  // Per run: "idle" or "begun", what it is writing, and what it read.
-  var pc: int -> str
-  var pending: int -> Meta
-  var seen: int -> str
-  var writes: int -> int
-  var forgets: int
-  // A client that saw SUCCESS (AsyncResult.get / get_task_meta).
-  var observed: { has: bool, meta: Meta }
-  // The stored meta before the last step, for the two-state property.
-  var prev: Meta
-  // The action that produced this state, read by the replay adapter.
-  var lastAction: { kind: str, rn: int, status: str, v: int, outcome: str }
+  type Stored = Absent | Present(Meta)
+  pure def statusOf(s: Stored): Status = match s {
+    | Absent => Pending
+    | Present(m) => m.status
+  }
 
-  action init = all {
-    stored' = NOTHING,
-    pc' = RUNS.mapBy(_ => "idle"),
-    pending' = RUNS.mapBy(_ => NOTHING),
-    seen' = RUNS.mapBy(_ => "PENDING"),
+  // A run is idle, or has begun a store: what it writes, and what it read.
+  type Pc = Idle | Begun({ writing: Status, read: Status })
+  pure def isBegun(p: Pc): bool = match p { | Begun(_) => true | Idle => false }
+  pure val NOT_BEGUN: { writing: Status, read: Status } =
+    { writing: Pending, read: Pending }
+  // Only read under the guard isBegun(p).
+  pure def begunOf(p: Pc): { writing: Status, read: Status } = match p {
+    | Begun(b) => b
+    | Idle => NOT_BEGUN
+  }
+
+  // What a commit did: wrote, kept what was stored, or raised.
+  type Outcome = Written | Skipped | Raised
+  // A client that saw SUCCESS (AsyncResult.get / get_task_meta).
+  type Observed = NotObserved | Saw(Meta)
+  // The action that produced a state, read by the replay adapter.
+  type Action =
+    | Init
+    | Begin({ rn: RunId, status: Status })
+    | Commit({ rn: RunId, status: Status, outcome: Outcome })
+    | Forget
+    | Observe(Meta)
+  pure def isCommit(a: Action): bool = match a {
+    | Commit(_) => true | _ => false
+  }
+}
+
+module resultstate {
+  import resulttypes.*
+
+  const STORE: Store
+  const READY_STICKY: bool
+
+  // What a duplicate run of a task writes: trace.py marks STARTED
+  // (track_started), then RETRY, SUCCESS or FAILURE.
+  pure val WRITES: Set[Status] = Set(Started, Retry, Success, Failure)
+
+  pure val RUNS: Set[RunId] = Set(R(1), R(2))
+  pure val MAX_WRITES: int = 2
+  pure val MAX_FORGETS: int = 1
+
+  var stored: Stored
+  var pc: RunId -> Pc
+  var writes: RunId -> int
+  var forgets: int
+  var observed: Observed
+  // What was stored before the last step, for the two-state property.
+  var prev: Stored
+  var lastAction: Action
+
+  action init: bool = all {
+    stored' = Absent,
+    pc' = RUNS.mapBy(_ => Idle),
     writes' = RUNS.mapBy(_ => 0),
     forgets' = 0,
-    observed' = { has: false, meta: NOTHING },
-    prev' = NOTHING,
-    lastAction' = { kind: "init", rn: 0, status: "", v: 0, outcome: "" },
+    observed' = NotObserved,
+    prev' = Absent,
+    lastAction' = Init,
   }
 
   // ---- begin: the read a backend does before it writes -----------------
@@ -79,80 +124,79 @@ module resultstate {
   // sql:   task = self._query_task(session, task_id), unlocked
   //                                                  database/__init__.py:174
   // mongo: no read; the filter does the check at write time mongodb.py:207
-  action begin(r: int, s: str): bool = all {
-    pc.get(r) == "idle",
+  action begin(r: RunId, s: Status): bool = all {
+    pc.get(r) == Idle,
     writes.get(r) < MAX_WRITES,
-    pc' = pc.set(r, "begun"),
-    pending' = pending.set(r, { status: s, v: r }),
-    seen' = seen.set(r, stored.status),
+    pc' = pc.set(r, Begun({ writing: s, read: statusOf(stored) })),
     writes' = writes.set(r, writes.get(r) + 1),
     stored' = stored,
     forgets' = forgets,
     observed' = observed,
     prev' = stored,
-    lastAction' = { kind: "begin", rn: r, status: s, v: r, outcome: "" },
+    lastAction' = Begin({ rn: r, status: s }),
   }
 
   // What the write does to the store, given what the run read at begin.
-  // Returns the new stored meta and an outcome label.
-  pure def commitEffect(store: str, sticky: bool, cur: Meta, read: str,
-                        w: Meta): (Meta, str) =
+  // Returns the new stored value and what the commit did.
+  pure def commitEffect(store: Store, sticky: bool, cur: Stored, read: Status,
+                        w: Meta): (Stored, Outcome) =
+    val curStatus = statusOf(cur)
     // READY_STICKY as a store rule: elasticsearch.py:195-197
-    val stickyRefuses = sticky and READY.contains(cur.status)
-                        and UNREADY.contains(w.status)
-    if (store == "rtw")
-      // if current_meta['status'] == SUCCESS: return        base.py:1369-1370
-      // else self._set_with_state(key, encode(meta), state)  base.py:1373
-      //   -> redis _set: SETEX/SET, unconditional           redis.py:816-825
-      if (read == "SUCCESS") (cur, "skipped")
-      else if (stickyRefuses) (cur, "skipped")
-      else (w, "written")
-    else if (store == "mongo")
-      // replace_one({'_id': id, 'status': {'$ne': SUCCESS}}, upsert=True)
-      //                                                    mongodb.py:207-210
-      // a stored SUCCESS makes the upsert raise DuplicateKeyError, ignored
-      //                                                    mongodb.py:212-213
-      if (cur.status == "SUCCESS") (cur, "skipped")
-      else if (stickyRefuses) (cur, "skipped")
-      else (w, "written")
-    else if (store == "sql")
-      // row seen at begin: lock it and read again   database/__init__.py:175-180
-      if (read != "PENDING")
-        if (cur == NOTHING) (w, "written")           // row gone: insert :181-185
-        else if (cur.status == "SUCCESS") (cur, "skipped") // :186-190
-        else if (stickyRefuses) (cur, "skipped")
-        else (w, "written")                          // :192-197
-      // no row at begin: INSERT; a concurrent insert wins the unique
-      // task_id constraint (models.py:34), and this run's commit raises
-      else if (cur == NOTHING) (w, "written")        // :181-185
-      else (cur, "error")
-    else // "es"
-      // base check on the earlier read                   base.py:1369
-      if (read == "SUCCESS") (cur, "skipped")
-      // index op_type=create succeeds if no document  elasticsearch.py:135-139
-      else if (cur == NOTHING) (w, "written")
-      // ConflictError -> _update: get, check, update if_seq_no
-      //                                         elasticsearch.py:140-142,172-221
-      else if (cur.status == "SUCCESS") (cur, "skipped")       // :192-194
-      else if (READY.contains(cur.status) and UNREADY.contains(w.status))
-        (cur, "skipped")                                       // :195-197
-      else (w, "written")
+    val stickyRefuses = sticky and isReady(curStatus) and isUnready(w.status)
+    match store {
+      | Rtw =>
+        // if current_meta['status'] == SUCCESS: return        base.py:1369-1370
+        // else self._set_with_state(key, encode(meta), state)  base.py:1373
+        //   -> redis _set: SETEX/SET, unconditional           redis.py:816-825
+        if (read == Success) (cur, Skipped)
+        else if (stickyRefuses) (cur, Skipped)
+        else (Present(w), Written)
+      | Mongo =>
+        // replace_one({'_id': id, 'status': {'$ne': SUCCESS}}, upsert=True)
+        //                                                    mongodb.py:207-210
+        // a stored SUCCESS makes the upsert raise DuplicateKeyError, ignored
+        //                                                    mongodb.py:212-213
+        if (curStatus == Success) (cur, Skipped)
+        else if (stickyRefuses) (cur, Skipped)
+        else (Present(w), Written)
+      | Sql =>
+        // row seen at begin: lock it and read again   database/__init__.py:175-180
+        if (read != Pending)
+          if (cur == Absent) (Present(w), Written)     // row gone: insert :181-185
+          else if (curStatus == Success) (cur, Skipped) // :186-190
+          else if (stickyRefuses) (cur, Skipped)
+          else (Present(w), Written)                   // :192-197
+        // no row at begin: INSERT; a concurrent insert wins the unique
+        // task_id constraint (models.py:34), and this run's commit raises
+        else if (cur == Absent) (Present(w), Written)  // :181-185
+        else (cur, Raised)
+      | Es =>
+        // base check on the earlier read                   base.py:1369
+        if (read == Success) (cur, Skipped)
+        // index op_type=create succeeds if no document  elasticsearch.py:135-139
+        else if (cur == Absent) (Present(w), Written)
+        // ConflictError -> _update: get, check, update if_seq_no
+        //                                         elasticsearch.py:140-142,172-221
+        else if (curStatus == Success) (cur, Skipped)            // :192-194
+        else if (isReady(curStatus) and isUnready(w.status))
+          (cur, Skipped)                                         // :195-197
+        else (Present(w), Written)
+    }
 
-  action commit(r: int): bool = all {
-    pc.get(r) == "begun",
-    val eff = commitEffect(STORE, READY_STICKY, stored, seen.get(r), pending.get(r))
+  action commit(r: RunId): bool = {
+    val b = begunOf(pc.get(r))
+    val eff = commitEffect(STORE, READY_STICKY, stored, b.read,
+                           { status: b.writing, by: r })
     all {
+      isBegun(pc.get(r)),
       stored' = eff._1,
-      lastAction' = { kind: "commit", rn: r, status: pending.get(r).status,
-                      v: r, outcome: eff._2 },
-    },
-    pc' = pc.set(r, "idle"),
-    pending' = pending,
-    seen' = seen,
-    writes' = writes,
-    forgets' = forgets,
-    observed' = observed,
-    prev' = stored,
+      lastAction' = Commit({ rn: r, status: b.writing, outcome: eff._2 }),
+      pc' = pc.set(r, Idle),
+      writes' = writes,
+      forgets' = forgets,
+      observed' = observed,
+      prev' = stored,
+    }
   }
 
   // forget(): BaseBackend.forget base.py:883-885 ->
@@ -162,58 +206,70 @@ module resultstate {
   // A client that forgets a result drops what it saw.
   action forget: bool = all {
     forgets < MAX_FORGETS,
-    stored' = NOTHING,
+    stored' = Absent,
     forgets' = forgets + 1,
-    observed' = { has: false, meta: NOTHING },
-    pc' = pc, pending' = pending, seen' = seen, writes' = writes,
+    observed' = NotObserved,
+    pc' = pc, writes' = writes,
     prev' = stored,
-    lastAction' = { kind: "forget", rn: 0, status: "", v: 0, outcome: "" },
+    lastAction' = Forget,
+  }
+
+  pure val NO_META: Meta = { status: Pending, by: R(0) }
+  // Only read under the guard stored != Absent.
+  pure def metaOf(s: Stored): Meta = match s {
+    | Present(m) => m
+    | Absent => NO_META
   }
 
   // A client reads the result and sees SUCCESS (get_task_meta base.py,
   // _get_task_meta_for above).
   action observe: bool = all {
-    stored.status == "SUCCESS",
-    not(observed.has),
-    observed' = { has: true, meta: stored },
-    stored' = stored, pc' = pc, pending' = pending, seen' = seen,
-    writes' = writes, forgets' = forgets,
+    statusOf(stored) == Success,
+    observed == NotObserved,
+    observed' = Saw(metaOf(stored)),
+    stored' = stored, pc' = pc, writes' = writes, forgets' = forgets,
     prev' = stored,
-    lastAction' = { kind: "observe", rn: 0, status: stored.status,
-                    v: stored.v, outcome: "" },
+    lastAction' = Observe(metaOf(stored)),
   }
 
-  action step = {
+  action step: bool = {
     nondet r = RUNS.oneOf()
     nondet s = WRITES.oneOf()
     any { begin(r, s), commit(r), forget, observe }
   }
 
   // ---- properties -------------------------------------------------------
-  // Once a reader saw SUCCESS v, the store keeps SUCCESS v until forget().
+  // Once a reader saw SUCCESS by a run, the store keeps that until forget().
   // Stated in base.py:1362-1366 and by the "keep the first SUCCESS" fixes:
   // celery PR 10920 (database), 10944 (mongodb), 10945 (cassandra).
-  val successStable = observed.has implies stored == observed.meta
+  val successStable: bool = match observed {
+    | NotObserved => true
+    | Saw(m) => stored == Present(m)
+  }
 
   // A ready state is never replaced by an unready one (except by forget).
   // Only Elasticsearch promises this (elasticsearch.py:166-176).
-  val readySticky =
-    not(lastAction.kind == "commit" and READY.contains(prev.status)
-        and UNREADY.contains(stored.status))
+  val readySticky: bool =
+    not(isCommit(lastAction) and isReady(statusOf(prev))
+        and isUnready(statusOf(stored)))
 
   // Sanity: the spec can reach a stored SUCCESS (witness, should be violated)
-  val noSuccessEver = stored.status != "SUCCESS"
+  val noSuccessEver: bool = statusOf(stored) != Success
 }
 
 module rtw {
-  import resultstate(STORE = "rtw", READY_STICKY = false).*
+  import resulttypes.*
+  import resultstate(STORE = Rtw, READY_STICKY = false).*
 }
 module mongo {
-  import resultstate(STORE = "mongo", READY_STICKY = false).*
+  import resulttypes.*
+  import resultstate(STORE = Mongo, READY_STICKY = false).*
 }
 module sql {
-  import resultstate(STORE = "sql", READY_STICKY = false).*
+  import resulttypes.*
+  import resultstate(STORE = Sql, READY_STICKY = false).*
 }
 module es {
-  import resultstate(STORE = "es", READY_STICKY = true).*
+  import resulttypes.*
+  import resultstate(STORE = Es, READY_STICKY = true).*
 }

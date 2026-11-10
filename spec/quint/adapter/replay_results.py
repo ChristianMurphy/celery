@@ -3,7 +3,7 @@
 For each ITF trace, every step's ``lastAction`` is performed on the backend
 with the real backend methods, in the trace's order, and the stored state
 read back afterwards must equal the spec's ``stored``. A ``commit`` that the
-spec says raises (outcome "error") must raise, and only then.
+spec says raises (outcome Raised) must raise, and only then.
 
     python -m adapter.replay_results --backend redis traces/rtw/*.itf.json
 """
@@ -23,30 +23,37 @@ class Mismatch(AssertionError):
     pass
 
 
+def spec_stored(stored) -> dict:
+    """The spec's ``stored`` (Absent | Present(meta)) as ``observe`` reads
+    the backend: a missing result reads as PENDING."""
+    kind, meta = itf.split(stored)
+    if kind == 'Absent':
+        return {'status': 'PENDING', 'v': 0}
+    return {'status': meta['status'].upper(), 'v': meta['by']}
+
+
 def replay(name: str, path: Path, backend, reader) -> int:
     states = itf.load(path)
     task_id = f'quint-{uuid.uuid4().hex}'
     runs = {}
     for i, st in enumerate(states):
-        act = st['lastAction']
-        kind = act['kind']
-        if kind == 'init':
+        kind, act = itf.split(st['lastAction'])
+        if kind == 'Init':
             pass
-        elif kind == 'begin':
-            r = act['rn']
-            runs[r] = start_store(backend, task_id,
-                                  value_for(act['status'], act['v']),
-                                  act['status'])
-        elif kind == 'commit':
+        elif kind == 'Begin':
+            r, status = act['rn'], act['status'].upper()
+            runs[r] = start_store(backend, task_id, value_for(status, r),
+                                  status)
+        elif kind == 'Commit':
             r = act['rn']
             err = finish_store(runs.pop(r))
-            want_err = act['outcome'] == 'error'
+            want_err = act['outcome'] == 'Raised'
             if bool(err) != want_err:
                 raise Mismatch(f'{path.name} step {i}: commit by run {r} '
                                f'raised {err!r}, spec outcome {act["outcome"]}')
-        elif kind == 'forget':
+        elif kind == 'Forget':
             backend.forget(task_id)
-        elif kind == 'observe':
+        elif kind == 'Observe':
             pass  # the comparison below is the observation
         else:
             raise ValueError(kind)
@@ -55,7 +62,7 @@ def replay(name: str, path: Path, backend, reader) -> int:
         except Exception as exc:  # noqa: BLE001 - an unreadable row is a mismatch
             raise Mismatch(f'{path.name} step {i} ({kind} {act}): reading the '
                            f'result raised {exc!r}') from exc
-        want = st['stored']
+        want = spec_stored(st['stored'])
         if got != want:
             raise Mismatch(f'{path.name} step {i} ({kind} {act}): backend has '
                            f'{got}, spec has {want}')

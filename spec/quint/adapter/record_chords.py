@@ -82,75 +82,88 @@ def to_run(i: int, proto: str, events: list) -> str:
     queued = {h: 1 for h in range(1, N + 1)}
     slot_of: dict[int, int] = {}
     pc: dict[int, str] = {}
+    header: dict[int, int] = {}
     free = [1, 2, 3]
     published = 0
 
-    def emit(action: str, outcome: str | None = None, ne: bool = False) -> None:
-        if outcome is None:
+    def emit(action: str, last: str | None = None, ne: bool = False) -> None:
+        """A step, and what the spec's lastAction must (not) be after it."""
+        if last is None:
             steps.append(f'    .then({action})')
         else:
             op = '!=' if ne else '=='
-            steps.append(f'    .then({action}).expect(lastAction.outcome {op} "{outcome}")')
+            steps.append(f'    .then({action}).expect(lastAction {op} {last})')
+
+    def on(w: int, kind: str, outcome: str) -> str:
+        """The Action of a header run's step, e.g. PartReturn({...})."""
+        return f'{kind}({{ w: W({w}), h: H({header[w]}), outcome: {outcome} }})'
 
     for e in events:
         k = e['kind']
         if k == 'deliver':
             h = e['h']
             if queued[h] == 0:
-                emit(f'dup({h})')
+                emit(f'dup(H({h}))')
                 queued[h] += 1
             w = free.pop(0)
             slot_of[e['pid']] = w
             pc[w] = 'run'
+            header[w] = h
             queued[h] -= 1
-            emit(f'deliver({w}, {h})')
+            emit(f'deliver(W({w}), H({h}))')
             continue
         w = slot_of.get(e['pid'])
         if w is None:
             continue
         if k == 'store':
-            emit(f'store({w})')
+            emit(f'store(W({w}))')
             pc[w] = 'stored'
         elif k == 'partReturn':
             ready, _, size, claimed = e['ret']
-            out = ('done' if ready == -1 else 'claimed' if claimed
-                   else 'complete' if size and int(ready) == int(size) else 'counted')
-            emit(f'partReturn({w})', out)
+            out = ('SawDone' if ready == -1 else 'TookClaim' if claimed
+                   else 'CompleteNoClaim' if size and int(ready) == int(size)
+                   else 'Counted')
+            emit(f'partReturn(W({w}))', on(w, 'PartReturn', out))
             pc[w] = 'claimed' if claimed else 'finish'
         elif k == 'count':
             r = e['ret']
-            out = 'complete' if r == N else 'over' if r > N else 'counted'
-            emit(f'count({w})', out)
+            out = ('CountComplete' if r == N else 'CountOver' if r > N
+                   else 'CountedOne')
+            emit(f'count(W({w}))', on(w, 'Count', out))
             pc[w] = 'kcomplete' if r == N else 'finish'
         elif k == 'extend':
             if pc[w] == 'claimed':
-                emit(f'redisJoin({w})', 'ok')
-            emit(f'extend({w})', 'lost', ne=bool(e['ret']))
+                emit(f'redisJoin(W({w}))', on(w, 'Join', 'JoinOk'))
+            emit(f'extend(W({w}))', on(w, 'Extend', 'ClaimLost'),
+                 ne=bool(e['ret']))
             pc[w] = 'extended' if e['ret'] else 'finish'
         elif k == 'publish':
             if pc[w] == 'kcomplete':
-                emit(f'kvJoin({w}, true)', 'ok')
+                emit(f'kvJoin(W({w}), true)', on(w, 'Join', 'JoinOk'))
             ok = e['outcome'] == 'ok'
-            emit(f'publish({w}, {str(ok).lower()})', e['outcome'])
+            emit(f'publish(W({w}), {str(ok).lower()})',
+                 f'Publish({{ w: W({w}), outcome: '
+                 f'{"Sent" if ok else "Refused"} }})')
             published += ok
             pc[w] = 'published' if proto == 'redis' else 'kclean'
         elif k == 'cleanup':
-            emit(f'cleanup({w})', 'cleaned' if e['ret'] else 'lost')
+            emit(f'cleanup(W({w}))',
+                 on(w, 'Cleanup', 'Cleaned' if e['ret'] else 'NotOwner'))
             pc[w] = 'finish'
         elif k == 'chord_error':
             if pc[w] == 'kcomplete':
-                emit(f'kvJoin({w}, false)', 'error')
+                emit(f'kvJoin(W({w}), false)', on(w, 'Join', 'JoinError'))
                 pc[w] = 'kclean'
             elif pc[w] == 'claimed':
-                emit(f'redisJoin({w})', 'error')
+                emit(f'redisJoin(W({w}))', on(w, 'Join', 'JoinError'))
                 pc[w] = 'finish'
             elif pc[w] == 'stored' and proto == 'kv':
-                emit(f'count({w})', 'nogroup')
+                emit(f'count(W({w}))', on(w, 'Count', 'NoGroup'))
                 pc[w] = 'finish'
         elif k == 'finish':
             if pc[w] == 'kclean':
-                emit(f'kvClean({w})')
-            emit(f'finish({w})')
+                emit(f'kvClean(W({w}))')
+            emit(f'finish(W({w}))')
             free.append(w)
             free.sort()
             del slot_of[e['pid']]
@@ -199,9 +212,9 @@ def main(argv=None) -> int:
     runs = '\n\n'.join(to_run(i, args.proto, ev)
                        for i, ev in enumerate(groups.values()))
     src = (f'module {mod} {{\n'
-           f'  import chord(PROTO = "{args.proto}", ACKS_LATE = true, '
-           f'REJECT_ON_WORKER_LOST = false, LEASE_SAFE = true, MAX_DUPS = 20, '
-           f'MAX_WORKER_LOST = 0, MAX_CHILD_LOST = 0, MAX_REFUSALS = 0).* '
+           f'  import chordtypes.* from "../chord"\n'
+           f'  import chord(CFG = {{ ...lateAck({args.proto.capitalize()}), '
+           f'max: {{ ...NO_FAULTS, dups: 20 }} }}).* '
            f'from "../chord"\n\n{runs}\n}}\n')
     out = HERE / 'histories' / f'{mod}.qnt'
     out.write_text(src)

@@ -1,0 +1,2540 @@
+{
+ "es.noSuccessEver": {
+  "sim": {
+   "result": "violated",
+   "secs": 1.9,
+   "trace": 5
+  },
+  "tlc": {
+   "depth": 3,
+   "distinct": 31,
+   "result": "violated",
+   "secs": 1.9,
+   "states": 58,
+   "trace": 3
+  }
+ },
+ "es.readySticky": {
+  "sim": {
+   "result": "holds",
+   "secs": 3.2
+  },
+  "tlc": {
+   "depth": 11,
+   "distinct": 9790,
+   "result": "holds",
+   "secs": 3.9,
+   "states": 101913
+  }
+ },
+ "es.successStable": {
+  "sim": {
+   "result": "holds",
+   "secs": 3.1
+  },
+  "tlc": {
+   "depth": 11,
+   "distinct": 9790,
+   "result": "holds",
+   "secs": 4.8,
+   "states": 101913
+  }
+ },
+ "kv_child_early.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.5
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.6,
+   "states": 11389
+  }
+ },
+ "kv_child_early.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.8
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.7,
+   "states": 11389
+  }
+ },
+ "kv_child_early.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.5,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 1097,
+   "result": "violated",
+   "secs": 3.0,
+   "states": 7079,
+   "trace": 9
+  }
+ },
+ "kv_child_early.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.1
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.3,
+   "states": 11389
+  }
+ },
+ "kv_child_early.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.1
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 4.0,
+   "states": 11389
+  }
+ },
+ "kv_child_early.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.5
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.3,
+   "states": 11389
+  }
+ },
+ "kv_child_early.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.2,
+   "trace": 8
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 837,
+   "result": "violated",
+   "secs": 2.7,
+   "states": 5439,
+   "trace": 8
+  }
+ },
+ "kv_child_late.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.7,
+   "states": 11389
+  }
+ },
+ "kv_child_late.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 4.1,
+   "states": 11389
+  }
+ },
+ "kv_child_late.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.2,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 1097,
+   "result": "violated",
+   "secs": 2.4,
+   "states": 7079,
+   "trace": 9
+  }
+ },
+ "kv_child_late.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.7,
+   "states": 11389
+  }
+ },
+ "kv_child_late.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.8
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 4.0,
+   "states": 11389
+  }
+ },
+ "kv_child_late.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.1
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1588,
+   "result": "holds",
+   "secs": 3.6,
+   "states": 11389
+  }
+ },
+ "kv_child_late.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.2,
+   "trace": 8
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 837,
+   "result": "violated",
+   "secs": 3.0,
+   "states": 5439,
+   "trace": 8
+  }
+ },
+ "kv_child_reject.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1822,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 12901
+  }
+ },
+ "kv_child_reject.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.7
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1822,
+   "result": "holds",
+   "secs": 4.6,
+   "states": 12901
+  }
+ },
+ "kv_child_reject.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.1,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 1064,
+   "result": "violated",
+   "secs": 3.5,
+   "states": 7079,
+   "trace": 9
+  }
+ },
+ "kv_child_reject.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1822,
+   "result": "holds",
+   "secs": 4.0,
+   "states": 12901
+  }
+ },
+ "kv_child_reject.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1822,
+   "result": "holds",
+   "secs": 4.2,
+   "states": 12901
+  }
+ },
+ "kv_child_reject.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1822,
+   "result": "holds",
+   "secs": 4.0,
+   "states": 12901
+  }
+ },
+ "kv_child_reject.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.2,
+   "trace": 8
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 786,
+   "result": "violated",
+   "secs": 2.7,
+   "states": 5079,
+   "trace": 8
+  }
+ },
+ "kv_dup.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.6
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 134021,
+   "result": "holds",
+   "secs": 53.1,
+   "states": 1530589
+  }
+ },
+ "kv_dup.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 8.9
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 134021,
+   "result": "holds",
+   "secs": 51.8,
+   "states": 1530589
+  }
+ },
+ "kv_dup.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.6,
+   "trace": 15
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 7206,
+   "result": "violated",
+   "secs": 4.2,
+   "states": 63719,
+   "trace": 9
+  }
+ },
+ "kv_dup.noErrorAfterDispatch": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.8,
+   "trace": 18
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 55407,
+   "result": "violated",
+   "secs": 22.3,
+   "states": 531710,
+   "trace": 14
+  }
+ },
+ "kv_dup.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.9
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 134021,
+   "result": "holds",
+   "secs": 52.1,
+   "states": 1530589
+  }
+ },
+ "kv_dup.noSpuriousError": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.1,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 7104,
+   "result": "violated",
+   "secs": 5.6,
+   "states": 62578,
+   "trace": 9
+  }
+ },
+ "kv_dup.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.0
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 134021,
+   "result": "holds",
+   "secs": 54.9,
+   "states": 1530589
+  }
+ },
+ "kv_none.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.7
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 490,
+   "result": "holds",
+   "secs": 3.0,
+   "states": 2809
+  }
+ },
+ "kv_none.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.8
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 490,
+   "result": "holds",
+   "secs": 2.3,
+   "states": 2809
+  }
+ },
+ "kv_none.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.8,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 336,
+   "result": "violated",
+   "secs": 2.4,
+   "states": 1862,
+   "trace": 9
+  }
+ },
+ "kv_none.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.9
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 490,
+   "result": "holds",
+   "secs": 2.9,
+   "states": 2809
+  }
+ },
+ "kv_none.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.2
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 490,
+   "result": "holds",
+   "secs": 2.9,
+   "states": 2809
+  }
+ },
+ "kv_none.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 490,
+   "result": "holds",
+   "secs": 3.3,
+   "states": 2809
+  }
+ },
+ "kv_none.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.7
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 490,
+   "result": "holds",
+   "secs": 3.1,
+   "states": 2809
+  }
+ },
+ "kv_refuse.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.9
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 613,
+   "result": "holds",
+   "secs": 2.8,
+   "states": 3721
+  }
+ },
+ "kv_refuse.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.5
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 613,
+   "result": "holds",
+   "secs": 3.1,
+   "states": 3721
+  }
+ },
+ "kv_refuse.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.8,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 337,
+   "result": "violated",
+   "secs": 2.7,
+   "states": 1863,
+   "trace": 9
+  }
+ },
+ "kv_refuse.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.4
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 613,
+   "result": "holds",
+   "secs": 3.0,
+   "states": 3721
+  }
+ },
+ "kv_refuse.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.6
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 613,
+   "result": "holds",
+   "secs": 3.5,
+   "states": 3721
+  }
+ },
+ "kv_refuse.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.1
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 613,
+   "result": "holds",
+   "secs": 3.1,
+   "states": 3721
+  }
+ },
+ "kv_refuse.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 613,
+   "result": "holds",
+   "secs": 2.9,
+   "states": 3721
+  }
+ },
+ "kv_wlost_early.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 8.2
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1006,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 7549
+  }
+ },
+ "kv_wlost_early.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.0
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1006,
+   "result": "holds",
+   "secs": 3.7,
+   "states": 7549
+  }
+ },
+ "kv_wlost_early.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.4,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 710,
+   "result": "violated",
+   "secs": 2.4,
+   "states": 4859,
+   "trace": 9
+  }
+ },
+ "kv_wlost_early.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.5
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1006,
+   "result": "holds",
+   "secs": 3.2,
+   "states": 7549
+  }
+ },
+ "kv_wlost_early.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 8.1
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1006,
+   "result": "holds",
+   "secs": 4.1,
+   "states": 7549
+  }
+ },
+ "kv_wlost_early.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 8.7
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 1006,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 7549
+  }
+ },
+ "kv_wlost_early.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.8,
+   "trace": 7
+  },
+  "tlc": {
+   "depth": 7,
+   "distinct": 429,
+   "result": "violated",
+   "secs": 3.1,
+   "states": 2487,
+   "trace": 7
+  }
+ },
+ "kv_wlost_late.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.1
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 4276,
+   "result": "holds",
+   "secs": 4.6,
+   "states": 30265
+  }
+ },
+ "kv_wlost_late.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.9
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 4276,
+   "result": "holds",
+   "secs": 5.1,
+   "states": 30265
+  }
+ },
+ "kv_wlost_late.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.7,
+   "trace": 13
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 1462,
+   "result": "violated",
+   "secs": 4.3,
+   "states": 9367,
+   "trace": 9
+  }
+ },
+ "kv_wlost_late.noErrorAfterDispatch": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.9,
+   "trace": 15
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 3971,
+   "result": "violated",
+   "secs": 3.9,
+   "states": 25890,
+   "trace": 14
+  }
+ },
+ "kv_wlost_late.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.5
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 4276,
+   "result": "holds",
+   "secs": 5.0,
+   "states": 30265
+  }
+ },
+ "kv_wlost_late.noSpuriousError": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.7,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 1391,
+   "result": "violated",
+   "secs": 4.0,
+   "states": 9014,
+   "trace": 9
+  }
+ },
+ "kv_wlost_late.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.0,
+   "trace": 14
+  },
+  "tlc": {
+   "depth": 13,
+   "distinct": 3440,
+   "result": "violated",
+   "secs": 5.8,
+   "states": 21854,
+   "trace": 13
+  }
+ },
+ "mongo.noSuccessEver": {
+  "sim": {
+   "result": "violated",
+   "secs": 1.6,
+   "trace": 5
+  },
+  "tlc": {
+   "depth": 3,
+   "distinct": 31,
+   "result": "violated",
+   "secs": 1.8,
+   "states": 58,
+   "trace": 3
+  }
+ },
+ "mongo.readySticky": {
+  "sim": {
+   "result": "violated",
+   "secs": 1.6,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 5,
+   "distinct": 340,
+   "result": "violated",
+   "secs": 1.7,
+   "states": 1266,
+   "trace": 5
+  }
+ },
+ "mongo.successStable": {
+  "sim": {
+   "result": "holds",
+   "secs": 2.5
+  },
+  "tlc": {
+   "depth": 11,
+   "distinct": 9562,
+   "result": "holds",
+   "secs": 3.5,
+   "states": 102553
+  }
+ },
+ "redis_child_early.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 4.3,
+   "states": 16009
+  }
+ },
+ "redis_child_early.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 4.4,
+   "states": 16009
+  }
+ },
+ "redis_child_early.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.0,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 1364,
+   "result": "violated",
+   "secs": 4.4,
+   "states": 9047,
+   "trace": 10
+  }
+ },
+ "redis_child_early.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.9
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 4.3,
+   "states": 16009
+  }
+ },
+ "redis_child_early.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 4.7,
+   "states": 16009
+  }
+ },
+ "redis_child_early.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.7
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 3.9,
+   "states": 16009
+  }
+ },
+ "redis_child_early.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.4,
+   "trace": 12
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 837,
+   "result": "violated",
+   "secs": 3.4,
+   "states": 5439,
+   "trace": 8
+  }
+ },
+ "redis_child_late.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 5.0,
+   "states": 16009
+  }
+ },
+ "redis_child_late.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.8
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 5.7,
+   "states": 16009
+  }
+ },
+ "redis_child_late.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.2,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 1364,
+   "result": "violated",
+   "secs": 3.7,
+   "states": 9047,
+   "trace": 10
+  }
+ },
+ "redis_child_late.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 16009
+  }
+ },
+ "redis_child_late.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.2
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 4.8,
+   "states": 16009
+  }
+ },
+ "redis_child_late.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1859,
+   "result": "holds",
+   "secs": 4.3,
+   "states": 16009
+  }
+ },
+ "redis_child_late.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.0,
+   "trace": 12
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 837,
+   "result": "violated",
+   "secs": 3.7,
+   "states": 5439,
+   "trace": 8
+  }
+ },
+ "redis_child_reject.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.2
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 2411,
+   "result": "holds",
+   "secs": 4.3,
+   "states": 19981
+  }
+ },
+ "redis_child_reject.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.9
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 2411,
+   "result": "holds",
+   "secs": 5.3,
+   "states": 19981
+  }
+ },
+ "redis_child_reject.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.7,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 1361,
+   "result": "violated",
+   "secs": 4.2,
+   "states": 9455,
+   "trace": 10
+  }
+ },
+ "redis_child_reject.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.9
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 2411,
+   "result": "holds",
+   "secs": 4.2,
+   "states": 19981
+  }
+ },
+ "redis_child_reject.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.9
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 2411,
+   "result": "holds",
+   "secs": 5.6,
+   "states": 19981
+  }
+ },
+ "redis_child_reject.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.9
+  },
+  "tlc": {
+   "depth": 16,
+   "distinct": 2411,
+   "result": "holds",
+   "secs": 4.3,
+   "states": 19981
+  }
+ },
+ "redis_child_reject.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.2,
+   "trace": 12
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 798,
+   "result": "violated",
+   "secs": 2.9,
+   "states": 5079,
+   "trace": 8
+  }
+ },
+ "redis_dup.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.2
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 183359,
+   "result": "holds",
+   "secs": 91.4,
+   "states": 2330581
+  }
+ },
+ "redis_dup.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.5
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 183359,
+   "result": "holds",
+   "secs": 88.9,
+   "states": 2330581
+  }
+ },
+ "redis_dup.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 7.2,
+   "trace": 21
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 11982,
+   "result": "violated",
+   "secs": 13.2,
+   "states": 114555,
+   "trace": 10
+  }
+ },
+ "redis_dup.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.8
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 183359,
+   "result": "holds",
+   "secs": 83.8,
+   "states": 2330581
+  }
+ },
+ "redis_dup.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.0
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 183359,
+   "result": "holds",
+   "secs": 93.4,
+   "states": 2330581
+  }
+ },
+ "redis_dup.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.0
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 183359,
+   "result": "holds",
+   "secs": 83.5,
+   "states": 2330581
+  }
+ },
+ "redis_dup.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.7
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 183359,
+   "result": "holds",
+   "secs": 94.1,
+   "states": 2330581
+  }
+ },
+ "redis_lease.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.2
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 87092,
+   "result": "holds",
+   "secs": 42.7,
+   "states": 1236445
+  }
+ },
+ "redis_lease.atMostOnce": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.2,
+   "trace": 24
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 57558,
+   "result": "violated",
+   "secs": 27.5,
+   "states": 702061,
+   "trace": 18
+  }
+ },
+ "redis_lease.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.1,
+   "trace": 17
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 4746,
+   "result": "violated",
+   "secs": 4.4,
+   "states": 37892,
+   "trace": 10
+  }
+ },
+ "redis_lease.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.5
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 87092,
+   "result": "holds",
+   "secs": 41.8,
+   "states": 1236445
+  }
+ },
+ "redis_lease.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.0
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 87092,
+   "result": "holds",
+   "secs": 43.4,
+   "states": 1236445
+  }
+ },
+ "redis_lease.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.1
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 87092,
+   "result": "holds",
+   "secs": 41.9,
+   "states": 1236445
+  }
+ },
+ "redis_lease.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.1
+  },
+  "tlc": {
+   "depth": 24,
+   "distinct": 87092,
+   "result": "holds",
+   "secs": 43.1,
+   "states": 1236445
+  }
+ },
+ "redis_none.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.6
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 602,
+   "result": "holds",
+   "secs": 3.3,
+   "states": 4261
+  }
+ },
+ "redis_none.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.7
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 602,
+   "result": "holds",
+   "secs": 3.4,
+   "states": 4261
+  }
+ },
+ "redis_none.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.7,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 396,
+   "result": "violated",
+   "secs": 2.5,
+   "states": 2254,
+   "trace": 10
+  }
+ },
+ "redis_none.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.0
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 602,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 4261
+  }
+ },
+ "redis_none.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 602,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 4261
+  }
+ },
+ "redis_none.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 602,
+   "result": "holds",
+   "secs": 5.2,
+   "states": 4261
+  }
+ },
+ "redis_none.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.8
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 602,
+   "result": "holds",
+   "secs": 4.8,
+   "states": 4261
+  }
+ },
+ "redis_refuse.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.2
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 777,
+   "result": "holds",
+   "secs": 4.1,
+   "states": 6169
+  }
+ },
+ "redis_refuse.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 16.7
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 777,
+   "result": "holds",
+   "secs": 3.5,
+   "states": 6169
+  }
+ },
+ "redis_refuse.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.9,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 397,
+   "result": "violated",
+   "secs": 3.3,
+   "states": 2255,
+   "trace": 10
+  }
+ },
+ "redis_refuse.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 777,
+   "result": "holds",
+   "secs": 3.4,
+   "states": 6169
+  }
+ },
+ "redis_refuse.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 777,
+   "result": "holds",
+   "secs": 5.4,
+   "states": 6169
+  }
+ },
+ "redis_refuse.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.0
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 777,
+   "result": "holds",
+   "secs": 3.7,
+   "states": 6169
+  }
+ },
+ "redis_refuse.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 777,
+   "result": "holds",
+   "secs": 3.9,
+   "states": 6169
+  }
+ },
+ "redis_wlost_early.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.1
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1303,
+   "result": "holds",
+   "secs": 4.6,
+   "states": 11689
+  }
+ },
+ "redis_wlost_early.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1303,
+   "result": "holds",
+   "secs": 3.0,
+   "states": 11689
+  }
+ },
+ "redis_wlost_early.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 7.0,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 869,
+   "result": "violated",
+   "secs": 3.7,
+   "states": 6155,
+   "trace": 10
+  }
+ },
+ "redis_wlost_early.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.1
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1303,
+   "result": "holds",
+   "secs": 3.5,
+   "states": 11689
+  }
+ },
+ "redis_wlost_early.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1303,
+   "result": "holds",
+   "secs": 4.5,
+   "states": 11689
+  }
+ },
+ "redis_wlost_early.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.6
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1303,
+   "result": "holds",
+   "secs": 3.9,
+   "states": 11689
+  }
+ },
+ "redis_wlost_early.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.3,
+   "trace": 7
+  },
+  "tlc": {
+   "depth": 7,
+   "distinct": 429,
+   "result": "violated",
+   "secs": 3.5,
+   "states": 2487,
+   "trace": 7
+  }
+ },
+ "redis_wlost_late.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.5
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 6267,
+   "result": "holds",
+   "secs": 6.2,
+   "states": 55213
+  }
+ },
+ "redis_wlost_late.atMostOnce": {
+  "sim": {
+   "result": "violated",
+   "secs": 7.7,
+   "trace": 19
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 6022,
+   "result": "violated",
+   "secs": 5.4,
+   "states": 52802,
+   "trace": 18
+  }
+ },
+ "redis_wlost_late.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 3.9,
+   "trace": 15
+  },
+  "tlc": {
+   "depth": 10,
+   "distinct": 2012,
+   "result": "violated",
+   "secs": 4.3,
+   "states": 13701,
+   "trace": 10
+  }
+ },
+ "redis_wlost_late.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.4
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 6267,
+   "result": "holds",
+   "secs": 5.8,
+   "states": 55213
+  }
+ },
+ "redis_wlost_late.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.8
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 6267,
+   "result": "holds",
+   "secs": 6.6,
+   "states": 55213
+  }
+ },
+ "redis_wlost_late.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.0
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 6267,
+   "result": "holds",
+   "secs": 7.1,
+   "states": 55213
+  }
+ },
+ "redis_wlost_late.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 13.1
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 4523,
+   "result": "violated",
+   "secs": 6.4,
+   "states": 34078,
+   "trace": 14
+  }
+ },
+ "rtw.noSuccessEver": {
+  "sim": {
+   "result": "violated",
+   "secs": 2.2,
+   "trace": 5
+  },
+  "tlc": {
+   "depth": 3,
+   "distinct": 31,
+   "result": "violated",
+   "secs": 1.7,
+   "states": 58,
+   "trace": 3
+  }
+ },
+ "rtw.readySticky": {
+  "sim": {
+   "result": "violated",
+   "secs": 2.2,
+   "trace": 6
+  },
+  "tlc": {
+   "depth": 5,
+   "distinct": 328,
+   "result": "violated",
+   "secs": 1.6,
+   "states": 1218,
+   "trace": 5
+  }
+ },
+ "rtw.successStable": {
+  "sim": {
+   "result": "violated",
+   "secs": 2.0,
+   "trace": 11
+  },
+  "tlc": {
+   "depth": 6,
+   "distinct": 1252,
+   "result": "violated",
+   "secs": 2.5,
+   "states": 4546,
+   "trace": 6
+  }
+ },
+ "sql.noSuccessEver": {
+  "sim": {
+   "result": "violated",
+   "secs": 2.5,
+   "trace": 5
+  },
+  "tlc": {
+   "depth": 3,
+   "distinct": 31,
+   "result": "violated",
+   "secs": 1.3,
+   "states": 58,
+   "trace": 3
+  }
+ },
+ "sql.readySticky": {
+  "sim": {
+   "result": "violated",
+   "secs": 2.0,
+   "trace": 10
+  },
+  "tlc": {
+   "depth": 5,
+   "distinct": 646,
+   "result": "violated",
+   "secs": 1.9,
+   "states": 2298,
+   "trace": 5
+  }
+ },
+ "sql.successStable": {
+  "sim": {
+   "result": "holds",
+   "secs": 3.5
+  },
+  "tlc": {
+   "depth": 11,
+   "distinct": 10282,
+   "result": "holds",
+   "secs": 3.6,
+   "states": 109945
+  }
+ },
+ "unlock_child_early.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.1
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 6.8,
+   "states": 72553
+  }
+ },
+ "unlock_child_early.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.9
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 6.9,
+   "states": 72553
+  }
+ },
+ "unlock_child_early.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.3,
+   "trace": 25
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 3019,
+   "result": "violated",
+   "secs": 4.7,
+   "states": 26031,
+   "trace": 8
+  }
+ },
+ "unlock_child_early.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 6.3,
+   "states": 72553
+  }
+ },
+ "unlock_child_early.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.6
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 7.0,
+   "states": 72553
+  }
+ },
+ "unlock_child_early.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.0
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 5.9,
+   "states": 72553
+  }
+ },
+ "unlock_child_early.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.9,
+   "trace": 9
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 3965,
+   "result": "violated",
+   "secs": 4.3,
+   "states": 37544,
+   "trace": 9
+  }
+ },
+ "unlock_child_late.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 5.3,
+   "states": 72553
+  }
+ },
+ "unlock_child_late.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.7
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 6.8,
+   "states": 72553
+  }
+ },
+ "unlock_child_late.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.8,
+   "trace": 25
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 3019,
+   "result": "violated",
+   "secs": 5.3,
+   "states": 26031,
+   "trace": 8
+  }
+ },
+ "unlock_child_late.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.0
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 6.6,
+   "states": 72553
+  }
+ },
+ "unlock_child_late.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.3
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 6.8,
+   "states": 72553
+  }
+ },
+ "unlock_child_late.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.3
+  },
+  "tlc": {
+   "depth": 15,
+   "distinct": 6073,
+   "result": "holds",
+   "secs": 7.3,
+   "states": 72553
+  }
+ },
+ "unlock_child_late.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.7,
+   "trace": 9
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 3965,
+   "result": "violated",
+   "secs": 5.7,
+   "states": 37544,
+   "trace": 9
+  }
+ },
+ "unlock_child_reject.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 15.1
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 8809,
+   "result": "holds",
+   "secs": 9.1,
+   "states": 105961
+  }
+ },
+ "unlock_child_reject.atMostOnce": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.2,
+   "trace": 31
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 7928,
+   "result": "violated",
+   "secs": 6.8,
+   "states": 90708,
+   "trace": 12
+  }
+ },
+ "unlock_child_reject.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 3.9,
+   "trace": 24
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 3240,
+   "result": "violated",
+   "secs": 4.0,
+   "states": 27471,
+   "trace": 8
+  }
+ },
+ "unlock_child_reject.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 15.1
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 8809,
+   "result": "holds",
+   "secs": 8.0,
+   "states": 105961
+  }
+ },
+ "unlock_child_reject.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.7
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 8809,
+   "result": "holds",
+   "secs": 6.8,
+   "states": 105961
+  }
+ },
+ "unlock_child_reject.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.0
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 8809,
+   "result": "holds",
+   "secs": 8.0,
+   "states": 105961
+  }
+ },
+ "unlock_child_reject.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 7.7
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 8809,
+   "result": "holds",
+   "secs": 8.8,
+   "states": 105961
+  }
+ },
+ "unlock_dup.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.0
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 58005,
+   "result": "holds",
+   "secs": 19.8,
+   "states": 803101
+  }
+ },
+ "unlock_dup.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 8.7
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 58005,
+   "result": "holds",
+   "secs": 22.7,
+   "states": 803101
+  }
+ },
+ "unlock_dup.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.0,
+   "trace": 25
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 8308,
+   "result": "violated",
+   "secs": 4.3,
+   "states": 82049,
+   "trace": 8
+  }
+ },
+ "unlock_dup.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.3
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 58005,
+   "result": "holds",
+   "secs": 23.1,
+   "states": 803101
+  }
+ },
+ "unlock_dup.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.6
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 58005,
+   "result": "holds",
+   "secs": 20.3,
+   "states": 803101
+  }
+ },
+ "unlock_dup.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.0
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 58005,
+   "result": "holds",
+   "secs": 23.3,
+   "states": 803101
+  }
+ },
+ "unlock_dup.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.4
+  },
+  "tlc": {
+   "depth": 22,
+   "distinct": 58005,
+   "result": "holds",
+   "secs": 22.6,
+   "states": 803101
+  }
+ },
+ "unlock_none.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.1
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1477,
+   "result": "holds",
+   "secs": 3.3,
+   "states": 15193
+  }
+ },
+ "unlock_none.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.0
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1477,
+   "result": "holds",
+   "secs": 3.9,
+   "states": 15193
+  }
+ },
+ "unlock_none.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 4.8,
+   "trace": 16
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 1020,
+   "result": "violated",
+   "secs": 3.3,
+   "states": 8224,
+   "trace": 8
+  }
+ },
+ "unlock_none.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1477,
+   "result": "holds",
+   "secs": 4.0,
+   "states": 15193
+  }
+ },
+ "unlock_none.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1477,
+   "result": "holds",
+   "secs": 4.1,
+   "states": 15193
+  }
+ },
+ "unlock_none.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.1
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1477,
+   "result": "holds",
+   "secs": 4.1,
+   "states": 15193
+  }
+ },
+ "unlock_none.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 1477,
+   "result": "holds",
+   "secs": 3.0,
+   "states": 15193
+  }
+ },
+ "unlock_refuse.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 2221,
+   "result": "holds",
+   "secs": 4.5,
+   "states": 23185
+  }
+ },
+ "unlock_refuse.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 2221,
+   "result": "holds",
+   "secs": 4.6,
+   "states": 23185
+  }
+ },
+ "unlock_refuse.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.6,
+   "trace": 12
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 1479,
+   "result": "violated",
+   "secs": 3.7,
+   "states": 11531,
+   "trace": 8
+  }
+ },
+ "unlock_refuse.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.8
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 2221,
+   "result": "holds",
+   "secs": 4.3,
+   "states": 23185
+  }
+ },
+ "unlock_refuse.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 2221,
+   "result": "holds",
+   "secs": 4.7,
+   "states": 23185
+  }
+ },
+ "unlock_refuse.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.9
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 2221,
+   "result": "holds",
+   "secs": 3.8,
+   "states": 23185
+  }
+ },
+ "unlock_refuse.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.3
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 2221,
+   "result": "holds",
+   "secs": 5.8,
+   "states": 23185
+  }
+ },
+ "unlock_wlost_early.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 5068,
+   "result": "holds",
+   "secs": 6.2,
+   "states": 63013
+  }
+ },
+ "unlock_wlost_early.atMostOnce": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.4
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 5068,
+   "result": "holds",
+   "secs": 5.7,
+   "states": 63013
+  }
+ },
+ "unlock_wlost_early.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.7,
+   "trace": 16
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 2593,
+   "result": "violated",
+   "secs": 3.7,
+   "states": 22947,
+   "trace": 8
+  }
+ },
+ "unlock_wlost_early.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 12.0
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 5068,
+   "result": "holds",
+   "secs": 6.4,
+   "states": 63013
+  }
+ },
+ "unlock_wlost_early.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.5
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 5068,
+   "result": "holds",
+   "secs": 7.2,
+   "states": 63013
+  }
+ },
+ "unlock_wlost_early.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.8
+  },
+  "tlc": {
+   "depth": 14,
+   "distinct": 5068,
+   "result": "holds",
+   "secs": 6.1,
+   "states": 63013
+  }
+ },
+ "unlock_wlost_early.quietDone": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.7,
+   "trace": 9
+  },
+  "tlc": {
+   "depth": 9,
+   "distinct": 3377,
+   "result": "violated",
+   "secs": 4.8,
+   "states": 33080,
+   "trace": 9
+  }
+ },
+ "unlock_wlost_late.argsComplete": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.2
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 11089,
+   "result": "holds",
+   "secs": 8.3,
+   "states": 130489
+  }
+ },
+ "unlock_wlost_late.atMostOnce": {
+  "sim": {
+   "result": "violated",
+   "secs": 6.0,
+   "trace": 17
+  },
+  "tlc": {
+   "depth": 12,
+   "distinct": 9960,
+   "result": "violated",
+   "secs": 8.6,
+   "states": 109498,
+   "trace": 12
+  }
+ },
+ "unlock_wlost_late.neverDispatched": {
+  "sim": {
+   "result": "violated",
+   "secs": 5.8,
+   "trace": 24
+  },
+  "tlc": {
+   "depth": 8,
+   "distinct": 3609,
+   "result": "violated",
+   "secs": 3.9,
+   "states": 29607,
+   "trace": 8
+  }
+ },
+ "unlock_wlost_late.noErrorAfterDispatch": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.2
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 11089,
+   "result": "holds",
+   "secs": 6.8,
+   "states": 130489
+  }
+ },
+ "unlock_wlost_late.noPremature": {
+  "sim": {
+   "result": "holds",
+   "secs": 9.7
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 11089,
+   "result": "holds",
+   "secs": 8.4,
+   "states": 130489
+  }
+ },
+ "unlock_wlost_late.noSpuriousError": {
+  "sim": {
+   "result": "holds",
+   "secs": 10.9
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 11089,
+   "result": "holds",
+   "secs": 7.2,
+   "states": 130489
+  }
+ },
+ "unlock_wlost_late.quietDone": {
+  "sim": {
+   "result": "holds",
+   "secs": 11.3
+  },
+  "tlc": {
+   "depth": 18,
+   "distinct": 11089,
+   "result": "holds",
+   "secs": 7.6,
+   "states": 130489
+  }
+ }
+}

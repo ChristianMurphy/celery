@@ -54,13 +54,37 @@ FAULTS = {'none': (True, False), 'dup': (True, False), 'refuse': (True, False),
           'child_late': (True, False), 'child_early': (False, False),
           'child_reject': (True, True), 'lease': (True, False)}
 
-# spec pc -> where the real thread must be parked ('END' = returned)
+# spec pc (HeaderPc) -> where the real thread must be parked
+# ('END' = returned)
 PARK = {
-    'redis': {'stored': 'stored', 'claimed': 'partReturned', 'joined': 'joined',
-              'extended': 'extended', 'published': 'published'},
-    'kv': {'stored': 'stored', 'kcomplete': 'counted', 'kjoined': 'joined',
-           'kclean': 'kclean'},
+    'redis': {'Stored': 'stored', 'RedisClaimed': 'partReturned',
+              'RedisJoined': 'joined', 'RedisExtended': 'extended',
+              'RedisPublished': 'published'},
+    'kv': {'Stored': 'stored', 'KvComplete': 'counted', 'KvJoined': 'joined',
+           'KvClean': 'kclean'},
 }
+# the step's own hook point when the spec's run is at HeaderDone, before
+# the code returns
+PARK_DONE = {'PartReturn': 'partReturned', 'Extend': 'extended',
+             'Cleanup': 'cleaned', 'Count': 'counted'}
+RESULT = {'Pending': 'PENDING', 'Success': 'SUCCESS', 'Failure': 'FAILURE'}
+REPORT = {'Succeeded': 'SUCCESS', 'Failed': 'FAILURE'}
+
+
+def action(act) -> tuple[str, int | None, str]:
+    """``(kind, exec slot, outcome)`` of the spec's lastAction (Action)."""
+    kind, value = itf.split(act)
+    if isinstance(value, dict):
+        return kind, value.get('w'), value.get('outcome', '')
+    return kind, value if kind in ('Finish', 'DeliverUnlock') else None, ''
+
+
+def header_run(e) -> dict | None:
+    """The HeaderRun of an Exec, with ``pc`` as its tag; None otherwise."""
+    kind, run = itf.split(e)
+    if kind != 'HeaderTask':
+        return None
+    return {**run, 'pc': itf.tag(run['pc'])}
 
 _local = threading.local()
 
@@ -284,7 +308,7 @@ class Harness:
     def compare(self, spec: dict, where: str) -> None:
         real = self.read()
         want: dict[str, Any] = {
-            'results': spec['results'],
+            'results': {h: RESULT[r] for h, r in spec['results'].items()},
             'chordError': spec['chordError'],
             'dispatched': spec['dispatched'],
         }
@@ -292,13 +316,13 @@ class Harness:
             want['bodyArgs'] = spec['bodyArgs']
             want['bodyArgsSize'] = spec['bodyArgsSize']
         if self.proto == 'redis':
-            want['jset'] = {(dict(e)['h'], dict(e)['res'], dict(e)['tok'])
-                            for e in spec['jset']}
+            want['jset'] = {(dict(e)['h'], REPORT[dict(e)['res']],
+                             dict(e)['tok']) for e in spec['jset']}
             want['dset'] = set(spec['dset'])
             want['skey'] = spec['skey']
-            ck = spec['ckey']
-            want['ckey'] = (None if ck == 0 else b'done' if ck == -1
-                            else self.realtok.get(ck, f'<token of {ck}>'))
+            claim, tok = itf.split(spec['ckey'])
+            want['ckey'] = {'NoClaim': None, 'Done': b'done'}.get(
+                claim, self.realtok.get(tok, f'<token of {tok}>'))
             if isinstance(real['ckey'], bytes) and real['ckey'] != b'done':
                 real['ckey'] = real['ckey'].decode()
         else:
@@ -318,34 +342,33 @@ def replay(h: Harness, path: Path) -> int:
     threads: dict[int, ExecThread] = {}
     prev = states_[0]
     for i, st in enumerate(states_):
-        act = st['lastAction']
-        kind, w = act['kind'], act['w']
-        where = f'{path.name} step {i} ({kind} w={w} {act["outcome"]})'
-        e_prev = prev['execs'].get(w) if w else None
-        e_new = st['execs'].get(w) if w else None
+        kind, w, outcome = action(st['lastAction'])
+        where = f'{path.name} step {i} ({kind} w={w} {outcome})'
+        e_prev = header_run(prev['execs'][w]) if w else None
+        e_new = header_run(st['execs'][w]) if w else None
         parked = None
-        if kind in ('init', 'dup', 'deliver', 'deliverUnlock'):
-            if kind == 'deliver':
+        if kind in ('Init', 'Dup', 'Deliver', 'DeliverUnlock'):
+            if kind == 'Deliver':
                 h.tok2h[e_new['tok']] = e_new['h']
-        elif kind == 'store':
+        elif kind == 'Store':
             tok, hh = e_new['tok'], e_new['h']
             req = h.request(hh)
             ex = ExecThread(h.in_worker(lambda r=req, t=tok: h.backend.mark_as_done(
                 r.id, {'run': t}, request=r._context)), f'exec{w}')
             threads[w] = ex
             parked = ex.start()
-        elif kind == 'finish' and w not in threads:
+        elif kind == 'Finish' and w not in threads:
             parked = 'END'   # the code already returned at the last step
-        elif kind in ('partReturn', 'join', 'extend', 'cleanup', 'count',
-                      'finish'):
+        elif kind in ('PartReturn', 'Join', 'Extend', 'Cleanup', 'Count',
+                      'Finish'):
             parked = threads[w].advance()
-        elif kind == 'publish':
-            threads[w].plan = act['outcome']
+        elif kind == 'Publish':
+            threads[w].plan = 'refused' if outcome == 'Refused' else 'ok'
             parked = threads[w].advance()
-        elif kind == 'loseWorker':
+        elif kind == 'LoseWorker':
             if w in threads:
                 threads.pop(w).dead = True   # never released again
-        elif kind == 'loseChild':
+        elif kind == 'LoseChild':
             old = threads.pop(w, None)
             if old is not None:
                 old.dead = True
@@ -360,7 +383,7 @@ def replay(h: Harness, path: Path) -> int:
             parked = ex.start()
             if parked != 'END':
                 threads[w] = ex
-        elif kind in ('claimExpires', 'doneExpires'):
+        elif kind in ('ClaimExpires', 'DoneExpires'):
             h.backend.client.delete(h.keys()['c'])
         else:
             raise Mismatch(f'{where}: no replay for action {kind}')
@@ -370,14 +393,14 @@ def replay(h: Harness, path: Path) -> int:
             ex = threads.get(w)
             if ex is not None and ex.error is not None:
                 raise Mismatch(f'{where}: thread raised {ex.error!r}')
-            if not e_new['busy'] or kind == 'finish':
+            if e_new is None or kind == 'Finish':
                 want = 'END'
-            elif e_new['pc'] == 'finish':
-                # the step's own hook point, before the code returns
-                want = {'partReturn': 'partReturned', 'extend': 'extended',
-                        'cleanup': 'cleaned' if h.proto == 'redis' else 'END',
-                        'count': 'END' if act['outcome'] == 'nogroup'
-                        else 'counted'}.get(kind, 'END')
+            elif e_new['pc'] == 'HeaderDone':
+                if (kind == 'Cleanup' and h.proto != 'redis'
+                        or kind == 'Count' and outcome == 'NoGroup'):
+                    want = 'END'
+                else:
+                    want = PARK_DONE.get(kind, 'END')
             else:
                 want = PARK[h.proto][e_new['pc']]
             if parked != want:
@@ -386,10 +409,11 @@ def replay(h: Harness, path: Path) -> int:
             if parked == 'END':
                 threads.pop(w, None)
         # learn the real claim token when the spec's exec takes the claim
-        if h.proto == 'redis' and st['ckey'] > 0 and st['ckey'] not in h.realtok:
+        claim, tok = itf.split(st['ckey'])
+        if h.proto == 'redis' and claim == 'Claimed' and tok not in h.realtok:
             raw = h.backend.client.get(h.keys()['c'])
             if raw:
-                h.realtok[st['ckey']] = raw.decode()
+                h.realtok[tok] = raw.decode()
         h.compare(st, where)
         prev = st
     for ex in threads.values():   # leave parked execs parked (dead)
