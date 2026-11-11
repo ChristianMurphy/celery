@@ -23,11 +23,12 @@ a finding only once the real code reproduced it ([findings/](findings/README.md)
 | Spec | Family | Pinned to | Properties | Instances | Fast tier | Lemma 1 (every run is finite) |
 |---|---|---|---|---|---|---|
 | [`resultstate.qnt`](result/resultstate.qnt) | [result/](result/README.md) | celery 768e476 | 3 and 1 witnesses | 4 | rtw, es | `progress`, a closed-form measure |
-| [`chord.qnt`](canvas/chord.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 3 witnesses | 69 | redis_dup, redis_wlost_late, kv_dup, unlock_child_reject, once_dup, oncev1_dup, mixed_dup, redisfix1_interrupt | `progress`, a closed-form measure |
+| [`chord.qnt`](canvas/chord.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 3 witnesses | 69 | redis_dup, redis_wlost_late, kv_dup, unlock_child_reject, once_dup, mixed_dup | `progress`, a closed-form measure |
 | [`redis_transport.qnt`](transport/redis_transport.qnt) | [transport/](transport/README.md) | kombu 445027e, kombu PR 2831 c61b525 | 9 and 3 witnesses | 27 | main_crash, paused_credit_timeout, pr_credit_timeout, renewblind_held_credit | finite by exhaustive search with the step counter in the state |
 | [`worker.qnt`](worker/worker.qnt) | [worker/](worker/README.md) | celery 768e476, kombu 445027e, kombu PR 2831 c61b525 | 8 and 2 witnesses | 94 | main_late_partition, pr_late_shutdown, pr_late_eta, pr_late_cut, renewall_late_hang, best_late_crash | finite by exhaustive search with the step counter in the state |
 | [`publisher.qnt`](transport/publisher.qnt) | [transport/](transport/README.md) | celery 768e476 | 5 and 1 witnesses | 6 | off_crash, on_none | finite by exhaustive search with the step counter in the state |
 | [`chain.qnt`](canvas/chain.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 4 witnesses | 23 | late_none, late_unencodable | finite by exhaustive search with the step counter in the state |
+| [`redelivery.qnt`](worker/redelivery.qnt) | [worker/](worker/README.md) | celery 768e476, kombu 445027e | 7 and 4 witnesses | 21 | redis_late_short, redis_late_long_w1 | finite by exhaustive search with the step counter in the state |
 <!-- end generated -->
 
 ## Layout

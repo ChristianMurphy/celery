@@ -162,6 +162,23 @@ MUTANTS = [
     ('chain: a lost node\'s message is not requeued', 'chain.qnt', 'late_node', 'quietDone',
      '      if (r.acked) Q::dkeep else Q::requeue(r.m),\n      jobs\' = jobs.set(w, Idle), stored\' = stored, keepObs,\n      applied\' = applied, used\' = { ...used, nodes',
      '      Q::dkeep,\n      jobs\' = jobs.set(w, Idle), stored\' = stored, keepObs,\n      applied\' = applied, used\' = { ...used, nodes'),
+    # redelivery.qnt: one mutant per property
+    ('redelivery: an ack that leaves the record (restored again and again)', 'redelivery.qnt', 'redis_late_long', 'noLoop',
+     "      rec' = if (REDIS) NoRec else rec,\n      unacked' = unackedAfter(w, h),",
+     "      rec' = rec,\n      unacked' = unackedAfter(w, h),"),
+    ('redelivery: dead-lettering that drops', 'redelivery.qnt', 'quorum_dlx_kill', 'noSilentLoss',
+     "ended' = if (over) (if (CFG.dlx) DeadLettered else Dropped) else ended,",
+     "ended' = if (over) Dropped else ended,"),
+    ('redelivery: an early ack that leaves the record', 'redelivery.qnt', 'redis_early_kill', 'earlyAtMostOnce',
+     "rec' = if (REDIS and not(LATE)) NoRec else rec,", "rec' = rec,"),
+    ('redelivery: a restore that does not mark the copy redelivered', 'redelivery.qnt', 'redis_dedup_long_w1', 'noRerunAfterSuccess',
+     "ready' = ready + 1, redeliv' = true, rec' = NoRec,", "ready' = ready + 1, redeliv' = redeliv, rec' = NoRec,"),
+    ('redelivery: a delivery that leaves the copy on the queue', 'redelivery.qnt', 'redis_late_short', 'projectionOk',
+     "ready' = ready - 1, redeliv' = false,", "ready' = ready, redeliv' = false,"),
+    ('redelivery: restore before the visibility timeout', 'redelivery.qnt', 'redis_late_short', 'exactlyOnce',
+     'REDIS, ageOf(rec) == T, hasRec(rec),', 'REDIS, hasRec(rec),'),
+    ('redelivery: no restore_visible', 'redelivery.qnt', 'redis_late_kill', 'quietDone',
+     'REDIS, ageOf(rec) == T, hasRec(rec),', 'false, ageOf(rec) == T, hasRec(rec),'),
 ]
 
 

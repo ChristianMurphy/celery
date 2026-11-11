@@ -848,6 +848,211 @@
    }
   }
  },
+ "redelivery.qnt": {
+  "classic_confirm_loss": {
+   "D": 6,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7
+   }
+  },
+  "classic_dedup_long": {
+   "D": 23,
+   "violated": {
+    "exactlyOnce": 9,
+    "neverDone": 11,
+    "neverQuiet": 24,
+    "neverTimedOut": 7,
+    "neverTwice": 9
+   }
+  },
+  "classic_early_cut": {
+   "D": 11,
+   "violated": {
+    "earlyAtMostOnce": 8,
+    "neverDone": 6,
+    "neverQuiet": 6,
+    "neverTwice": 8,
+    "noRerunAfterSuccess": 10
+   }
+  },
+  "classic_late_cut": {
+   "D": 21,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverTimedOut": 13,
+    "neverTwice": 8,
+    "noRerunAfterSuccess": 10
+   }
+  },
+  "classic_late_kill": {
+   "D": 12,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverTwice": 7,
+    "noRerunAfterSuccess": 9
+   }
+  },
+  "classic_late_long": {
+   "D": 38,
+   "violated": {
+    "exactlyOnce": 9,
+    "neverDone": 11,
+    "neverTimedOut": 7,
+    "neverTwice": 9,
+    "noLoop": 26,
+    "noRerunAfterSuccess": 18
+   }
+  },
+  "classic_late_short": {
+   "D": 6,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7
+   }
+  },
+  "classic_noconfirm_loss": {
+   "D": 6,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 3,
+    "noSilentLoss": 3,
+    "quietDone": 3
+   }
+  },
+  "classic_retry_long": {
+   "D": 32,
+   "violated": {
+    "exactlyOnce": 9,
+    "neverDone": 10,
+    "neverTimedOut": 7,
+    "neverTwice": 9,
+    "noLoop": 22,
+    "noRerunAfterSuccess": 12
+   }
+  },
+  "quorum_dlx_kill": {
+   "D": 14,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverTwice": 7,
+    "noRerunAfterSuccess": 9
+   }
+  },
+  "quorum_late_kill": {
+   "D": 14,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverTwice": 7,
+    "noRerunAfterSuccess": 9,
+    "noSilentLoss": 6,
+    "quietDone": 8
+   }
+  },
+  "quorum_late_long": {
+   "D": 29,
+   "violated": {
+    "exactlyOnce": 9,
+    "neverDone": 11,
+    "neverQuiet": 30,
+    "neverTimedOut": 7,
+    "neverTwice": 9,
+    "noRerunAfterSuccess": 18
+   }
+  },
+  "redis_dedup_long_w1": {
+   "D": 12,
+   "violated": {
+    "neverDone": 9,
+    "neverQuiet": 13,
+    "neverTimedOut": 7
+   }
+  },
+  "redis_early_kill": {
+   "D": 11,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 6,
+    "neverTimedOut": 8,
+    "noSilentLoss": 5,
+    "quietDone": 6
+   }
+  },
+  "redis_late_kill": {
+   "D": 14,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverTimedOut": 8,
+    "neverTwice": 11,
+    "noRerunAfterSuccess": 12
+   }
+  },
+  "redis_late_long": {
+   "D": 15,
+   "violated": {
+    "exactlyOnce": 9,
+    "neverDone": 11,
+    "neverQuiet": 16,
+    "neverTimedOut": 7,
+    "neverTwice": 9
+   }
+  },
+  "redis_late_long_w1": {
+   "D": 33,
+   "violated": {
+    "exactlyOnce": 12,
+    "neverDone": 9,
+    "neverTimedOut": 7,
+    "neverTwice": 12,
+    "noLoop": 19,
+    "noRerunAfterSuccess": 12
+   }
+  },
+  "redis_late_long_w1p2": {
+   "D": 16,
+   "violated": {
+    "exactlyOnce": 12,
+    "neverDone": 10,
+    "neverQuiet": 17,
+    "neverTimedOut": 7,
+    "neverTwice": 12,
+    "noRerunAfterSuccess": 12
+   }
+  },
+  "redis_late_loss": {
+   "D": 7,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 3,
+    "noSilentLoss": 3,
+    "quietDone": 3
+   }
+  },
+  "redis_late_short": {
+   "D": 6,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7
+   }
+  },
+  "redis_nopf_long_w1p2": {
+   "D": 33,
+   "violated": {
+    "exactlyOnce": 12,
+    "neverDone": 9,
+    "neverQuiet": 17,
+    "neverTimedOut": 7,
+    "neverTwice": 12,
+    "noLoop": 19,
+    "noRerunAfterSuccess": 12
+   }
+  }
+ },
  "redis_transport.qnt": {
   "main_crash": {
    "D": 16,

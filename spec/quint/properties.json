@@ -59,9 +59,7 @@
     "kv_dup",
     "unlock_child_reject",
     "once_dup",
-    "oncev1_dup",
-    "mixed_dup",
-    "redisfix1_interrupt"
+    "mixed_dup"
    ],
    "passes_all": "redis_dup",
    "progress": "closed form",
@@ -196,6 +194,39 @@
     "late_unencodable"
    ],
    "passes_all": "late_none",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "redelivery.qnt": {
+   "family": "worker",
+   "types": "redeliverytypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "noLoop",
+    "noSilentLoss",
+    "earlyAtMostOnce",
+    "noRerunAfterSuccess",
+    "projectionOk",
+    "exactlyOnce",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverDone",
+    "neverTimedOut",
+    "neverTwice"
+   ],
+   "apalache": [],
+   "fast": [
+    "redis_late_short",
+    "redis_late_long_w1"
+   ],
+   "passes_all": "redis_late_short",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -1795,6 +1826,339 @@
    "statement": "b can start while a's SUCCESS is not stored yet: the links are published before the result is stored.",
    "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
    "source": "celery/app/trace.py:591-593 (768e476): \"callback tasks must be applied before the result is stored, so that result.children is populated\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.noLoop",
+   "spec": "redelivery.qnt",
+   "definition": "noLoop",
+   "kind": "safety",
+   "pattern": "Absence (a delivery from a state an earlier delivery started from), global",
+   "statement": "No task is redelivered without bound: no delivery starts from a state that an earlier delivery started from (counters, ids and the order of the workers aside), so no cycle of deliveries can repeat for ever.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/getting-started/backends-and-brokers/redis.rst:318-320 (celery 768e476): \"if that happens it will be executed again, and again in a loop\" (said of ETA, countdown and retry tasks); docs/userguide/calling.rst:318-334 (celery 768e476): the consumer timeout closes the channel",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverTimedOut",
+   "mutant": "redelivery: an ack that leaves the record (restored again and again)",
+   "violations": [
+    {
+     "instances": "redis_*",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:318-320 (celery 768e476): \"if that happens it will be executed again, and again in a loop\" (said of ETA, countdown and retry tasks)",
+     "note": "a long acks_late task loops too when no consumer has credit for the restored copy before the first run acks: one process with prefetch 1 (the setting optimizing.rst recommends with acks_late), or worker_disable_prefetch; the first run's ack then finds no record of the copy, the copy's own record times out again. With credit elsewhere the first run's ack removes the copy's record (same tag) and the task runs at most ceil(run / timeout) times"
+    },
+    {
+     "instances": "classic_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": "each run outlasts consumer_timeout: the channel closes and returns the message, the worker exits (or reconnects with broker_channel_error_retry), the run finishes and its ack goes to the closed channel; worker_deduplicate_successful_tasks ends it"
+    }
+   ]
+  },
+  {
+   "id": "redelivery.noSilentLoss",
+   "spec": "redelivery.qnt",
+   "definition": "noSilentLoss",
+   "kind": "safety",
+   "pattern": "Universality (a published task is held, final or dead-lettered), global",
+   "statement": "A published task is on the queue, recorded as unacked, or held by a live worker, or its result is final, or the broker dead-lettered it: it is never gone without anyone told.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476); redis.rst:262-273",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "redelivery: dead-lettering that drops",
+   "violations": [
+    {
+     "instances": "redis_early_kill",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent \"just before it's executed, so that a task invocation that already started is never executed again\"",
+     "note": "a worker killed after the early ack: the result stays PENDING"
+    },
+    {
+     "instances": "redis_late_loss",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): \"With the default RDB snapshotting you can lose tasks published since the last snapshot\"",
+     "note": "a ready copy or the unacked record lost by a restart without fsync or a failover"
+    },
+    {
+     "instances": "classic_noconfirm_loss",
+     "reason": "documented",
+     "where": "docs/userguide/calling.rst:525-527 (celery 768e476): \"Messages can still be silently dropped ... Enable confirm_publish\"; tracker entry for the Discussion on the confirm_publish default",
+     "note": "a classic queue killed before it wrote a publish that was not confirmed; measured in the exactly-once report (3,659 of 5,100 lost without confirms, 0 with)"
+    },
+    {
+     "instances": "quorum_late_kill",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): \"Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop\"",
+     "note": "two kills with a delivery limit of 1"
+    }
+   ]
+  },
+  {
+   "id": "redelivery.earlyAtMostOnce",
+   "spec": "redelivery.qnt",
+   "definition": "earlyAtMostOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one run with early ack), global",
+   "statement": "With early ack a task that started is never executed again.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent \"just before it's executed, so that a task invocation that already started is never executed again\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverTwice",
+   "mutant": "redelivery: an early ack that leaves the record",
+   "violations": [
+    {
+     "instances": "classic_early_cut",
+     "reason": "open",
+     "where": "tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026)",
+     "note": "acks written into a connection that is cut never reach RabbitMQ, the worker gets no error, and the broker returns the delivery when it closes the channel; measured 17 to 37 per run with 3 s and 25 s blackholes"
+    }
+   ]
+  },
+  {
+   "id": "redelivery.noRerunAfterSuccess",
+   "spec": "redelivery.qnt",
+   "definition": "noRerunAfterSuccess",
+   "kind": "safety",
+   "pattern": "Absence (a run that starts while SUCCESS is stored), global",
+   "statement": "No run of a task starts while its SUCCESS is stored.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "celery/app/trace.py:487-528 (768e476): worker_deduplicate_successful_tasks skips a redelivered acks_late task whose SUCCESS is stored",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "redelivery: a restore that does not mark the copy redelivered",
+   "violations": [
+    {
+     "instances": "classic_early_cut",
+     "reason": "open",
+     "where": "tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026)",
+     "note": ""
+    },
+    {
+     "instances": "redis_*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "killed after the store and before the ack"
+    },
+    {
+     "instances": "classic_*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "killed after the store and before the ack"
+    },
+    {
+     "instances": "quorum_*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "killed after the store and before the ack"
+    },
+    {
+     "instances": "classic_late_cut",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "a lost connection after the store and before the ack"
+    },
+    {
+     "instances": "redis_*",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "the copy waits for the first run to end"
+    },
+    {
+     "instances": "classic_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": ""
+    },
+    {
+     "instances": "quorum_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "redelivery.projectionOk",
+   "spec": "redelivery.qnt",
+   "definition": "projectionOk",
+   "kind": "safety",
+   "pattern": "Universality (every step projects to steps of lib/delivery.qnt), global",
+   "statement": "Every step changes the broker's copies of the message as a step of the abstract delivery environment does (publish, deliver, ack, requeue, take or lose), so the canvas specs built on that environment cover these brokers.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "lib/delivery.qnt; the same check as worker/worker_projection.qnt",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverTimedOut",
+   "mutant": "redelivery: a delivery that leaves the copy on the queue",
+   "violations": []
+  },
+  {
+   "id": "redelivery.exactlyOnce",
+   "spec": "redelivery.qnt",
+   "definition": "exactlyOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (exactly one run), while no fault was used",
+   "statement": "While no fault was used (a timeout, a warm stop and a supervisor's restart are not faults), the task starts once, and a quiet system has stored its SUCCESS and holds no copy.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "redelivery: restore before the visibility timeout",
+   "violations": [
+    {
+     "instances": "redis_*",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": ""
+    },
+    {
+     "instances": "classic_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": ""
+    },
+    {
+     "instances": "quorum_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": "the delivery limit (2) ends the loop with SUCCESS stored"
+    }
+   ]
+  },
+  {
+   "id": "redelivery.quietDone",
+   "spec": "redelivery.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: a quiet system has ended)",
+   "statement": "A quiet system that the search did not stop at the delivery cap has stored the task's SUCCESS, or the broker dead-lettered it: every task ends, with the crash budget as the fairness assumption.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/userguide/optimizing.rst:180-183 (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "redelivery: no restore_visible",
+   "violations": [
+    {
+     "instances": "redis_early_kill",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent \"just before it's executed, so that a task invocation that already started is never executed again\"",
+     "note": ""
+    },
+    {
+     "instances": "redis_late_loss",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): \"With the default RDB snapshotting you can lose tasks published since the last snapshot\"",
+     "note": ""
+    },
+    {
+     "instances": "classic_noconfirm_loss",
+     "reason": "documented",
+     "where": "docs/userguide/calling.rst:525-527 (celery 768e476): \"Messages can still be silently dropped ... Enable confirm_publish\"; tracker entry for the Discussion on the confirm_publish default",
+     "note": ""
+    },
+    {
+     "instances": "quorum_late_kill",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): \"Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop\"",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "redelivery.progress",
+   "spec": "redelivery.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state; a run stops at CFG.cap deliveries. The spec has no closed-form measure.",
+   "assumptions": "fault budgets are finite; at most CFG.cap deliveries; exhaustive searches of small instances, not proofs for all sizes",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.stepOrQuiet",
+   "spec": "redelivery.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state (one where nothing is due and time changes nothing): TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "a step that is due happens before time passes (maximal progress); a restart is never refused",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.neverQuiet",
+   "spec": "redelivery.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends without hitting the delivery cap.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.neverDone",
+   "spec": "redelivery.qnt",
+   "definition": "neverDone",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run stores SUCCESS.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.neverTimedOut",
+   "spec": "redelivery.qnt",
+   "definition": "neverTimedOut",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A restore_visible or a consumer timeout fires.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.neverTwice",
+   "spec": "redelivery.qnt",
+   "definition": "neverTwice",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The task starts twice.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "sanity",
    "instances": "all",
    "evidence": "",
    "witness": "",

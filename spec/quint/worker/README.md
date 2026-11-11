@@ -432,6 +432,147 @@ The ack through a collected channel needs a worker; those runs are in the
 reply drafted for celery issue 11054. Spec mutants: 14 for these three specs
 (`tools/mutate_spec.py worker`, `publisher`, `transport`), all caught.
 
+## Redelivery: bounded, and every task ends
+
+`redelivery.qnt`, `redelivery_instances.qnt`: one task message, one or two
+workers with one pool process each, on a Redis broker or a RabbitMQ
+classic or quorum queue, with a coarse clock. A run takes `runLen` units,
+and the visibility timeout (Redis) or `consumer_timeout` (RabbitMQ) is
+`timeout` units; time passes only when nothing that is due can happen
+first (a delivery to a worker with credit, a start, an end, an ack, a
+timeout that is due, a restart). The broker's copies project onto
+`../lib/delivery.qnt` at every step (`projectionOk`).
+
+The two brokers differ where it matters here:
+
+* Redis: a delivery writes a record under the message's delivery tag, an
+  ack removes the record by tag from any connection, and `restore_visible`
+  puts a record older than the visibility timeout back on the queue,
+  marked redelivered (kombu redis.py:474-560, 1263-1270). A message keeps
+  its tag, so the first run's ack removes the record of the copy that was
+  delivered while it ran.
+* RabbitMQ: a delivery is unacked on its channel, an ack is valid only on
+  that channel, and a closed channel returns what it held. A delivery
+  unacked past `consumer_timeout` closes the channel; Celery treats the
+  channel error as unrecoverable and stops warm (the run goes on), unless
+  `broker_channel_error_retry` reconnects it. A quorum queue drops or
+  dead-letters a message past its delivery limit.
+
+Instances: `<broker>_<setting>_<case>`; `long` runs take 3 units against a
+timeout of 2, `short` ones 1; `w1` is one worker, `p2` a prefetch count
+of 2; `nopf` is `worker_disable_prefetch`; `retry` is
+`broker_channel_error_retry`; cases `kill` (SIGKILL of a worker), `cut`
+(an AMQP connection that stops carrying anything until heartbeats notice),
+`loss` (the broker loses a write it acknowledged).
+
+`noLoop` compares the state each delivery starts from, without counters,
+ids and the order of the workers: a delivery that starts from a state an
+earlier one started from is a cycle that can repeat for ever. The search
+stops a run at four deliveries; `quietDone` and `exactlyOnce` say nothing
+about a run stopped there.
+
+<!-- generated: properties redelivery.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `noLoop` | safety | No task is redelivered without bound: no delivery starts from a state that an earlier delivery started from (counters, ids and the order of the workers aside), so no cycle of deliveries can repeat for ever. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Absence (a delivery from a state an earlier delivery started from), global | docs/getting-started/backends-and-brokers/redis.rst:318-320 (celery 768e476): "if that happens it will be executed again, and again in a loop" (said of ETA, countdown and retry tasks); docs/userguide/calling.rst:318-334 (celery 768e476): the consumer timeout closes the channel |
+| `noSilentLoss` | safety | A published task is on the queue, recorded as unacked, or held by a live worker, or its result is final, or the broker dead-lettered it: it is never gone without anyone told. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Universality (a published task is held, final or dead-lettered), global | docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476); redis.rst:262-273 |
+| `earlyAtMostOnce` | safety | With early ack a task that started is never executed again. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Bounded existence (at most one run with early ack), global | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent "just before it's executed, so that a task invocation that already started is never executed again" |
+| `noRerunAfterSuccess` | safety | No run of a task starts while its SUCCESS is stored. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Absence (a run that starts while SUCCESS is stored), global | celery/app/trace.py:487-528 (768e476): worker_deduplicate_successful_tasks skips a redelivered acks_late task whose SUCCESS is stored |
+| `projectionOk` | safety | Every step changes the broker's copies of the message as a step of the abstract delivery environment does (publish, deliver, ack, requeue, take or lose), so the canvas specs built on that environment cover these brokers. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Universality (every step projects to steps of lib/delivery.qnt), global | lib/delivery.qnt; the same check as worker/worker_projection.qnt |
+| `exactlyOnce` | safety | While no fault was used (a timeout, a warm stop and a supervisor's restart are not faults), the task starts once, and a quiet system has stored its SUCCESS and holds no copy. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Bounded existence (exactly one run), while no fault was used | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
+| `quietDone` | liveness | A quiet system that the search did not stop at the delivery cap has stored the task's SUCCESS, or the broker dead-lettered it: every task ends, with the crash budget as the fairness assumption. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Response (lemma 3 of 3: a quiet system has ended) | docs/userguide/optimizing.rst:180-183 (celery 768e476) |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state; a run stops at CFG.cap deliveries. The spec has no closed-form measure. Assumes: fault budgets are finite; at most CFG.cap deliveries; exhaustive searches of small instances, not proofs for all sizes. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state (one where nothing is due and time changes nothing): TLC runs stepOrQuiet with deadlock detection on. Assumes: a step that is due happens before time passes (maximal progress); a restart is never refused. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends without hitting the delivery cap. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
+| `neverDone` | witness | Some run stores SUCCESS. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
+| `neverTimedOut` | witness | A restore_visible or a consumer timeout fires. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
+| `neverTwice` | witness | The task starts twice. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results redelivery.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| classic_confirm_loss | 6 | none | neverQuiet (7), neverDone (6) |
+| classic_dedup_long | 23 | exactlyOnce (9) | neverQuiet (24), neverDone (11), neverTimedOut (7), neverTwice (9) |
+| classic_early_cut | 11 | earlyAtMostOnce (8), noRerunAfterSuccess (10) | neverQuiet (6), neverDone (6), neverTwice (8) |
+| classic_late_cut | 21 | noRerunAfterSuccess (10) | neverQuiet (7), neverDone (6), neverTimedOut (13), neverTwice (8) |
+| classic_late_kill | 12 | noRerunAfterSuccess (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| classic_late_long | 38 | noLoop (26), noRerunAfterSuccess (18), exactlyOnce (9) | neverDone (11), neverTimedOut (7), neverTwice (9) |
+| classic_late_short | 6 | none | neverQuiet (7), neverDone (6) |
+| classic_noconfirm_loss | 6 | noSilentLoss (3), quietDone (3) | neverQuiet (3), neverDone (6) |
+| classic_retry_long | 32 | noLoop (22), noRerunAfterSuccess (12), exactlyOnce (9) | neverDone (10), neverTimedOut (7), neverTwice (9) |
+| quorum_dlx_kill | 14 | noRerunAfterSuccess (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| quorum_late_kill | 14 | noSilentLoss (6), noRerunAfterSuccess (9), quietDone (8) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| quorum_late_long | 29 | noRerunAfterSuccess (18), exactlyOnce (9) | neverQuiet (30), neverDone (11), neverTimedOut (7), neverTwice (9) |
+| redis_dedup_long_w1 | 12 | none | neverQuiet (13), neverDone (9), neverTimedOut (7) |
+| redis_early_kill | 11 | noSilentLoss (5), quietDone (6) | neverQuiet (6), neverDone (6), neverTimedOut (8) |
+| redis_late_kill | 14 | noRerunAfterSuccess (12) | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11) |
+| redis_late_long | 15 | exactlyOnce (9) | neverQuiet (16), neverDone (11), neverTimedOut (7), neverTwice (9) |
+| redis_late_long_w1 | 33 | noLoop (19), noRerunAfterSuccess (12), exactlyOnce (12) | neverDone (9), neverTimedOut (7), neverTwice (12) |
+| redis_late_long_w1p2 | 16 | noRerunAfterSuccess (12), exactlyOnce (12) | neverQuiet (17), neverDone (10), neverTimedOut (7), neverTwice (12) |
+| redis_late_loss | 7 | noSilentLoss (3), quietDone (3) | neverQuiet (3), neverDone (6) |
+| redis_late_short | 6 | none | neverQuiet (7), neverDone (6) |
+| redis_nopf_long_w1p2 | 33 | noLoop (19), noRerunAfterSuccess (12), exactlyOnce (12) | neverQuiet (17), neverDone (9), neverTimedOut (7), neverTwice (12) |
+<!-- end generated -->
+
+What the model says:
+
+* Redis, a run longer than the visibility timeout: with a second worker
+  that has credit, the copy is delivered while the first run goes on, the
+  first run's ack removes the copy's record, and the task runs twice
+  (`redis_late_long`; ceil(run / timeout) times in general). With one
+  process and a prefetch count of 1 (`redis_late_long_w1`, the setting
+  optimizing.rst recommends with `acks_late`) or `worker_disable_prefetch`
+  (`redis_nopf_long_w1p2`), no consumer takes the copy before the first
+  run acks, so the copy gets a record of its own, which times out in turn:
+  a loop (19 states). A prefetch count of 2 breaks it
+  (`redis_late_long_w1p2`), and so does `worker_deduplicate_successful_tasks`
+  (`redis_dedup_long_w1`).
+* RabbitMQ, a run longer than `consumer_timeout`: the channel closes and
+  returns the message, the run finishes and its ack goes to the closed
+  channel, and the next delivery does the same: a loop whether the worker
+  exits and is restarted (`classic_late_long`, 26 states) or reconnects
+  (`classic_retry_long`). Deduplication ends it (`classic_dedup_long`);
+  a quorum queue's delivery limit ends it with SUCCESS stored
+  (`quorum_late_long`).
+* Early ack across a cut AMQP connection runs the task twice: the ack is
+  written into the cut and never arrives, and the broker returns the
+  delivery when it closes the channel (`classic_early_cut`, 8 states).
+* Silent loss, all documented: an early-acked run lost with its worker, a
+  Redis that loses a write it acknowledged, an unconfirmed publish to a
+  classic queue, a quorum queue's delivery limit reached by crashes with no
+  dead letter exchange (`quorum_late_kill`; with one, `quorum_dlx_kill`
+  passes).
+
+Why each violation is expected:
+
+<!-- generated: reasons redelivery.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `noLoop` | redis_late_long_w1 (19), redis_nopf_long_w1p2 (19) | documented | docs/getting-started/backends-and-brokers/redis.rst:318-320 (celery 768e476): "if that happens it will be executed again, and again in a loop" (said of ETA, countdown and retry tasks). a long acks_late task loops too when no consumer has credit for the restored copy before the first run acks: one process with prefetch 1 (the setting optimizing.rst recommends with acks_late), or worker_disable_prefetch; the first run's ack then finds no record of the copy, the copy's own record times out again. With credit elsewhere the first run's ack removes the copy's record (same tag) and the task runs at most ceil(run / timeout) times |
+| `noLoop` | classic_late_long (26), classic_retry_long (22) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only. each run outlasts consumer_timeout: the channel closes and returns the message, the worker exits (or reconnects with broker_channel_error_retry), the run finishes and its ack goes to the closed channel; worker_deduplicate_successful_tasks ends it |
+| `noSilentLoss` | redis_early_kill (5) | documented | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent "just before it's executed, so that a task invocation that already started is never executed again". a worker killed after the early ack: the result stays PENDING |
+| `noSilentLoss` | redis_late_loss (3) | documented | docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): "With the default RDB snapshotting you can lose tasks published since the last snapshot". a ready copy or the unacked record lost by a restart without fsync or a failover |
+| `noSilentLoss` | classic_noconfirm_loss (3) | documented | docs/userguide/calling.rst:525-527 (celery 768e476): "Messages can still be silently dropped ... Enable confirm_publish"; tracker entry for the Discussion on the confirm_publish default. a classic queue killed before it wrote a publish that was not confirmed; measured in the exactly-once report (3,659 of 5,100 lost without confirms, 0 with) |
+| `noSilentLoss` | quorum_late_kill (6) | documented | docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): "Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop". two kills with a delivery limit of 1 |
+| `earlyAtMostOnce` | classic_early_cut (8) | open | tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026). acks written into a connection that is cut never reach RabbitMQ, the worker gets no error, and the broker returns the delivery when it closes the channel; measured 17 to 37 per run with 3 s and 25 s blackholes |
+| `noRerunAfterSuccess` | classic_early_cut (10) | open | tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026) |
+| `noRerunAfterSuccess` | redis_late_kill (12) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
+| `noRerunAfterSuccess` | classic_late_kill (9) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
+| `noRerunAfterSuccess` | quorum_dlx_kill (9), quorum_late_kill (9) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
+| `noRerunAfterSuccess` | classic_late_cut (10) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". a lost connection after the store and before the ack |
+| `noRerunAfterSuccess` | redis_late_long_w1 (12), redis_late_long_w1p2 (12), redis_nopf_long_w1p2 (12) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". the copy waits for the first run to end |
+| `noRerunAfterSuccess` | classic_late_long (18), classic_retry_long (12) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
+| `noRerunAfterSuccess` | quorum_late_long (18) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
+| `exactlyOnce` | redis_late_long (9), redis_late_long_w1 (12), redis_late_long_w1p2 (12), redis_nopf_long_w1p2 (12) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
+| `exactlyOnce` | classic_dedup_long (9), classic_late_long (9), classic_retry_long (9) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
+| `exactlyOnce` | quorum_late_long (9) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only. the delivery limit (2) ends the loop with SUCCESS stored |
+| `quietDone` | redis_early_kill (6) | documented | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent "just before it's executed, so that a task invocation that already started is never executed again" |
+| `quietDone` | redis_late_loss (3) | documented | docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): "With the default RDB snapshotting you can lose tasks published since the last snapshot" |
+| `quietDone` | classic_noconfirm_loss (3) | documented | docs/userguide/calling.rst:525-527 (celery 768e476): "Messages can still be silently dropped ... Enable confirm_publish"; tracker entry for the Discussion on the confirm_publish default |
+| `quietDone` | quorum_late_kill (8) | documented | docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): "Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop" |
+<!-- end generated -->
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

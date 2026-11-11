@@ -48,7 +48,7 @@ ACTION = re.compile(r'^\s*action\s+(\w+)')
 #: their own to cite.
 HELPERS = {'init', 'step', 'stutter', 'stepOrQuiet', 'did', 'keepBroker',
            'keepStarts', 'keepRuns', 'setJob', 'setConn', 'restoreAll',
-           'keepObs', 'setRun', 'dinit', 'dkeep'}
+           'keepObs', 'setRun', 'dinit', 'dkeep', 'inner'}
 
 
 def repo(name: str) -> Path | None:
