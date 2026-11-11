@@ -1855,7 +1855,7 @@
     {
      "instances": "classic_*",
      "reason": "open",
-     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only; finding rabbitmq-consumer-timeout-loop (confirmed on 3.13: 6 runs in 60 s with exits, 7 with broker_channel_error_retry)",
      "note": "each run outlasts consumer_timeout: the channel closes and returns the message, the worker exits (or reconnects with broker_channel_error_retry), the run finishes and its ack goes to the closed channel; worker_deduplicate_successful_tasks ends it"
     }
    ]

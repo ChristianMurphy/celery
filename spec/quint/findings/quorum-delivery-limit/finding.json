@@ -1,0 +1,17 @@
+{
+ "id": "quorum-delivery-limit",
+ "title": "A quorum queue drops a task that keeps killing its worker at the delivery limit; the state stays PENDING and nothing logs the drop",
+ "cells": [
+  "quorum_late_kill.noSilentLoss",
+  "quorum_late_kill.quietDone"
+ ],
+ "outcome": "silent loss",
+ "status": "documented",
+ "where": "docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476)",
+ "thread": "none needed: documented; a dead letter exchange makes it visible (quorum_dlx_kill passes)",
+ "confirm": [
+  "../rabbitmq-consumer-timeout-loop/confirm_consumer_timeout_loop.py"
+ ],
+ "scenarios": "",
+ "observed": "Case kill of that script: RabbitMQ 4.1 quorum queue with x-delivery-limit 1, a task that SIGKILLs its worker's main process and child, a supervisor restarting the worker: 2 runs, 3 worker starts, then nothing on the queue and the state PENDING, 60 s watched."
+}

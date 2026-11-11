@@ -1,0 +1,17 @@
+{
+ "id": "rabbitmq-consumer-timeout-loop",
+ "title": "RabbitMQ: an acks_late task longer than consumer_timeout reruns for ever, whether the worker exits or reconnects",
+ "cells": [
+  "classic_late_long.noLoop",
+  "classic_retry_long.noLoop"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); calling.rst:318-334 documents the channel close for countdowns only",
+ "thread": "none yet; closest celery issues 6760 and 6954 (named in the tracker entry)",
+ "confirm": [
+  "confirm_consumer_timeout_loop.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, a real prefork worker -c 1 (prefetch 1, acks_late), consumer_timeout 5 s checked every second, a 9 s task, a supervisor loop restarting the worker, 60 s watched, nothing injected: RabbitMQ 3.13 classic queue: 6 runs, one every 11 s, 6 worker starts, still queued at the end; with broker_channel_error_retry: 7 runs, one every 9 s, no exit, 7 \"Couldn't ack\" logged, still queued; with worker_deduplicate_successful_tasks: 1 run and 1 skip, done. RabbitMQ 4.1 quorum queue with x-delivery-limit 2: 3 runs, then dropped with SUCCESS stored."
+}
