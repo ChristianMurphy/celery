@@ -1917,7 +1917,7 @@
     {
      "instances": "classic_early_cut",
      "reason": "open",
-     "where": "tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026)",
+     "where": "tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026); finding early-ack-amqp-cut (confirmed: 3 of 3 with an injected cut)",
      "note": "acks written into a connection that is cut never reach RabbitMQ, the worker gets no error, and the broker returns the delivery when it closes the channel; measured 17 to 37 per run with 3 s and 25 s blackholes"
     }
    ]

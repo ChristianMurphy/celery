@@ -1,0 +1,16 @@
+{
+ "id": "early-ack-amqp-cut",
+ "title": "Early ack is not at most once across a cut AMQP connection: the ack is written into the cut, and RabbitMQ returns the task when the channel closes",
+ "cells": [
+  "classic_early_cut.earlyAtMostOnce"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026)",
+ "thread": "celery issue 4426 (the exactly-once report leans to a docs reply there)",
+ "confirm": [
+  "confirm_early_ack_cut.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, a real prefork worker -c 1 (prefetch 1, heartbeat 2 s) on RabbitMQ 3.13 through Toxiproxy; the cut (a timeout toxic with timeout 0 both ways, 8 s) is injected while the task ahead runs, so that the next task's early ack falls inside it: 3 of 3 runs ran it twice, no error logged for the ack; without the cut 0 of 2. Natural rate from the exactly-once report (real blackholes of all workers, steady load): 17 to 37 tasks ran twice per run on RabbitMQ. With confirm_publish set and worker heartbeats on, the first attempt did not reproduce: the main process blocked on a heartbeat event publish waiting for its confirm, so the next task never started inside the cut."
+}
