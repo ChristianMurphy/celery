@@ -104,11 +104,11 @@ module classic_dedup_kill {
 }
 module redis_dedup_readerr {
   import redeliverytypes.* from "./redelivery"
-  import redelivery(CFG = { ...config(Redis, Late), dedup: true, max: { ...NONE, kills: 1, readErrors: 1 } }).* from "./redelivery"
+  import redelivery(CFG = { ...config(Redis, Late), dedup: true, max: { ...NONE, kills: 1, backendErrors: 1 } }).* from "./redelivery"
 }
 module redis_dedupretry_readerr {
   import redeliverytypes.* from "./redelivery"
-  import redelivery(CFG = { ...config(Redis, Late), dedup: true, alwaysRetry: true, max: { ...NONE, kills: 1, readErrors: 1 } }).* from "./redelivery"
+  import redelivery(CFG = { ...config(Redis, Late), dedup: true, alwaysRetry: true, max: { ...NONE, kills: 1, backendErrors: 1 } }).* from "./redelivery"
 }
 module redis_dedup_expire {
   import redeliverytypes.* from "./redelivery"
@@ -117,4 +117,14 @@ module redis_dedup_expire {
 module redis_dedup_republish {
   import redeliverytypes.* from "./redelivery"
   import redelivery(CFG = { ...config(Redis, Late), dedup: true, max: { ...NONE, republishes: 1 } }).* from "./redelivery"
+}
+// a backend error outside the task body: the STARTED write or the SUCCESS
+// write
+module redis_late_backenderr {
+  import redeliverytypes.* from "./redelivery"
+  import redelivery(CFG = { ...config(Redis, Late), trackStarted: true, max: { ...NONE, backendErrors: 1 } }).* from "./redelivery"
+}
+module redis_retry_backenderr {
+  import redeliverytypes.* from "./redelivery"
+  import redelivery(CFG = { ...config(Redis, Late), trackStarted: true, alwaysRetry: true, max: { ...NONE, backendErrors: 1 } }).* from "./redelivery"
 }

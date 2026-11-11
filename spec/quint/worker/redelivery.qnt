@@ -102,7 +102,7 @@ module redeliverytypes {
   // policy published it once more: a copy not marked redelivered).
   type Budget = {
     kills: int, cuts: int, losses: int,
-    expiries: int, readErrors: int, republishes: int,
+    expiries: int, backendErrors: int, republishes: int,
   }
   type Snap = {
     stored: Result, ready: int, redeliv: bool, rec: Record,
@@ -110,6 +110,10 @@ module redeliverytypes {
   }
 
   type Lost = LostReady | LostRecord
+  // Where a backend error outside the task body hits: the STARTED write
+  // before the body (track_started), the SUCCESS write after it. (The
+  // deduplication check's read is dedupReadFails.)
+  type ErrorAt = AtStartedWrite | AtSuccessWrite
   type AckOutcome = AckDone | AckOnClosedChannel | AckIntoCut | NoAck
   type Action =
     | Init
@@ -119,6 +123,7 @@ module redeliverytypes {
     | DedupSkip({ w: WorkerId, k: int })
     | DedupReadFails({ w: WorkerId, k: int, ran: bool })
     | Finish({ w: WorkerId, k: int })
+    | BackendFails({ w: WorkerId, k: int, at: ErrorAt, stored: bool })
     | Ack({ w: WorkerId, k: int, outcome: AckOutcome })
     | RestoreVisible
     | ConsumerTimeout(WorkerId)
@@ -135,7 +140,7 @@ module redeliverytypes {
   // Faults, each a bounded number of times. A timeout, a warm stop and a
   // supervisor's restart are not faults.
   pure val NONE: Budget = {
-    kills: 0, cuts: 0, losses: 0, expiries: 0, readErrors: 0, republishes: 0,
+    kills: 0, cuts: 0, losses: 0, expiries: 0, backendErrors: 0, republishes: 0,
   }
 
   type Config = {
@@ -148,6 +153,7 @@ module redeliverytypes {
     timeout: int,          // visibility timeout or consumer_timeout, units
     dedup: bool,           // worker_deduplicate_successful_tasks
     alwaysRetry: bool,     // result_backend_always_retry
+    trackStarted: bool,    // task_track_started
     channelRetry: bool,    // broker_channel_error_retry
     limit: int,            // a quorum queue's delivery limit (0: none)
     dlx: bool,             // the queue has a dead letter exchange
@@ -157,7 +163,7 @@ module redeliverytypes {
   }
   pure def config(b: Broker, a: AckMode): Config = {
     broker: b, ack: a, workers: 2, prefetch: 1, disablePrefetch: false,
-    runLen: 1, timeout: 2, dedup: false, alwaysRetry: false,
+    runLen: 1, timeout: 2, dedup: false, alwaysRetry: false, trackStarted: false,
     channelRetry: false,
     limit: if (b == Quorum) 2 else 0, dlx: false, confirm: true, cap: 4,
     max: NONE,
@@ -454,7 +460,7 @@ module redelivery {
     nondet stores = Set(true, false).oneOf()
     all {
       canStart(w), CFG.dedup, LATE, h.redelivered,
-      used.readErrors < CFG.max.readErrors,
+      used.backendErrors < CFG.max.backendErrors,
       workers' = workers.set(w, Alive({ ...lv(w),
         held: held(w).exclude(Set(h)).union(Set(
           { ...h, stage: if (CFG.alwaysRetry) Running else Ran })) })),
@@ -466,8 +472,48 @@ module redelivery {
       deliveries' = deliveries, snaps' = snaps, looped' = looped,
       timedOut' = timedOut, ackFailed' = ackFailed, effect' = effect,
       skipped' = skipped,
-      used' = { ...used, readErrors: used.readErrors + 1 },
+      used' = { ...used, backendErrors: used.backendErrors + 1 },
       did(DedupReadFails({ w: w, k: h.k, ran: CFG.alwaysRetry })),
+    }
+  }
+
+  // A backend error outside the body: the STARTED write before the body
+  // (trace.py:553-557) or the SUCCESS write after it (mark_as_done) raises
+  // the backend's own error. It reaches the tracer's last handler, as the
+  // failed read of dedupReadFails does: an internal error, on_error stores
+  // FAILURE if the backend takes that write (`stores`), and the message is
+  // acked as a failure. With result_backend_always_retry the backend
+  // retries; the error here is one that a retry gets past.
+  // @cite celery celery/app/trace.py:553-557 "if track_started:"
+  // @cite celery celery/app/trace.py:687-696 "R = report_internal_error(task, exc)"
+  action backendFails(w: WorkerId, at: ErrorAt): bool = {
+    nondet stores = Set(true, false).oneOf()
+    val hs = if (at == AtStartedWrite) waiting(w) else runningIn(w).filter(x => x.left == 0)
+    nondet h = hs.oneOf()
+    val o = if (LATE or at == AtSuccessWrite) NoAck else ackOutcome(w, h)
+    all {
+      if (at == AtStartedWrite) and {
+        canStart(w), CFG.trackStarted,
+        not(CFG.dedup and LATE and h.redelivered),
+      } else and { alive(w), h.left == 0 },
+      not(CFG.alwaysRetry),
+      used.backendErrors < CFG.max.backendErrors,
+      workers' = workers.set(w, Alive({ ...lv(w),
+        held: if (LATE) held(w).exclude(Set(h)).union(Set({ ...h, stage: Ran }))
+              else held(w).exclude(Set(h)) })),
+      stored' = if (stored == Success or not(stores)) stored else Failure,
+      // early ack: the accept acks before the STARTED write fails
+      rec' = if (REDIS and not(LATE)) NoRec else rec,
+      unacked' = if (LATE or at == AtSuccessWrite) unacked else unackedAfter(w, h),
+      published' = published, ready' = ready, redeliv' = redeliv,
+      returns' = returns, ended' = ended, gen' = gen,
+      deliveries' = deliveries, snaps' = snaps, looped' = looped,
+      timedOut' = timedOut,
+      ackFailed' = (ackFailed or o == AckOnClosedChannel or o == AckIntoCut),
+      runs' = runs, rerun' = rerun, rerunDone' = rerunDone,
+      effect' = (effect or at == AtSuccessWrite), skipped' = skipped,
+      used' = { ...used, backendErrors: used.backendErrors + 1 },
+      did(BackendFails({ w: w, k: h.k, at: at, stored: stores })),
     }
   }
 
@@ -683,6 +729,7 @@ module redelivery {
     { nondet w = WORKERS.oneOf()
       any {
         deliver(w), start(w), dedupSkip(w), dedupReadFails(w), finish(w), ack(w),
+        { nondet at = Set(AtStartedWrite, AtSuccessWrite).oneOf() backendFails(w, at) },
         consumerTimeout(w), exit(w), restart(w), notice(w),
         kill(w), cutOff(w),
       } },
@@ -712,6 +759,12 @@ module redelivery {
   // A task whose body never raised is never stored FAILURE: deduplication
   // does not fail a task it could not check.
   val noFailWithoutError: bool = stored != Failure
+  // A backend error outside the body never acks a task without a state a
+  // reader can see: a quiet system (not stopped at the cap, no result
+  // expired, nothing dropped by the broker) has SUCCESS or FAILURE stored.
+  val outcomeVisible: bool =
+    (quiet and not(capped) and used.expiries == 0 and ended == Open)
+      implies final(stored)
   // No run starts after a run finished (whatever is stored then).
   val noRerunAfterDone: bool = not(rerunDone)
   // Every step is a step of the abstract delivery environment.

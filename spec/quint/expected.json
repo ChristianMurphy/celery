@@ -933,6 +933,7 @@
     "neverDone": 6,
     "neverQuiet": 3,
     "noSilentLoss": 3,
+    "outcomeVisible": 3,
     "quietDone": 3
    }
   },
@@ -1013,15 +1014,17 @@
    }
   },
   "redis_dedup_readerr": {
-   "D": 13,
+   "D": 14,
    "violated": {
     "neverDone": 6,
     "neverQuiet": 7,
     "neverSkipped": 12,
     "neverTimedOut": 8,
     "neverTwice": 11,
-    "noFailWithoutError": 10,
+    "noFailWithoutError": 6,
+    "noRerunAfterDone": 12,
     "noSilentLoss": 11,
+    "outcomeVisible": 7,
     "quietDone": 11
    }
   },
@@ -1054,7 +1057,19 @@
     "neverQuiet": 6,
     "neverTimedOut": 8,
     "noSilentLoss": 5,
+    "outcomeVisible": 6,
     "quietDone": 6
+   }
+  },
+  "redis_late_backenderr": {
+   "D": 6,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 5,
+    "noFailWithoutError": 4,
+    "noSilentLoss": 5,
+    "outcomeVisible": 5,
+    "quietDone": 5
    }
   },
   "redis_late_kill": {
@@ -1108,6 +1123,7 @@
     "neverDone": 6,
     "neverQuiet": 3,
     "noSilentLoss": 3,
+    "outcomeVisible": 3,
     "quietDone": 3
    }
   },
@@ -1129,6 +1145,13 @@
     "noLoop": 19,
     "noRerunAfterDone": 12,
     "noRerunAfterSuccess": 12
+   }
+  },
+  "redis_retry_backenderr": {
+   "D": 6,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7
    }
   }
  },

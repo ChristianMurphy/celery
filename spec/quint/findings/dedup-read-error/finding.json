@@ -1,18 +1,22 @@
 {
  "id": "dedup-read-error",
- "title": "worker_deduplicate_successful_tasks: a failed read of the result backend ends a redelivered task without running it; it is acked and stays PENDING when the backend is down",
+ "title": "A backend error outside the task body (the deduplication check's read, the STARTED write, the SUCCESS write) acks the task as an internal error: it never runs, or it ran and nothing final is stored",
  "cells": [
   "redis_dedup_readerr.noFailWithoutError",
   "redis_dedup_readerr.noSilentLoss",
-  "redis_dedup_readerr.quietDone"
+  "redis_dedup_readerr.quietDone",
+  "redis_late_backenderr.noSilentLoss",
+  "redis_late_backenderr.outcomeVisible",
+  "redis_dedup_readerr.outcomeVisible"
  ],
  "outcome": "hang",
  "status": "open",
- "where": "not in the tracker yet; no upstream thread found (searched worker_deduplicate_successful_tasks, BackendGetMetaError, dedup backend unavailable; closest celery PR 10960 and 10159, other paths). The check has caught only BackendGetMetaError since it came in (celery PR 6722, 2021), and that is raised only under result_backend_always_retry",
+ "where": "not in the tracker yet; no upstream thread found (searched worker_deduplicate_successful_tasks, BackendGetMetaError, dedup backend unavailable; closest celery PR 10960 and 10159, other paths). The check has caught only BackendGetMetaError since it came in (celery PR 6722, 2021), and that is raised only under result_backend_always_retry; the lead reproduced the STARTED and SUCCESS write paths for celery issue 9835",
  "thread": "none yet (a new issue candidate)",
  "confirm": [
-  "confirm_dedup_read_error.py"
+  "confirm_dedup_read_error.py",
+  "confirm_backend_error_outside_body.py"
  ],
  "scenarios": "",
- "observed": "768e476 with kombu 445027e, real prefork workers -c 1 on Redis (broker 6379, backend in its own container on 6391), acks_late, dedup on, visibility_timeout 2 s. Worker A is SIGKILLed 1 s into a 3 s run (injected); the message is restored and worker B takes it. down (the backend container stopped while B takes it, started 8 s later): 2 of 2 runs the task never ran again, the message was acked, the state stayed PENDING; B logged \"Exception raised outside body: network:ConnectionError\" and \"Pool callback raised exception\". readonce (the first read in B raises redis ConnectionError, the backend is up): 3 of 3 FAILURE stored, never ran. With result_backend_always_retry: the task ran and ended SUCCESS (downretry 2 of 2, readonceretry 3 of 3). Without dedup the same redelivery simply runs the task."
+ "observed": "768e476 with kombu 445027e, real prefork workers -c 1 on Redis (broker 6379, backend in its own container on 6391), acks_late, dedup on, visibility_timeout 2 s. Worker A is SIGKILLed 1 s into a 3 s run (injected); the message is restored and worker B takes it. down (the backend container stopped while B takes it, started 8 s later): 2 of 2 runs the task never ran again, the message was acked, the state stayed PENDING; B logged \"Exception raised outside body: network:ConnectionError\" and \"Pool callback raised exception\". readonce (the first read in B raises redis ConnectionError, the backend is up): 3 of 3 FAILURE stored, never ran. With result_backend_always_retry: the task ran and ended SUCCESS (downretry 2 of 2, readonceretry 3 of 3). Without dedup the same redelivery simply runs the task. confirm_backend_error_outside_body.py (one acks_late task with task_track_started, a RedisBackend subclass whose STARTED or SUCCESS write raises redis ConnectionError and stays down for the FAILURE write; injected): started 2 of 2 never ran, acked, PENDING; success 2 of 2 ran once, acked, STARTED for ever; with result_backend_always_retry and one failure both ended SUCCESS (2 of 2 each). Every one of the three points acks the message; none leaves it for redelivery."
 }

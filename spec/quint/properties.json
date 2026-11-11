@@ -216,6 +216,7 @@
     "noRerunAfterSuccess",
     "noFailWithoutError",
     "noRerunAfterDone",
+    "outcomeVisible",
     "projectionOk",
     "exactlyOnce",
     "quietDone"
@@ -1937,6 +1938,12 @@
      "reason": "open",
      "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
      "note": "the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever"
+    },
+    {
+     "instances": "redis_late_backenderr",
+     "reason": "open",
+     "where": "finding dedup-read-error (a backend error outside the body; the lead reproduced the same path for celery issue 9835: STARTED or SUCCESS writes fail, the message is acked, nothing stored, a chain stops)",
+     "note": "a backend error at the STARTED write (the body never runs) or the SUCCESS write (it ran): internal error, FAILURE if the backend takes that write, the message acked either way; result_backend_always_retry gets past a transient error (redis_retry_backenderr passes)"
     }
    ]
   },
@@ -2130,6 +2137,12 @@
      "reason": "open",
      "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
      "note": "the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever"
+    },
+    {
+     "instances": "redis_late_backenderr",
+     "reason": "open",
+     "where": "finding dedup-read-error (a backend error outside the body; the lead reproduced the same path for celery issue 9835: STARTED or SUCCESS writes fail, the message is acked, nothing stored, a chain stops)",
+     "note": "a backend error at the STARTED write (the body never runs) or the SUCCESS write (it ran): internal error, FAILURE if the backend takes that write, the message acked either way; result_backend_always_retry gets past a transient error (redis_retry_backenderr passes)"
     }
    ]
   },
@@ -2242,6 +2255,12 @@
      "reason": "open",
      "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
      "note": "the first run was lost before it stored anything; the redelivered copy's check gets the backend's own error (only BackendGetMetaError, raised under result_backend_always_retry, is let through), the tracer reports an internal error, on_error stores FAILURE and the message is acked: confirmed 3 of 3 (readonce: FAILURE) and 2 of 2 with the backend down (PENDING for ever)"
+    },
+    {
+     "instances": "redis_late_backenderr",
+     "reason": "open",
+     "where": "finding dedup-read-error (a backend error outside the body; the lead reproduced the same path for celery issue 9835: STARTED or SUCCESS writes fail, the message is acked, nothing stored, a chain stops)",
+     "note": "a backend error at the STARTED write (the body never runs) or the SUCCESS write (it ran): internal error, FAILURE if the backend takes that write, the message acked either way; result_backend_always_retry gets past a transient error (redis_retry_backenderr passes)"
     }
    ]
   },
@@ -2543,6 +2562,52 @@
    "witness": "",
    "mutant": "",
    "violations": []
+  },
+  {
+   "id": "redelivery.outcomeVisible",
+   "spec": "redelivery.qnt",
+   "definition": "outcomeVisible",
+   "kind": "liveness",
+   "pattern": "Response (a quiet system shows SUCCESS or FAILURE), global",
+   "statement": "A backend error outside the task body (the deduplication check's read, the STARTED write, the SUCCESS write) never acks a task without storing a state a reader can see: a quiet system that the search did not stop, with no result expired and nothing dropped by the broker, has SUCCESS or FAILURE stored.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "celery/app/trace.py:687-696 (768e476): an error outside the body is reported as an internal error and goes to on_error, which stores FAILURE",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "redelivery: a killed AMQP worker whose deliveries are not returned",
+   "violations": [
+    {
+     "instances": "redis_early_kill",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent \"just before it's executed, so that a task invocation that already started is never executed again\"",
+     "note": "a worker killed after the early ack: the result stays PENDING"
+    },
+    {
+     "instances": "redis_late_loss",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): \"With the default RDB snapshotting you can lose tasks published since the last snapshot\"",
+     "note": "a ready copy or the unacked record lost by a restart without fsync or a failover"
+    },
+    {
+     "instances": "classic_noconfirm_loss",
+     "reason": "documented",
+     "where": "docs/userguide/calling.rst:525-527 (celery 768e476): \"Messages can still be silently dropped ... Enable confirm_publish\"; tracker entry for the Discussion on the confirm_publish default",
+     "note": "a classic queue killed before it wrote a publish that was not confirmed; measured in the exactly-once report (3,659 of 5,100 lost without confirms, 0 with)"
+    },
+    {
+     "instances": "redis_dedup_readerr",
+     "reason": "open",
+     "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
+     "note": "the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever"
+    },
+    {
+     "instances": "redis_late_backenderr",
+     "reason": "open",
+     "where": "finding dedup-read-error (a backend error outside the body; the lead reproduced the same path for celery issue 9835: STARTED or SUCCESS writes fail, the message is acked, nothing stored, a chain stops)",
+     "note": "a backend error at the STARTED write (the body never runs) or the SUCCESS write (it ran): internal error, FAILURE if the backend takes that write, the message acked either way; result_backend_always_retry gets past a transient error (redis_retry_backenderr passes)"
+    }
+   ]
   }
  ]
 }

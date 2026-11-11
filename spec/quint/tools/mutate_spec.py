@@ -183,6 +183,8 @@ MUTANTS = [
      "stored' = if (CFG.alwaysRetry or stored == Success or not(stores)) stored", "stored' = if (stored == Success or not(stores)) stored"),
     ('redelivery: deduplication that ignores a stored SUCCESS', 'redelivery.qnt', 'redis_dedup_kill', 'noRerunAfterDone',
      'val dedup = CFG.dedup and LATE and h.redelivered and stored == Success\n', 'val dedup = false\n'),
+    ('redelivery: a killed AMQP worker whose deliveries are not returned', 'redelivery.qnt', 'classic_late_kill', 'outcomeVisible',
+     "    } else returnAll(w, gen.get(w)),", "    } else all { published' = published, ready' = ready, redeliv' = redeliv, rec' = rec, unacked' = unacked, returns' = returns, ended' = ended },"),
     # retry.qnt: one mutant per property
     ('retry: a retry that publishes the same attempt again', 'retry.qnt', 'retryfirst_none', 'runsBounded',
      'Q::publish(M(job(w).att + 1)),', 'Q::publish(M(job(w).att)),'),
