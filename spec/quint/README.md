@@ -29,7 +29,7 @@ a finding only once the real code reproduced it ([findings/](findings/README.md)
 | [`publisher.qnt`](transport/publisher.qnt) | [transport/](transport/README.md) | celery 768e476, kombu 445027e | 5 and 1 witnesses | 6 | off_crash, on_none | finite by exhaustive search with the step counter in the state |
 | [`chain.qnt`](canvas/chain.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 4 witnesses | 23 | late_none, late_unencodable | finite by exhaustive search with the step counter in the state |
 | [`redelivery.qnt`](worker/redelivery.qnt) | [worker/](worker/README.md) | celery 768e476, kombu 445027e | 10 and 5 witnesses | 29 | redis_late_short, redis_late_long_w1 | finite by exhaustive search with the step counter in the state |
-| [`retry.qnt`](worker/retry.qnt) | [worker/](worker/README.md) | celery 768e476 | 5 and 3 witnesses | 9 | retryfirst_none | finite by exhaustive search with the step counter in the state |
+| [`retry.qnt`](worker/retry.qnt) | [worker/](worker/README.md) | celery 768e476 | 6 and 3 witnesses | 16 | retryfirst_none | finite by exhaustive search with the step counter in the state |
 | [`revoke.qnt`](worker/revoke.qnt) | [worker/](worker/README.md) | celery 768e476, kombu 445027e | 10 and 4 witnesses | 22 | checkaccept_expire | finite by exhaustive search with the step counter in the state |
 | [`reader.qnt`](result/reader.qnt) | [result/](result/README.md) | celery 768e476 | 4 and 3 witnesses | 16 | pubsub_none | finite by exhaustive search with the step counter in the state |
 <!-- end generated -->

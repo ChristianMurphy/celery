@@ -195,9 +195,12 @@ MUTANTS = [
     ('retry: an ack that requeues', 'retry.qnt', 'retryfirst_none', 'noRetryAfterSuccess',
      'Q::ack(M(job(w).att)),', 'Q::requeue(M(job(w).att)),'),
     ('retry: max retries exceeded that stores nothing', 'retry.qnt', 'retryfirst_fail', 'neverLost',
-     "stored' = if (atMax) storing(Failure)", "stored' = if (atMax) stored"),
+     "stored' = if (atMax) storing(r.att, Failure)", "stored' = if (atMax) stored"),
     ('retry: a lost node\'s message is not requeued', 'retry.qnt', 'retryfirst_node', 'quietDone',
      "Q::requeue(M(job(w).att)),\n    jobs' = jobs.set(w, Idle)", "Q::dkeep,\n    jobs' = jobs.set(w, Idle)"),
+    ('retry: a fenced store that ignores the attempt', 'retry.qnt', 'fenced_ok_none', 'noStaleWrite',
+     'if (stored.res == Success or (CFG.fenced and (att < stored.att or down)))',
+     'if (stored.res == Success or (CFG.fenced and down))'),
     # revoke.qnt: one mutant per property
     ('revoke: on_accepted check missing in the design', 'revoke.qnt', 'checkaccept_revoke', 'noRunAfterRevokeKnown',
      'not(CFG.checkOnAccept and discards(w, r.m)),', 'true,'),

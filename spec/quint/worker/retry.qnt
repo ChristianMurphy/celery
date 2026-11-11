@@ -19,6 +19,14 @@
 // retry; a worker killed with the message unacked has it requeued; a
 // message can be delivered again (dups).
 //
+// Fenced writes (item 7): the design `fenced` stores the attempt number
+// with the state and refuses a write of an older attempt, and a write that
+// would replace a ready state of the same attempt with an unready one: a
+// per-attempt epoch, a conditional write in the store (not in celery). The
+// fault lateCopies is result_backend_always_retry's resend
+// (base.py:827-860): a write whose reply was lost is sent again, and the
+// first send can still reach the store later, after other writes.
+//
 // Not modeled: countdown and ETA (the retry waits; redelivery.qnt has the
 // clock), retry_backoff, autoretry_for (the same retry() call), a pool
 // process recycled by max_tasks_per_child or autoscale (see ../README.md:
@@ -34,6 +42,13 @@ module retrytypes {
   pure def final(r: Result): bool = match r {
     | Pending => false | Retrying => false | Success => true | Failure => true
   }
+  // A write as it was sent: the attempt that sent it and its state.
+  type Write = { att: int, res: Result }
+  // The stored state, the attempt that wrote it, whether a write ever
+  // replaced a newer attempt's state or a ready state of its own attempt
+  // with an unready one (stale), and every write sent so far.
+  type Stored = { res: Result, att: int, stale: bool, sent: Set[Write] }
+  pure val NOTHING: Stored = { res: Pending, att: -1, stale: false, sent: Set() }
 
   // A run of attempt `att` (its message M(att)). Started: the body runs.
   // RetrySent: retry() published the copy. RetryStored (design
@@ -56,10 +71,11 @@ module retrytypes {
     | Ack(WorkerId)
     | LoseNode(WorkerId)
     | Duplicate(MsgId)
+    | LateCopy(Write)
 
-  type Budget = { nodes: int, refusals: int, dups: int }
-  pure val NONE: Budget = { nodes: 0, refusals: 0, dups: 0 }
-  pure def faults(b: Budget): int = b.nodes + b.refusals + b.dups
+  type Budget = { nodes: int, refusals: int, dups: int, lateCopies: int }
+  pure val NONE: Budget = { nodes: 0, refusals: 0, dups: 0, lateCopies: 0 }
+  pure def faults(b: Budget): int = b.nodes + b.refusals + b.dups + b.lateCopies
 
   type Config = {
     // the body can return: false makes every run call retry()
@@ -67,10 +83,12 @@ module retrytypes {
     // design: store RETRY before the copy is published, so that the copy's
     // final state is written after it (main: false)
     retryFirst: bool,
+    // design: fenced writes, a per-attempt epoch (main: false)
+    fenced: bool,
     max: Budget,
   }
   pure def config(ok: bool): Config =
-    { canSucceed: ok, retryFirst: false, max: NONE }
+    { canSucceed: ok, retryFirst: false, fenced: false, max: NONE }
 }
 
 module retry {
@@ -88,7 +106,7 @@ module retry {
   // ---- state ----
   var applied: bool
   var jobs: WorkerId -> Job
-  var stored: Result
+  var stored: Stored
   // ---- observations ----
   var bodies: int               // body runs, all attempts
   var retryAfterSuccess: bool   // a retry was published while SUCCESS was stored
@@ -98,7 +116,7 @@ module retry {
 
   action init: bool = all {
     Q::dinit, applied' = false, jobs' = WORKERS.mapBy(_ => Idle),
-    stored' = Pending, bodies' = 0, retryAfterSuccess' = false,
+    stored' = NOTHING, bodies' = 0, retryAfterSuccess' = false,
     used' = NONE, lastAction' = Init, steps' = 0,
   }
   action did(a: Action): bool = all { lastAction' = a, steps' = steps + 1 }
@@ -107,8 +125,18 @@ module retry {
   }
   def busy(w: WorkerId): bool = isRunning(jobs.get(w))
   def job(w: WorkerId): Run = runOf(jobs.get(w))
-  // A store never replaces SUCCESS (base.py:1369-1370).
-  def storing(r: Result): Result = if (stored == Success) Success else r
+  // A store never replaces SUCCESS (base.py:1369-1370). A fenced store
+  // also refuses an older attempt's write, and an unready state over a
+  // ready one of the same attempt.
+  def storing(att: int, r: Result): Stored = {
+    val down = att == stored.att and final(stored.res) and not(final(r))
+    val sent = stored.sent.union(Set({ att: att, res: r }))
+    if (stored.res == Success or (CFG.fenced and (att < stored.att or down)))
+      { ...stored, sent: sent }
+    else
+      { res: r, att: att, sent: sent,
+        stale: stored.stale or att < stored.att or down }
+  }
 
   // ---- actions ----
   // @cite celery celery/app/task.py:587-590 "def apply_async(self, args=None, kwargs=None, task_id=None, producer=None,"
@@ -130,7 +158,7 @@ module retry {
   action bodyReturns(w: WorkerId): bool = all {
     busy(w), job(w).stage == Started, CFG.canSucceed,
     jobs' = jobs.set(w, Running({ ...job(w), stage: Done })),
-    stored' = storing(Success),
+    stored' = storing(job(w).att, Success),
     Q::dkeep, keepObs, applied' = applied, used' = used,
     did(Body({ w: w, att: job(w).att, ending: Returned })),
   }
@@ -146,12 +174,12 @@ module retry {
       busy(w), r.stage == Started,
       jobs' = jobs.set(w, Running({ ...r, stage:
         if (atMax) Done else if (CFG.retryFirst) RetryStored else RetrySent })),
-      stored' = if (atMax) storing(Failure)
-                else if (CFG.retryFirst) storing(Retrying) else stored,
+      stored' = if (atMax) storing(r.att, Failure)
+                else if (CFG.retryFirst) storing(r.att, Retrying) else stored,
       if (atMax or CFG.retryFirst) Q::dkeep else Q::publish(M(r.att + 1)),
       bodies' = bodies,
       retryAfterSuccess' = (retryAfterSuccess or
-        (not(atMax) and not(CFG.retryFirst) and stored == Success)),
+        (not(atMax) and not(CFG.retryFirst) and stored.res == Success)),
       applied' = applied, used' = used,
       did(Body({ w: w, att: r.att, ending: if (atMax) MaxExceeded else RetryCalled })),
     }
@@ -166,7 +194,7 @@ module retry {
       busy(w), r.stage == Started, r.att + 1 <= MAX_RETRIES,
       used.refusals < CFG.max.refusals,
       jobs' = jobs.set(w, Running({ ...r, stage: Done })),
-      stored' = storing(Failure),
+      stored' = storing(r.att, Failure),
       Q::dkeep, keepObs, applied' = applied,
       used' = { ...used, refusals: used.refusals + 1 },
       did(Body({ w: w, att: r.att, ending: RetryRefused })),
@@ -177,7 +205,7 @@ module retry {
   action storeRetry(w: WorkerId): bool = all {
     busy(w), job(w).stage == RetrySent,
     jobs' = jobs.set(w, Running({ ...job(w), stage: Done })),
-    stored' = storing(Retrying),
+    stored' = storing(job(w).att, Retrying),
     Q::dkeep, keepObs, applied' = applied, used' = used,
     did(StoreRetry(w)),
   }
@@ -197,7 +225,7 @@ module retry {
     jobs' = jobs.set(w, Running({ ...job(w), stage: Done })),
     Q::publish(M(job(w).att + 1)),
     bodies' = bodies,
-    retryAfterSuccess' = (retryAfterSuccess or stored == Success),
+    retryAfterSuccess' = (retryAfterSuccess or stored.res == Success),
     stored' = stored, applied' = applied, used' = used,
     did(StoreRetry(w)),
   }
@@ -219,6 +247,17 @@ module retry {
     did(Duplicate(m)),
   }
 
+  // The first send of a write whose reply was lost reaches the store after
+  // other writes: result_backend_always_retry sent it again and went on
+  // (base.py:827-860).
+  // @cite celery celery/backends/base.py:827-842 "if self.always_retry and self.exception_safe_to_retry(exc):"
+  action lateCopy(x: Write): bool = all {
+    stored.sent.contains(x), used.lateCopies < CFG.max.lateCopies,
+    stored' = storing(x.att, x.res), Q::dkeep, jobs' = jobs, keepObs,
+    applied' = applied, used' = { ...used, lateCopies: used.lateCopies + 1 },
+    did(LateCopy(x)),
+  }
+
   // ---- step ----
   action step: bool = any {
     apply,
@@ -230,6 +269,7 @@ module retry {
         { nondet att = ATTEMPTS.oneOf() deliver(w, att) },
       } },
     { nondet m = Set(M(0), M(1)).oneOf() duplicate(m) },
+    { nondet x = stored.sent.oneOf() lateCopy(x) },
   }
 
   // ---- properties ----------------------------------------------------------
@@ -243,7 +283,7 @@ module retry {
   // A published attempt is held by the broker or a worker until a final
   // state is stored: a retried task is never lost.
   val neverLost: bool = applied implies or {
-    final(stored),
+    final(stored.res),
     WORKERS.exists(w => busy(w)),
     ATTEMPTS.exists(a => Q::ready(M(a)) or Q::taken(M(a))),
   }
@@ -260,10 +300,13 @@ module retry {
   }
   action stepOrQuiet: bool = any { step, stutter }
   // A quiet task has a final result.
-  val quietDone: bool = quiet implies final(stored)
+  val quietDone: bool = quiet implies final(stored.res)
+  // No write replaces a newer attempt's state, or a ready state of its own
+  // attempt with an unready one.
+  val noStaleWrite: bool = not(stored.stale)
 
   // witnesses (violated means reachable)
   val neverQuiet: bool = not(quiet)
   val neverRetried: bool = bodies <= 1
-  val neverFailed: bool = stored != Failure
+  val neverFailed: bool = stored.res != Failure
 }

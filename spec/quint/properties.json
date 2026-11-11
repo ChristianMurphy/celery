@@ -250,6 +250,7 @@
     "runsBoundedAlways",
     "noRetryAfterSuccess",
     "neverLost",
+    "noStaleWrite",
     "quietDone"
    ],
    "witnesses": [
@@ -2541,6 +2542,12 @@
      "reason": "open",
      "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
      "note": "no fault: the copy fails at max_retries and stores FAILURE before the original's RETRY write, which replaces it"
+    },
+    {
+     "instances": "retryfirst_late",
+     "reason": "open",
+     "where": "model only, not run on the real code: result_backend_always_retry sends a write again after a lost reply (base.py:827-860, celery 768e476); a copy that reaches the store after the next attempt's final state replaces it; storing RETRY first does not help, the fenced design does",
+     "note": "the original's RETRY lands again after the copy's final state"
     }
    ]
   },
@@ -2569,6 +2576,52 @@
      "reason": "open",
      "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
      "note": ""
+    },
+    {
+     "instances": "retryfirst_late",
+     "reason": "open",
+     "where": "model only, not run on the real code: result_backend_always_retry sends a write again after a lost reply (base.py:827-860, celery 768e476); a copy that reaches the store after the next attempt's final state replaces it; storing RETRY first does not help, the fenced design does",
+     "note": "the original's RETRY lands again after the copy's final state"
+    }
+   ]
+  },
+  {
+   "id": "retry.noStaleWrite",
+   "spec": "retry.qnt",
+   "definition": "noStaleWrite",
+   "kind": "safety",
+   "pattern": "Absence (a write that replaces a newer attempt's state, or a ready state of its own attempt with an unready one), global",
+   "statement": "No write replaces a newer attempt's stored state, and no write replaces a ready state of its own attempt with an unready one.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only; designs fenced (a per-attempt epoch) and retryFirst; the fault lateCopies (a write sent again by result_backend_always_retry reaches the store after other writes)",
+   "source": "docs/userguide/tasks.rst (celery 768e476), States: SUCCESS and FAILURE are ready states; an attempt's state is about that attempt",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "retry: a fenced store that ignores the attempt",
+   "violations": [
+    {
+     "instances": "ok_*",
+     "reason": "open",
+     "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
+     "note": "the original's RETRY (attempt 0) replaces the copy's final state (attempt 1)"
+    },
+    {
+     "instances": "fail_*",
+     "reason": "open",
+     "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
+     "note": "the same, over FAILURE"
+    },
+    {
+     "instances": "retryfirst_late",
+     "reason": "open",
+     "where": "model only, not run on the real code: result_backend_always_retry sends a write again after a lost reply (base.py:827-860, celery 768e476); a copy that reaches the store after the next attempt's final state replaces it; storing RETRY first does not help, the fenced design does",
+     "note": ""
+    },
+    {
+     "instances": "retryfirst_node",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack a task that already started \"will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "a second lineage after a lost worker: its attempt 0 writes after the first lineage's attempt 1"
     }
    ]
   },

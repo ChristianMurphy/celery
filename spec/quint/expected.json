@@ -1577,6 +1577,7 @@
     "neverLost": 9,
     "neverQuiet": 9,
     "neverRetried": 5,
+    "noStaleWrite": 7,
     "quietDone": 9,
     "runsBoundedAlways": 7
    }
@@ -1588,7 +1589,50 @@
     "neverLost": 9,
     "neverQuiet": 9,
     "neverRetried": 5,
+    "noStaleWrite": 7,
     "quietDone": 9
+   }
+  },
+  "fenced_fail_late": {
+   "D": 9,
+   "violated": {
+    "neverFailed": 6,
+    "neverQuiet": 9,
+    "neverRetried": 5
+   }
+  },
+  "fenced_fail_none": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 6,
+    "neverQuiet": 9,
+    "neverRetried": 5
+   }
+  },
+  "fenced_ok_late": {
+   "D": 9,
+   "violated": {
+    "neverFailed": 6,
+    "neverQuiet": 5,
+    "neverRetried": 5
+   }
+  },
+  "fenced_ok_node": {
+   "D": 15,
+   "violated": {
+    "neverFailed": 6,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "noRetryAfterSuccess": 7,
+    "runsBoundedAlways": 7
+   }
+  },
+  "fenced_ok_none": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 6,
+    "neverQuiet": 5,
+    "neverRetried": 5
    }
   },
   "ok_dup": {
@@ -1599,8 +1643,20 @@
     "neverQuiet": 5,
     "neverRetried": 5,
     "noRetryAfterSuccess": 7,
+    "noStaleWrite": 7,
     "quietDone": 9,
     "runsBoundedAlways": 9
+   }
+  },
+  "ok_late": {
+   "D": 9,
+   "violated": {
+    "neverFailed": 6,
+    "neverLost": 9,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "noStaleWrite": 7,
+    "quietDone": 9
    }
   },
   "ok_node": {
@@ -1611,6 +1667,7 @@
     "neverQuiet": 5,
     "neverRetried": 5,
     "noRetryAfterSuccess": 7,
+    "noStaleWrite": 7,
     "quietDone": 9,
     "runsBoundedAlways": 7
    }
@@ -1622,6 +1679,7 @@
     "neverLost": 9,
     "neverQuiet": 5,
     "neverRetried": 5,
+    "noStaleWrite": 7,
     "quietDone": 9
    }
   },
@@ -1632,6 +1690,7 @@
     "neverLost": 9,
     "neverQuiet": 5,
     "neverRetried": 5,
+    "noStaleWrite": 7,
     "quietDone": 9
    }
   },
@@ -1643,6 +1702,17 @@
     "neverRetried": 6
    }
   },
+  "retryfirst_late": {
+   "D": 9,
+   "violated": {
+    "neverFailed": 7,
+    "neverLost": 10,
+    "neverQuiet": 5,
+    "neverRetried": 6,
+    "noStaleWrite": 8,
+    "quietDone": 10
+   }
+  },
   "retryfirst_node": {
    "D": 15,
    "violated": {
@@ -1650,6 +1720,7 @@
     "neverQuiet": 5,
     "neverRetried": 5,
     "noRetryAfterSuccess": 8,
+    "noStaleWrite": 10,
     "runsBoundedAlways": 8
    }
   },
