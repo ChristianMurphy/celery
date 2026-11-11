@@ -6,8 +6,8 @@
  ],
  "outcome": "duplicate",
  "status": "open",
- "where": "workers.rst, Persistent revokes, promises the list survives restarts and does not say it is written at exit only; related celery issue 8888 (revokes lost while workers are offline) and celery issue 4886 (a feature request to keep statedb in the result backend); no thread on the kill; not in the tracker yet",
- "thread": "a reply on celery issue 8888, or a docs sentence (the lead decides)",
+ "where": "confirmed by the lead; workers.rst, Persistent revokes, promises the list survives restarts and does not say it is written at exit only; related celery issue 8888 (revokes lost while workers are offline) and celery issue 4886 (keep statedb in the result backend); no thread on the kill",
+ "thread": "with the user (a reply on celery issue 8888, or a docs sentence)",
  "confirm": [
   "confirm_statedb_kill.py"
  ],

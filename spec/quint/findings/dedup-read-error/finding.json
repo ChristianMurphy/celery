@@ -11,8 +11,8 @@
  ],
  "outcome": "hang",
  "status": "open",
- "where": "not in the tracker yet; no upstream thread found (searched worker_deduplicate_successful_tasks, BackendGetMetaError, dedup backend unavailable; closest celery PR 10960 and 10159, other paths). The check has caught only BackendGetMetaError since it came in (celery PR 6722, 2021), and that is raised only under result_backend_always_retry; the lead reproduced the STARTED and SUCCESS write paths for celery issue 9835",
- "thread": "none yet (a new issue candidate)",
+ "where": "the STARTED write path is open celery issue 8588, and open celery PR 11014 addresses it (it waits up to result_backend_store_retry_timeout, 20 s, in the pool process and requeues an acks_late task if STARTED still cannot be stored); the lead's rerun on 9c2f238 with RabbitMQ: about 430 to 460 of 1,500 chains stop in three 2 s Redis kills with task_track_started on, 0 with it off, 0 with result_backend_always_retry. The dedup read path: no upstream thread found (closest celery PR 10960 and 10159); the check has caught only BackendGetMetaError since celery PR 6722 (2021), raised only under result_backend_always_retry; the lead reproduced the STARTED and SUCCESS write paths for celery issue 9835",
+ "thread": "celery issue 8588 (STARTED write, celery PR 11014); the dedup read path has none yet",
  "confirm": [
   "confirm_dedup_read_error.py",
   "confirm_backend_error_outside_body.py"

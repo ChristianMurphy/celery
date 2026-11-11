@@ -7,8 +7,8 @@
  ],
  "outcome": "duplicate",
  "status": "open",
- "where": "no upstream thread found (searched revoke threads pool, revoke gevent, revoked task still executed, revoke prefetched task; closest celery issue 10490, about terminate and shutdown on the threads pool, and celery issue 4300, ETA); not in the tracker yet",
- "thread": "none yet (a new issue candidate)",
+ "where": "confirmed by the lead on main 9c2f238: threads and gevent 5 of 5 for revoke and for expires, prefork 5 of 5 and solo 3 of 3 discard; no upstream thread found (closest celery issue 10490, about terminate and shutdown on the threads pool, and celery issue 4300, ETA); a new celery issue is drafted by the lead",
+ "thread": "a new celery issue (drafted by the lead)",
  "confirm": [
   "confirm_revoke_queued_in_pool.py"
  ],

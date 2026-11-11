@@ -6,8 +6,8 @@
  ],
  "outcome": "hang",
  "status": "open",
- "where": "early ack loses a task the worker does not finish (documented, tasks.rst acks_late); the RETRY state that says it will run again is not (consumer.py:907-929 emits RETRY for non-acks_late tasks, request.py:446-457); no upstream thread found (searched cold shutdown early ack RETRY, cancelled by Celery); not in the tracker yet",
- "thread": "none yet; a question for the lead (docs, or store FAILURE instead)",
+ "where": "confirmed by the lead; early ack loses a task the worker does not finish (documented, tasks.rst acks_late); the RETRY state that says it will run again is not (consumer.py:907-929, request.py:446-457); no upstream thread found",
+ "thread": "with the user (docs, or store FAILURE instead)",
  "confirm": [
   "../revoke-statedb-kill/confirm_statedb_kill.py"
  ],

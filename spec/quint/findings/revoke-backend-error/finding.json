@@ -6,8 +6,8 @@
  ],
  "outcome": "duplicate",
  "status": "open",
- "where": "celery issue 6238 (open since 2020: workers crash when storing the result of an expired task in MongoDB) covers the exit; the Redis reconnect loop and the reruns are not reported there; the same class as finding dedup-read-error (a backend error outside the task body); not in the tracker yet",
- "thread": "a reply on celery issue 6238",
+ "where": "the same cause as open celery issue 11018 (a result backend ConnectionError taken for a lost broker connection; reported there for the solo pool; open celery PR 11029 changes the solo pool only); celery issue 6238 is the worker-exit variant with MongoDB; the same class as finding dedup-read-error (a backend error outside the task body)",
+ "thread": "a reply on celery issue 11018 (drafted by the lead)",
  "confirm": [
   "confirm_discard_backend_error.py"
  ],
