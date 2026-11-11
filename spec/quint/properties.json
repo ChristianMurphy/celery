@@ -131,7 +131,6 @@
     "main_late_partition",
     "pr_late_shutdown",
     "pr_late_cut",
-    "renewall_late_hang",
     "best_late_crash"
    ],
    "passes_all": "best_late_crash",
@@ -325,6 +324,31 @@
     "pubsub_none"
    ],
    "passes_all": "pubsub_none",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "beat.qnt": {
+   "family": "beat",
+   "types": "beattypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "noDoubleSend",
+    "noMissedRun",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverSentTwice"
+   ],
+   "apalache": [],
+   "fast": [
+    "sync1_cron_kill"
+   ],
+   "passes_all": "sync1_cron_kill",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -3252,6 +3276,150 @@
    "pattern": "Existence",
    "statement": "A task stores FAILURE.",
    "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "beat.noDoubleSend",
+   "spec": "beat.qnt",
+   "definition": "noDoubleSend",
+   "kind": "safety",
+   "pattern": "Absence (a run sent twice, or an interval run sent early), global",
+   "statement": "No crontab occurrence is sent twice, and no interval run is sent less than run_every after the one before.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "docs/userguide/periodic-tasks.rst:19-21 (celery 768e476): one scheduler, \"otherwise you'd end up with duplicate tasks\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverSentTwice",
+   "mutant": "beat: a send that does not reserve the entry",
+   "violations": [
+    {
+     "instances": "*_kill",
+     "reason": "open",
+     "where": "finding beat-kill-double (not in the tracker yet; no upstream thread found)",
+     "note": "killed between two syncs, beat starts again from the file's older last_run_at and sends the last occurrence again"
+    },
+    {
+     "instances": "interval_fwd",
+     "reason": "open",
+     "where": "open celery issue 6742 (System datetime change effects, beat service stops activities): beat reads the wall clock (schedules.py:151-157, 686-722)",
+     "note": "the clock steps forward: the interval run is due early"
+    },
+    {
+     "instances": "two_*",
+     "reason": "documented",
+     "where": "docs/userguide/periodic-tasks.rst:19-21 (celery 768e476): you have to ensure only a single scheduler is running for a schedule at a time, otherwise you'd end up with duplicate tasks",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "beat.noMissedRun",
+   "spec": "beat.qnt",
+   "definition": "noMissedRun",
+   "kind": "safety",
+   "pattern": "Absence (a run late or skipped while a scheduler runs), global",
+   "statement": "While a scheduler runs, a run is sent at least every run_every of true time, and no crontab occurrence is skipped.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "docs/userguide/periodic-tasks.rst (celery 768e476), Entries: a task is sent at the interval or crontab given",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverSentTwice",
+   "mutant": "beat: a tick that waits one more step",
+   "violations": [
+    {
+     "instances": "*_back",
+     "reason": "open",
+     "where": "open celery issue 6742 (System datetime change effects, beat service stops activities): beat reads the wall clock (schedules.py:151-157, 686-722)",
+     "note": "the clock steps back: last_run_at is in the future and nothing is due until the clock catches up"
+    },
+    {
+     "instances": "cron_fwd",
+     "reason": "open",
+     "where": "open celery issue 6742 (System datetime change effects, beat service stops activities): beat reads the wall clock (schedules.py:151-157, 686-722)",
+     "note": "the clock steps forward over an occurrence: it is never sent"
+    }
+   ]
+  },
+  {
+   "id": "beat.quietDone",
+   "spec": "beat.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end a running scheduler has sent within run_every)",
+   "statement": "At the end of the run a running scheduler has sent within the last run_every.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "docs/userguide/periodic-tasks.rst (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "beat: a new entry that starts two periods ahead",
+   "violations": [
+    {
+     "instances": "*_back",
+     "reason": "open",
+     "where": "open celery issue 6742 (System datetime change effects, beat service stops activities): beat reads the wall clock (schedules.py:151-157, 686-722)",
+     "note": "the run ends inside the delay"
+    }
+   ]
+  },
+  {
+   "id": "beat.progress",
+   "spec": "beat.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "beat.stepOrQuiet",
+   "spec": "beat.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "beat.neverQuiet",
+   "spec": "beat.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "beat.neverSentTwice",
+   "spec": "beat.qnt",
+   "definition": "neverSentTwice",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The entry is sent twice.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

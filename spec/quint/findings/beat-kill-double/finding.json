@@ -1,0 +1,17 @@
+{
+ "id": "beat-kill-double",
+ "title": "celery beat killed between two syncs of its schedule file sends again, at its restart, what it sent since the last sync: a crontab occurrence runs twice",
+ "cells": [
+  "cron_kill.noDoubleSend",
+  "interval_kill.noDoubleSend"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "beat.py:416-422 and 452-455 (celery 768e476, the same at 9c2f238): the file is synced on the first send after a start and then every sync_every (3 minutes); beat_sync_every (configuration.rst:4672-4683) describes the timing, not that a killed beat repeats sends; no upstream thread found (searched beat sigkill, beat crontab sent twice, celery beat duplicate tasks after restart, beat schedule shelve sync lost, beat_sync_every; closest celery issue 7148, Celery beat should be stateless); not in the tracker yet",
+ "thread": "none yet (a new issue or a docs sentence; the lead decides)",
+ "confirm": [
+  "confirm_beat_kill.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, a real celery beat (PersistentScheduler, shelve file) with one entry crontab(minute='*') on a Redis 7 broker, beat_max_loop_interval 1; beat is killed with SIGKILL 5 s after its second send (injected: the kill, as an OOM kill or a crash) and started again on the same file: 3 of 3 runs sent the second minute's occurrence again 5 s after the restart (for example 22:01:00 and again at 22:01:05), 3 messages queued for 2 minutes. Controls: SIGTERM instead (close() syncs) 2 of 2 sent nothing at the restart; beat_sync_every = 1 with SIGKILL 1 of 1 sent nothing at the restart. The model's sync1 instances (beat_sync_every = 1) pass noDoubleSend."
+}

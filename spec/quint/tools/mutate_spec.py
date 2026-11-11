@@ -233,6 +233,15 @@ MUTANTS = [
     ('reader: the first read before the subscribe', 'reader.qnt', 'pubsub_none', 'quietDone',
      "CFG.mode == PubSub, joining(r), view(r, t).sub, not(view(r, t).primed),",
      "CFG.mode == PubSub, joining(r), not(view(r, t).primed),"),
+    # beat.qnt: one mutant per property
+    ('beat: a send that does not reserve the entry', 'beat.qnt', 'sync1_cron_kill', 'noDoubleSend',
+     "procs' = procs.set(b, Up({ last: wall,", "procs' = procs.set(b, Up({ last: u.last,"),
+    ('beat: a tick that waits one more step', 'beat.qnt', 'cron_none', 'noMissedRun',
+     "      | Interval => wall - procOf(p).last >= R\n      | Cron => nextOcc(procOf(p).last) <= wall",
+     "      | Interval => wall - procOf(p).last >= R\n      | Cron => nextOcc(procOf(p).last) + R <= wall"),
+    ('beat: a new entry that starts two periods ahead', 'beat.qnt', 'cron_none', 'quietDone',
+     "last: if (saved.get(b) < 0) wall else saved.get(b), lastSync: -1 })),",
+     "last: if (saved.get(b) < 0) wall + 2 * R else saved.get(b), lastSync: -1 })),"),
 ]
 
 

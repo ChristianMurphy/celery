@@ -1,4 +1,99 @@
 {
+ "beat.qnt": {
+  "cron_back": {
+   "D": 15,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8,
+    "noMissedRun": 8,
+    "quietDone": 12
+   }
+  },
+  "cron_fwd": {
+   "D": 17,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 6,
+    "noMissedRun": 8
+   }
+  },
+  "cron_kill": {
+   "D": 17,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8,
+    "noDoubleSend": 11
+   }
+  },
+  "cron_none": {
+   "D": 14,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8
+   }
+  },
+  "cron_stop": {
+   "D": 16,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8
+   }
+  },
+  "interval_back": {
+   "D": 15,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8,
+    "noMissedRun": 7,
+    "quietDone": 12
+   }
+  },
+  "interval_fwd": {
+   "D": 16,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 7,
+    "noDoubleSend": 7
+   }
+  },
+  "interval_kill": {
+   "D": 17,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8,
+    "noDoubleSend": 11
+   }
+  },
+  "interval_none": {
+   "D": 14,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8
+   }
+  },
+  "sync1_cron_kill": {
+   "D": 16,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8
+   }
+  },
+  "sync1_interval_kill": {
+   "D": 16,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 8
+   }
+  },
+  "two_cron_none": {
+   "D": 19,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 7,
+    "noDoubleSend": 7
+   }
+  }
+ },
  "chain.qnt": {
   "dedup_dup": {
    "D": 26,
