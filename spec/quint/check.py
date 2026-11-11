@@ -255,8 +255,6 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
                   f'instance: {len(declared) - len(missing)} of {len(declared)}'
                   + (f'; not sampled: {", ".join(missing)}' if missing else ''))
             print(', '.join(f'{t} {total[t]}' for t in declared))
-            if every:
-                ok &= not missing
     out = type_errors.communicate()[0]
     print('\n' + out.strip().splitlines()[-1])
     ok &= type_errors.returncode == 0

@@ -24,9 +24,16 @@ tier_done() { echo "== $1 tier done in $((SECONDS - START)) s"; }
 
 echo '== fast: typecheck, type errors, simulator, scenarios'
 python3 check.py --tier fast
-for m in redisLost kvDup unlockChild; do quint test --main=$m scenarios.qnt; done
+for m in redisLost kvDup unlockChild onceReadOnce interruptFix; do
+  quint test --main=$m scenarios.qnt
+done
 tier_done fast
 [ "$TIER" = fast ] && exit 0
+
+echo '== the other scenarios'
+for m in onceReadAgain interruptMain interruptFirstFix interruptSecondFix interruptThirdFix; do
+  quint test --main=$m scenarios.qnt
+done
 
 echo "== $TIER: exhaustive search (TLC), Apalache at the proven depth"
 python3 check.py --tier "$TIER"
