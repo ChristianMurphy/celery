@@ -27,7 +27,8 @@
    ],
    "passes_all": "es",
    "progress": "closed form",
-   "checklist": "enforced"
+   "checklist": "enforced",
+   "cite": "enforced"
   },
   "chord.qnt": {
    "family": "canvas",

@@ -99,10 +99,12 @@ module resultstate {
   pure val MAX_WRITES: int = 2
   pure val MAX_FORGETS: int = 1
 
+  // ---- state ----
   var stored: Stored
   var pc: RunId -> Pc
   var writes: RunId -> int
   var forgets: int
+  // ---- observations ----
   var observed: Observed
   // What was stored before the last step, for the two-state property.
   var prev: Stored
@@ -124,12 +126,15 @@ module resultstate {
     lastAction' = Init, steps' = 0,
   }
 
-  // ---- begin: the read a backend does before it writes -----------------
+  // ---- actions ----
+  // begin: the read a backend does before it writes.
   // rtw:   current_meta = self._get_task_meta_for(task_id)   base.py:1367
   // es:    the same base read (ES inherits _store_result)    base.py:1367
   // sql:   task = self._query_task(session, task_id), unlocked
   //                                                  database/__init__.py:174
   // mongo: no read; the filter does the check at write time mongodb.py:207
+  // @cite celery celery/backends/base.py:1367 "current_meta = self._get_task_meta_for(task_id)"
+  // @cite celery celery/backends/database/__init__.py:174 "task = self._query_task(session, task_id)"
   action begin(r: RunId, s: Status): bool = all {
     pc.get(r) == Idle,
     writes.get(r) < MAX_WRITES,
@@ -189,6 +194,11 @@ module resultstate {
         else (Present(w), Written)
     }
 
+  // commit: the write, as commitEffect says per store.
+  // @cite celery celery/backends/base.py:1369-1373 "if current_meta['status'] == states.SUCCESS:"
+  // @cite celery celery/backends/mongodb.py:207-210 "query = {'_id': task_id, 'status': {'$ne': states.SUCCESS}}"
+  // @cite celery celery/backends/database/__init__.py:175-180 "task = self._query_task(session, task_id, for_update=True)"
+  // @cite celery celery/backends/elasticsearch.py:135-142 "except elasticsearch.exceptions.ConflictError:"
   action commit(r: RunId): bool = {
     val b = begunOf(pc.get(r))
     val eff = commitEffect(STORE, READY_STICKY, stored, b.read,
@@ -210,6 +220,7 @@ module resultstate {
   //   mongo:  delete_one({'_id': task_id})        mongodb.py:297
   //   sql:    DELETE ... WHERE task_id = id       database/__init__.py:352-353
   // A client that forgets a result drops what it saw.
+  // @cite celery celery/backends/base.py:883-885 "def forget(self, task_id):"
   action forget: bool = all {
     forgets < MAX_FORGETS,
     stored' = Absent,
@@ -229,6 +240,7 @@ module resultstate {
 
   // A client reads the result and sees SUCCESS (get_task_meta base.py,
   // _get_task_meta_for above).
+  // @cite celery celery/backends/base.py:934-956 "def get_task_meta(self, task_id, cache=True):"
   action observe: bool = all {
     statusOf(stored) == Success,
     observed == NotObserved,
@@ -238,6 +250,11 @@ module resultstate {
     did(Observe(metaOf(stored))),
   }
 
+  // ---- faults ----
+  // None of their own: the scenario is two duplicate runs of one task (a
+  // redelivery, a lost worker) whose writes interleave, and a forget().
+
+  // ---- step ----
   action step: bool = any {
     {
       nondet r = RUNS.oneOf()
@@ -252,6 +269,7 @@ module resultstate {
   }
 
   // ---- properties -------------------------------------------------------
+  // invariants
   // Once a reader saw SUCCESS by a run, the store keeps that until forget().
   // Stated in base.py:1362-1366 and by the "keep the first SUCCESS" fixes:
   // celery PR 10920 (database), 10944 (mongodb), 10945 (cassandra).
@@ -266,10 +284,11 @@ module resultstate {
     not(isCommit(lastAction) and isReady(statusOf(prev))
         and isUnready(statusOf(stored)))
 
-  // Sanity: the spec can reach a stored SUCCESS (witness, should be violated)
+  // witnesses (violated means reachable)
+  // Sanity: the spec can reach a stored SUCCESS
   val noSuccessEver: bool = statusOf(stored) != Success
 
-  // ---- every run ends ---------------------------------------------------
+  // progress measure (lemma 1 of the liveness argument, ../README.md)
   // Each action lowers "measure" (a begin uses up a write, a commit ends a
   // store, forget and observe happen a bounded number of times), so
   // steps + measure never exceeds its initial value. The exact longest run
@@ -282,6 +301,8 @@ module resultstate {
   pure val MEASURE0: int = 2 * MAX_WRITES * RUNS.size() + 3 * MAX_FORGETS + 1
   val progress: bool = measure >= 0 and steps + measure <= MEASURE0
 
+  // liveness (lemma 2; lemma 3 is the quiet state itself: every run wrote
+  // what it had to)
   // Quiet: every run wrote all it had to write. A run stops only then: the
   // exhaustive search runs stepOrQuiet and reports any other state without
   // a successor as a deadlock.
