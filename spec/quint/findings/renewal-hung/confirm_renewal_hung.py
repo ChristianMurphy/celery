@@ -5,7 +5,7 @@ hangs, holds one message it started and one it only prefetched.
 kombu's Redis transport against a real Redis (6379), visibility timeout 2 s.
 Consumer A takes both messages and acks neither; consumer B waits for 9 s.
 
-    PYTHONPATH=<kombu worktree> python adapter/confirm_renewal_hung.py
+    PYTHONPATH=<kombu worktree> python findings/renewal-hung/confirm_renewal_hung.py
 
 kombu 445027e: B gets both messages after the timeout (the recovery of a
 hung task, and a duplicate if A's task was only slow). With the renewal

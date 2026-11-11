@@ -6,8 +6,8 @@
 # start; the visibility timeout (6 s here, 1 hour by default) passes, so
 # every message is delivered again; a gets the signal before the ETA.
 #
-#   PY=python PYTHONPATH=<kombu>:<celery> adapter/natural_restore_by_tag.sh TERM
-#   PY=python PYTHONPATH=<kombu>:<celery> adapter/natural_restore_by_tag.sh KILL
+#   PY=python PYTHONPATH=<kombu>:<celery> findings/restore-by-tag/natural_restore_by_tag.sh TERM
+#   PY=python PYTHONPATH=<kombu>:<celery> findings/restore-by-tag/natural_restore_by_tag.sh KILL
 #
 # Needs Redis on 6379 (dbs 13 and 14 are flushed). kombu 445027e with
 # celery 768e476: after SIGKILL every task runs once; after SIGTERM 11 of

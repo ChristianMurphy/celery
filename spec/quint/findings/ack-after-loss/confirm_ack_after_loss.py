@@ -6,7 +6,7 @@ kombu's Redis transport against a real Redis (6379). A consumer receives
 one message; its ack fails with a connection error (injected: the one call
 raises); the channel closes; a new connection consumes.
 
-    PYTHONPATH=<kombu worktree> python adapter/confirm_ack_after_loss.py
+    PYTHONPATH=<kombu worktree> python findings/ack-after-loss/confirm_ack_after_loss.py
 
 kombu 445027e and c61b525: the closing channel puts the message back on
 the queue, and it is delivered again. With the resend prototype: the ack is

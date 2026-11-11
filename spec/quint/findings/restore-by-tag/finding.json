@@ -1,0 +1,18 @@
+{
+ "id": "restore-by-tag",
+ "title": "A channel restores by delivery tag: a consumer that held a message past the timeout restores the copy another worker runs",
+ "cells": [
+  "tagrestore_late_etashutdown.restoresOwnOnly"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "tracker eo-restore-by-tag-third-delivery (a candidate; where to post is with the user)",
+ "thread": "undecided: kombu issue 337 or a new kombu issue",
+ "confirm": [
+  "confirm_restore_by_tag.py",
+  "natural_restore_by_tag.sh",
+  "bytagapp.py"
+ ],
+ "scenarios": "",
+ "observed": "Main and the PR: a third delivery while the second still runs. Three workers, no injected delay: SIGKILL 12 of 12 run once; SIGTERM 11 of 12 run twice (PR branch 12 of 12)."
+}

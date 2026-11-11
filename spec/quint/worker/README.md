@@ -1,4 +1,4 @@
-# Workers, the publisher and the Redis transport's designs
+# Workers, and the designs compared
 
 `worker.qnt`, `../transport/publisher.qnt` and the renewal and pop-token
 variants of `../transport/redis_transport.qnt`: is a task run exactly once without a fault, at least
@@ -90,206 +90,230 @@ worker, a Redis that loses acknowledged writes (appendfsync everysec),
 RabbitMQ on the consumer side (an ack bound to its channel, the consumer
 timeout), and rate limits.
 
+## Properties
+
+<!-- generated: properties worker.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `exactlyOnce` | safety | While no fault was used a task never starts twice, and when quiet each one finished once and the broker is empty. Warm shutdowns and timeouts are not faults. Assumes: two workers with one pool process and prefetch 2, two messages, Redis. | Bounded existence (exactly one run), while no fault was used | docs/faq.rst:897 (celery 768e476): "No tasks should be lost even with experimental transports as long as the shutdown completes"; docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, "so that a task invocation that already started is never executed again" |
+| `neverLost` | safety | A published message is on the queue or in unacked until a run of it finished; with early ack a run in a live worker counts. | Universality, global (at least once as an invariant) | docs/faq.rst:897; docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns |
+| `quietDone` | liveness | A quiet system has finished every task and left nothing in the broker. Assumes: fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; the visibility timeout always passes for a record nothing will ack. | Response: published leads to finished and acked (lemma 3 of 3) | docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns; docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
+| `noAvoidableDup` | safety | No task runs twice for a reason a design could remove: the first run had finished, had not started, was acked early, or only outlasted the timeout. | Absence, global | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, "so that a task invocation that already started is never executed again"; docs/faq.rst:897 |
+| `noUnavoidableDup` | safety | No task runs twice with late ack after its first run was in progress when its worker or its connection was lost. | Absence, global | docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns |
+| `restoresOwnOnly` | safety | A closing or reconnecting channel restores only a record its own pop wrote. | Absence, global | kombu 445027e kombu/transport/virtual/base.py:277-314, redis.py restore_by_tag |
+| `workerSurvives` | safety | No worker is stopped by an error in the ack path. | Absence, global | kombu 445027e redis.py:1957 (the AttributeError of celery issue 11054) |
+| `normalCost` | safety | Without a fault a message costs one publish, one pop (two round trips on main) and one ack. | Universality at the end, while no fault was used | kombu 445027e redis.py:1457-1496; kombu PR 2831 redis.py:223-305 |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: nothing can happen without a new fault. Assumes: fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes. | Absence of a stop outside a quiet state (lemma 2 of 3) | the spec: `quiet`, checked by TLC with deadlock detection on `stepOrQuiet` |
+| `neverQuiet` | witness | Some run ends. | Existence | sanity |
+| `neverTwice` | witness | Some run starts a task twice. | Existence | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
+<!-- end generated -->
+
 ## Results
 
-`python3 tools/check.py --tier full --only worker` (and `publisher`,
-`transport`): every reachable state of every instance. A number is the
-states in a shortest counterexample; `ok` means the property holds in every
-reachable state. In every instance a run stops only in a quiet state.
-`python3 tools/design_tables.py` prints these tables from `expected.json`.
+`python3 tools/check.py --tier full --only worker`: every reachable state of
+every instance. A number is the states in a shortest counterexample; `ok`
+means the property holds in every reachable state. In every instance a run
+stops only in a quiet state. One table per design (the instance is
+`<design>_<ack mode>_<fault class>`):
 
+<!-- generated: designs worker.qnt -->
 `ackfull`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, cut | 21 | ok | ok | ok | 10 | ok | ok | ok |
-| late, crash | 26 | ok | ok | ok | 12 | ok | ok | ok |
-| late, cut | 21 | ok | ok | ok | 10 | ok | ok | ok |
-| late, cutlong | 27 | 7 | ok | ok | 7 | 8 | ok | ok |
-| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, cut | 21 | ok | ok | ok | 10 | ok | ok | ok | ok |
+| late, crash | 26 | ok | ok | ok | 12 | ok | ok | ok | ok |
+| late, cut | 21 | ok | ok | ok | 10 | ok | ok | ok | ok |
+| late, cutlong | 27 | 7 | ok | ok | 7 | 8 | ok | ok | ok |
+| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok | ok |
 
 `best`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, cut | 17 | ok | ok | ok | ok | ok | ok | ok |
-| early, eta | 13 | ok | ok | ok | ok | ok | ok | ok |
-| early, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| early, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok |
-| late, crash | 20 | ok | ok | ok | ok | ok | ok | ok |
-| late, cut | 17 | ok | ok | ok | ok | ok | ok | ok |
-| late, cutlong | 23 | 7 | ok | ok | 7 | 8 | ok | ok |
-| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok |
-| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
-| late, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| late, partition | 18 | ok | ok | ok | ok | ok | ok | ok |
-| late, reset | 16 | ok | ok | ok | ok | ok | ok | ok |
-| late, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, cut | 17 | ok | ok | ok | ok | ok | ok | ok | ok |
+| early, eta | 13 | ok | ok | ok | ok | ok | ok | ok | ok |
+| early, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| early, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, crash | 20 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, cut | 17 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, cutlong | 23 | 7 | ok | ok | 7 | 8 | ok | ok | ok |
+| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
+| late, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, partition | 18 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, reset | 16 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok | ok |
 
 `keepwritten`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, cut | 28 | ok | ok | ok | 10 | ok | ok | 7 |
-| early, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok |
-| late, cut | 30 | ok | ok | ok | 12 | ok | ok | 9 |
-| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok |
-| late, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, cut | 28 | ok | ok | ok | 10 | ok | ok | 7 | ok |
+| early, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, cut | 30 | ok | ok | ok | 12 | ok | ok | 9 | ok |
+| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok | ok |
+| late, shutdown | 17 | ok | ok | ok | ok | ok | ok | ok | ok |
 
 `main`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| early, partition | 21 | ok | 4 | 11 | 10 | ok | ok | ok |
-| early, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok |
-| late, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| late, partition | 26 | ok | 4 | 11 | 10 | ok | ok | 9 |
-| late, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| early, partition | 21 | ok | 4 | 11 | 10 | ok | ok | ok | ok |
+| early, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| late, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, partition | 26 | ok | 4 | 11 | 10 | ok | ok | 9 | ok |
+| late, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok | ok |
 
 `ownrecord`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| late, etashutdown | 26 | 9 | ok | ok | 9 | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| late, etashutdown | 26 | 9 | ok | ok | 9 | ok | ok | ok | ok |
 
 `pr`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, cut | 27 | ok | ok | ok | 10 | ok | ok | ok |
-| early, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok |
-| early, hang | 13 | ok | 6 | 12 | ok | ok | ok | ok |
-| early, kill | 19 | ok | 6 | 13 | 8 | ok | ok | ok |
-| early, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
-| early, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| early, reset | 18 | ok | ok | ok | 7 | ok | ok | ok |
-| early, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok |
-| late, crash | 34 | ok | ok | ok | 12 | ok | ok | 9 |
-| late, cut | 30 | ok | ok | ok | 10 | ok | ok | 9 |
-| late, cutlong | 36 | 7 | ok | ok | 7 | 8 | ok | 9 |
-| late, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok |
-| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
-| late, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| late, partition | 26 | ok | ok | ok | 10 | ok | ok | 9 |
-| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok |
-| late, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, cut | 27 | ok | ok | ok | 10 | ok | ok | ok | ok |
+| early, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| early, hang | 13 | ok | 6 | 12 | ok | ok | ok | ok | ok |
+| early, kill | 19 | ok | 6 | 13 | 8 | ok | ok | ok | ok |
+| early, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
+| early, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| early, reset | 18 | ok | ok | ok | 7 | ok | ok | ok | ok |
+| early, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| late, crash | 34 | ok | ok | ok | 12 | ok | ok | 9 | ok |
+| late, cut | 30 | ok | ok | ok | 10 | ok | ok | 9 | ok |
+| late, cutlong | 36 | 7 | ok | ok | 7 | 8 | ok | 9 | ok |
+| late, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
+| late, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, partition | 26 | ok | ok | ok | 10 | ok | ok | 9 | ok |
+| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok | ok |
+| late, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok | ok |
 
 `renewall`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, eta | 13 | ok | ok | ok | ok | ok | ok | ok |
-| early, long | 12 | ok | ok | ok | ok | ok | ok | ok |
-| late, cutlong | 30 | ok | ok | ok | 8 | 8 | ok | 9 |
-| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok |
-| late, hang | 12 | ok | ok | 8 | ok | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, long | 12 | ok | ok | ok | ok | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, eta | 13 | ok | ok | ok | ok | ok | ok | ok | ok |
+| early, long | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, cutlong | 30 | ok | ok | ok | 8 | 8 | ok | 9 | ok |
+| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, hang | 12 | ok | ok | 8 | ok | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, long | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
 
 `reneweta`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok |
-| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
 
 `renewidle`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
-| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok |
-| late, hang | 17 | ok | ok | 14 | ok | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
+| late, eta | 13 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, hang | 17 | ok | ok | 14 | ok | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
 
 `resend`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, cut | 21 | ok | ok | ok | 10 | ok | ok | ok |
-| late, crash | 34 | ok | ok | ok | 12 | ok | ok | 9 |
-| late, cut | 27 | ok | ok | ok | 10 | ok | ok | 9 |
-| late, partition | 26 | ok | ok | ok | 10 | ok | ok | 9 |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, cut | 21 | ok | ok | ok | 10 | ok | ok | ok | ok |
+| late, crash | 34 | ok | ok | ok | 12 | ok | ok | 9 | ok |
+| late, cut | 27 | ok | ok | ok | 10 | ok | ok | 9 | ok |
+| late, partition | 26 | ok | ok | ok | 10 | ok | ok | 9 | ok |
 
 `restoreall`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| late, crash | 28 | ok | ok | ok | 11 | 11 | ok | ok |
-| late, cut | 21 | ok | ok | ok | 10 | 9 | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| late, crash | 28 | ok | ok | ok | 11 | 11 | ok | ok | ok |
+| late, cut | 21 | ok | ok | ok | 10 | 9 | ok | ok | ok |
 
 `restoreidle`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| late, crash | 26 | ok | ok | ok | 11 | ok | ok | ok |
-| late, cut | 20 | ok | ok | ok | 10 | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| late, crash | 26 | ok | ok | ok | 11 | ok | ok | ok | ok |
+| late, cut | 20 | ok | ok | ok | 10 | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
 
 `tagrestore`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| late, etashutdown | 26 | 9 | ok | ok | 9 | ok | 7 | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| late, etashutdown | 26 | 9 | ok | ok | 9 | ok | 7 | ok | ok |
 
 `token`
 
-| ack, fault | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives |
-|---|---|---|---|---|---|---|---|---|
-| early, cut | 27 | ok | ok | ok | 10 | ok | ok | ok |
-| early, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok |
-| early, reset | 18 | ok | ok | ok | 7 | ok | ok | ok |
-| early, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok |
-| late, crash | 34 | ok | ok | ok | 12 | ok | ok | 9 |
-| late, cut | 30 | ok | ok | ok | 10 | ok | ok | 9 |
-| late, cutlong | 36 | 7 | ok | ok | 7 | 8 | ok | 9 |
-| late, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok |
-| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok |
-| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok |
-| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok |
-| late, none | 12 | ok | ok | ok | ok | ok | ok | ok |
-| late, partition | 26 | ok | ok | ok | 10 | ok | ok | 9 |
-| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok |
-| late, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok |
+| ack, class | D | exactlyOnce | neverLost | quietDone | noAvoidableDup | noUnavoidableDup | restoresOwnOnly | workerSurvives | normalCost |
+|---|---|---|---|---|---|---|---|---|---|
+| early, cut | 27 | ok | ok | ok | 10 | ok | ok | ok | ok |
+| early, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| early, reset | 18 | ok | ok | ok | 7 | ok | ok | ok | ok |
+| early, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| late, crash | 34 | ok | ok | ok | 12 | ok | ok | 9 | ok |
+| late, cut | 30 | ok | ok | ok | 10 | ok | ok | 9 | ok |
+| late, cutlong | 36 | 7 | ok | ok | 7 | 8 | ok | 9 | ok |
+| late, eta | 20 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+| late, hang | 19 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, kill | 21 | ok | ok | ok | 10 | 8 | ok | ok | ok |
+| late, long | 18 | 7 | ok | ok | 7 | ok | ok | ok | ok |
+| late, none | 12 | ok | ok | ok | ok | ok | ok | ok | ok |
+| late, partition | 26 | ok | ok | ok | 10 | ok | ok | 9 | ok |
+| late, reset | 20 | ok | ok | ok | 9 | 7 | ok | ok | ok |
+| late, shutdown | 19 | 9 | ok | ok | 9 | ok | ok | ok | ok |
+<!-- end generated -->
 
-Publisher:
+Why each violation is expected:
 
-| instance | D | violated |
-|---|---|---|
-| `off_none` | 6 | none |
-| `off_crash` | 8 | `neverLost` (3), `quietDone` (5) |
-| `off_drop` | 6 | `neverLost` (3), `quietDone` (4) |
-| `on_none` | 8 | none |
-| `on_crash` | 16 | `publishedOnce` (8) |
-| `on_drop` | 15 | `publishedOnce` (7) |
+<!-- generated: reasons worker.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `exactlyOnce` | ownrecord_late_etashutdown (9), tagrestore_late_etashutdown (9) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". tracker eo-redis-renew-unacked (kombu issue 337) |
+| `exactlyOnce` | main_early_shutdown (9), main_late_shutdown (9), pr_early_shutdown (9), pr_late_shutdown (9), token_early_shutdown (9), token_late_shutdown (9) | open | tracker eo-warm-shutdown-flush-duplicate (celery issue 3802). flush() drops a job the child already runs |
+| `exactlyOnce` | main_late_eta (9), pr_early_eta (9), pr_late_eta (9), token_early_eta (9), token_late_eta (9) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". tracker eo-redis-renew-unacked (kombu issue 337) |
+| `exactlyOnce` | best_late_long (7), pr_early_long (7), pr_late_long (7), reneweta_late_long (7), renewidle_early_long (7), renewidle_late_long (7), token_late_long (7) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". tracker eo-redis-renew-unacked (kombu issue 337) |
+| `exactlyOnce` | ackfull_late_cutlong (7), best_late_cutlong (7), pr_late_cutlong (7), token_late_cutlong (7) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". an outage longer than the visibility timeout |
+| `neverLost` | main_early_partition (4), main_late_partition (4) | open | tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it. a BRPOP whose reply is lost |
+| `neverLost` | pr_early_hang (6), pr_early_kill (6) | documented | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, "so that a task invocation that already started is never executed again". early ack: a task lost with its worker is not run again |
+| `quietDone` | main_early_partition (11), main_late_partition (11) | open | tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it |
+| `quietDone` | pr_early_hang (12), pr_early_kill (13) | documented | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, "so that a task invocation that already started is never executed again" |
+| `quietDone` | renewall_late_hang (8), renewidle_late_hang (14) | by design | tracker reply-kombu-337-renew-scope (kombu issue 337). design variants RenewAll and RenewUnstarted: a hung task is never redelivered. Blocking; the reason RenewScheduled is proposed |
+| `noAvoidableDup` | ownrecord_late_etashutdown (9), tagrestore_late_etashutdown (9) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". tracker eo-redis-renew-unacked (kombu issue 337) |
+| `noAvoidableDup` | main_early_shutdown (9), main_late_shutdown (9), pr_early_shutdown (9), pr_late_shutdown (9), token_early_shutdown (9), token_late_shutdown (9) | open | tracker eo-warm-shutdown-flush-duplicate (celery issue 3802) |
+| `noAvoidableDup` | main_late_eta (9), pr_early_eta (9), pr_late_eta (9), token_early_eta (9), token_late_eta (9) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". tracker eo-redis-renew-unacked (kombu issue 337) |
+| `noAvoidableDup` | best_late_long (7), pr_early_long (7), pr_late_long (7), reneweta_late_long (7), renewidle_early_long (7), renewidle_late_long (7), token_late_long (7) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". tracker eo-redis-renew-unacked (kombu issue 337) |
+| `noAvoidableDup` | ackfull_late_cutlong (7), best_late_cutlong (7), pr_late_cutlong (7), renewall_late_cutlong (8), token_late_cutlong (7) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
+| `noAvoidableDup` | ackfull_early_cut (10), keepwritten_early_cut (10), main_early_partition (10), pr_early_cut (10), pr_early_kill (8), pr_early_reset (7), resend_early_cut (10), token_early_cut (10), token_early_reset (7) | open | tracker eo-early-ack-duplicates (celery issue 4426). early ack is not at most once across a lost connection or a kill between the start and the ack |
+| `noAvoidableDup` | best_late_kill (10), main_late_kill (10), pr_late_kill (10), renewall_late_kill (10), reneweta_late_kill (10), renewidle_late_kill (10), restoreidle_late_kill (10), token_late_kill (10) | documented | docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns. killed after the task finished and before its ack; worker_deduplicate_successful_tasks removes it |
+| `noAvoidableDup` | ackfull_late_crash (12), ackfull_late_cut (10), ackfull_late_reset (9), keepwritten_late_cut (12), keepwritten_late_reset (9), main_late_partition (10), pr_late_crash (12), pr_late_cut (10), pr_late_partition (10), pr_late_reset (9), resend_late_crash (12), resend_late_cut (10), resend_late_partition (10), restoreall_late_crash (11), restoreall_late_cut (10), restoreidle_late_crash (11), restoreidle_late_cut (10), token_late_crash (12), token_late_cut (10), token_late_partition (10), token_late_reset (9) | open | tracker eo-redis-ack-after-connection-loss (celery issue 11054). a failed ack is forgotten, and flush() at the reconnect drops a written job (tracker eo-warm-shutdown-flush-duplicate (celery issue 3802)) |
+| `noUnavoidableDup` | restoreall_late_crash (11), restoreall_late_cut (9) | by design | the variant ReconnectRestoresAll. the reason the variant is rejected: it restores tasks that still run |
+| `noUnavoidableDup` | ackfull_late_cutlong (8), ackfull_late_reset (7), best_late_cutlong (8), best_late_kill (8), keepwritten_late_reset (7), main_late_kill (8), pr_late_cutlong (8), pr_late_kill (8), pr_late_reset (7), renewall_late_cutlong (8), renewall_late_kill (8), reneweta_late_kill (8), renewidle_late_kill (8), restoreidle_late_kill (8), token_late_cutlong (8), token_late_kill (8), token_late_reset (7) | documented | docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns. the at-least-once contract of late ack: a run in progress when its worker or connection is lost is run again |
+| `restoresOwnOnly` | tagrestore_late_etashutdown (7) | open | tracker eo-restore-by-tag-third-delivery |
+| `workerSurvives` | keepwritten_early_cut (7), keepwritten_late_cut (9), main_late_partition (9), pr_late_crash (9), pr_late_cut (9), pr_late_cutlong (9), pr_late_partition (9), renewall_late_cutlong (9), resend_late_crash (9), resend_late_cut (9), resend_late_partition (9), token_late_crash (9), token_late_cut (9), token_late_cutlong (9), token_late_partition (9) | open | tracker eo-redis-ack-after-connection-loss (celery issue 11054) |
+<!-- end generated -->
 
-Transport, the renewal and token instances (the 15 earlier ones are
-unchanged):
-
-| instance | D | violated |
-|---|---|---|
-| `renewblind_held_credit` | 44 | noStranded (11) |
-| `renewown_held_credit` | 44 | none |
-| `token_none` | 24 | none |
-| `token_crash` | 31 | none |
-| `token_credit` | 34 | none |
-| `token_reply_timeout` | 33 | none |
-| `token_credit_timeout` | 43 | none |
-| `token_mismatch` | 24 | none |
-| `token_mismatch_crash` | 31 | none |
-| `token_credit_crash` | 41 | none |
-| `token_held_timeout` | 34 | none |
-| `token_renewblind_held_credit` | 44 | none |
+The publisher and the renewal and token instances of the transport are in
+[../transport/README.md](../transport/README.md).
 
 ## What the model says about each design
 
@@ -379,12 +403,12 @@ Every script names its instance and property and prints one line per case.
 
 | Script | Shows | On main | With the variant |
 |---|---|---|---|
-| `../adapter/confirm_flush_ack_modes.py` | `flush()` between a job's write and its accept, early and late ack | the child runs the task, the message is never acked (both modes) | acked (both modes) |
-| `../adapter/confirm_renewal_hung.py` | a consumer that never acks, visibility timeout 2 s | the other consumer gets both messages | renew-everything prototype: neither |
-| `../adapter/confirm_ack_after_loss.py` | an ack that fails with its connection | delivered again when the channel closes | resend prototype: not delivered again |
-| `../adapter/confirm_putback_renewal.py` | kombu PR 2831 with the renewal patch | control: the message is back on the queue | after a renewal: on no queue, in `unacked` |
-| `../adapter/confirm_restore_by_tag.py` | a channel closes after the timeout redelivered its message | a third delivery while the second still runs (main and the PR) | no prototype |
-| `../adapter/natural_restore_by_tag.sh` | the same with three Celery workers and no injected delay | SIGKILL: 12 of 12 run once; SIGTERM: 11 of 12 twice (PR branch: 12 of 12) | no prototype |
+| `../findings/flush-ack-modes/confirm_flush_ack_modes.py` | `flush()` between a job's write and its accept, early and late ack | the child runs the task, the message is never acked (both modes) | acked (both modes) |
+| `../findings/renewal-hung/confirm_renewal_hung.py` | a consumer that never acks, visibility timeout 2 s | the other consumer gets both messages | renew-everything prototype: neither |
+| `../findings/ack-after-loss/confirm_ack_after_loss.py` | an ack that fails with its connection | delivered again when the channel closes | resend prototype: not delivered again |
+| `../findings/putback-renewal/confirm_putback_renewal.py` | kombu PR 2831 with the renewal patch | control: the message is back on the queue | after a renewal: on no queue, in `unacked` |
+| `../findings/restore-by-tag/confirm_restore_by_tag.py` | a channel closes after the timeout redelivered its message | a third delivery while the second still runs (main and the PR) | no prototype |
+| `../findings/restore-by-tag/natural_restore_by_tag.sh` | the same with three Celery workers and no injected delay | SIGKILL: 12 of 12 run once; SIGTERM: 11 of 12 twice (PR branch: 12 of 12) | no prototype |
 | `../adapter/record_transport.py` | recorded Redis command histories of two consumers, checked by `quint test` | 30 of 30 allowed (`BrpopThenRecord`) | 30 of 30 allowed (`PopScript`) |
 
 The recorded histories go from the code to the spec: Redis `MONITOR` gives

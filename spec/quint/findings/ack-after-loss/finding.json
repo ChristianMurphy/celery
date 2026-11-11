@@ -1,0 +1,18 @@
+{
+ "id": "ack-after-loss",
+ "title": "An ack that fails with its connection is forgotten, and one through a collected channel stops the worker",
+ "cells": [
+  "pr_late_cut.noAvoidableDup",
+  "pr_late_cut.workerSurvives",
+  "main_late_partition.workerSurvives"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "tracker eo-redis-ack-after-connection-loss",
+ "thread": "the reply posted on celery issue 11054",
+ "confirm": [
+  "confirm_ack_after_loss.py"
+ ],
+ "scenarios": "",
+ "observed": "Main: delivered again when the channel closes. Resend prototype: not delivered again. The worker exit needs a worker; those runs are in the reply."
+}

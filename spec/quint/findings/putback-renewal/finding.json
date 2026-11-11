@@ -1,0 +1,16 @@
+{
+ "id": "putback-renewal",
+ "title": "A blind renewal next to kombu PR 2831 strands a message in unacked",
+ "cells": [
+  "renewblind_held_credit.noStranded"
+ ],
+ "outcome": "hang",
+ "status": "open",
+ "where": "tracker reply-kombu-337-renew-scope; compare and set (RenewOwn) or the pop token (ByToken) removes it",
+ "thread": "kombu issue 337, the follow-up to the renewal proposal",
+ "confirm": [
+  "confirm_putback_renewal.py"
+ ],
+ "scenarios": "",
+ "observed": "Control: the message is back on the queue. After a renewal: on no queue, in unacked."
+}

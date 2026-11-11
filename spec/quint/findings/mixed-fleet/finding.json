@@ -1,0 +1,18 @@
+{
+ "id": "mixed-fleet",
+ "title": "A rolling upgrade to the fix for celery issue 11036 can leave a chord pending",
+ "cells": [
+  "mixed_dup.quietDone",
+  "mixed_dup.atMostOnce",
+  "mixed_lose_result.quietDone"
+ ],
+ "outcome": "hang",
+ "status": "by design",
+ "where": "documented in the fix since 2057a3c",
+ "thread": "the thread of celery issue 11036",
+ "confirm": [
+  "confirm_mixed_fleet.py"
+ ],
+ "scenarios": "",
+ "observed": "Both results SUCCESS, the counter at 3, the body never published."
+}

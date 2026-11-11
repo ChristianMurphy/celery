@@ -5,10 +5,10 @@ backend and a real memcached (11211); each step runs in its own process, so
 each can use another checkout.
 
     gid=$(python -c 'import uuid; print(uuid.uuid4().hex)')
-    PYTHONPATH=<main>  python adapter/confirm_mixed_fleet.py $gid setup 2
-    PYTHONPATH=<fix>   python adapter/confirm_mixed_fleet.py $gid 2
-    PYTHONPATH=<main>  python adapter/confirm_mixed_fleet.py $gid 1
-    PYTHONPATH=<fix>   python adapter/confirm_mixed_fleet.py $gid report
+    PYTHONPATH=<main>  python findings/mixed-fleet/confirm_mixed_fleet.py $gid setup 2
+    PYTHONPATH=<fix>   python findings/mixed-fleet/confirm_mixed_fleet.py $gid 2
+    PYTHONPATH=<main>  python findings/mixed-fleet/confirm_mixed_fleet.py $gid 1
+    PYTHONPATH=<fix>   python findings/mixed-fleet/confirm_mixed_fleet.py $gid report
 
 1fa71d4 with 768e476: both results SUCCESS, the body never published, no
 error: the count went 1, 2, 3; the run with the fix waited for header 1's

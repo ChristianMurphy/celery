@@ -4,7 +4,7 @@ the real Redis backend and a real Redis (6379).
 SystemExit lands before the publish (in the claim-extend call), the claim
 expires (the key is deleted here), and a copy of a header task arrives.
 
-    PYTHONPATH=<celery worktree> python adapter/confirm_interrupt_then_copy.py
+    PYTHONPATH=<celery worktree> python findings/interrupt-then-copy/confirm_interrupt_then_copy.py
 
 5446659: the chord is failed, then the copy publishes the body. ee48301
 and ad00b4a: failed once, the copy publishes nothing. 768e476: no error, and the copy

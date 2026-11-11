@@ -9,7 +9,9 @@
     python3 tools/check.py --tier full --update-expected   # rewrite expected.json
     python3 tools/check.py --cex            # write counterexamples as ITF traces
 
-fast   ``quint typecheck``; the mistakes in type_errors.py are rejected; one
+fast   the catalog (catalog.py): an entry per property, a reason per expected
+       violation, the checklist; the code citations (citations.py); ``quint typecheck``; the mistakes in
+       type_errors.py are rejected; one
        simulator run per instance: the properties expected to hold and
        ``steps <= D`` as invariants, the expected violations as witnesses,
        and a sample of traces to count which actions and outcomes ran.
@@ -42,6 +44,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import catalog
+import citations
 import tlc
 
 HERE = tlc.ROOT
@@ -79,49 +83,21 @@ def instances(file: str) -> list[str]:
     return re.findall(r'^module (\w+) \{', text, re.M)
 
 
-SPECS = {
-    'results': Spec(
-        'resultstate.qnt', instances('resultstate.qnt'),
-        ['successStable', 'readySticky', 'progress'], ['noSuccessEver'],
-        apalache=['rtw', 'mongo', 'sql', 'es'], types='resulttypes',
-        fast=['rtw', 'mongo', 'sql', 'es']),
-    'chord': Spec(
-        'chord.qnt', instances('chord.qnt'),
-        ['atMostOnce', 'noPremature', 'argsComplete', 'noErrorAfterDispatch',
-         'noDispatchAfterError', 'noSpuriousError', 'failsOnce', 'quietDone',
-         'progress'],
-        ['neverDispatched', 'neverFailed', 'neverQuiet'],
-        types='chordtypes',
-        fast=['redis_dup', 'redis_wlost_late', 'kv_dup',
-              'unlock_child_reject', 'once_dup', 'oncev1_dup',
-              'skip_kill_before_count', 'mixed_dup', 'redisfix1_interrupt',
-              'redisfix_interrupt_dup']),
-    'transport': Spec(
-        'redis_transport.qnt', instances('redis_transport.qnt'),
-        ['inSomePlace', 'neverLost', 'notTwice', 'noDuplicate',
-         'prefetchRespected', 'noMissedWake', 'noStranded', 'quietDone',
-         'exactlyOnce'],
-        ['neverQuiet', 'neverDuplicated', 'neverPutBack'],
-        types='transporttypes', metric='ops',
-        fast=['main_crash', 'paused_credit_timeout', 'pr_credit_timeout',
-              'renewblind_held_credit']),
-    'worker': Spec(
-        'worker.qnt', instances('worker.qnt'),
-        ['exactlyOnce', 'neverLost', 'quietDone', 'noAvoidableDup',
-         'noUnavoidableDup', 'restoresOwnOnly', 'workerSurvives',
-         'normalCost'],
-        ['neverQuiet', 'neverTwice'],
-        types='workertypes', metric='ops',
-        fast=['main_late_partition', 'pr_late_shutdown', 'pr_late_eta',
-              'pr_late_cut', 'renewall_late_hang', 'best_late_crash']),
-    'publisher': Spec(
-        'publisher.qnt', instances('publisher.qnt'),
-        ['neverLost', 'publishedOnce', 'exactlyOnce', 'quietDone',
-         'normalCost'],
-        ['neverQuiet'],
-        types='publishertypes', metric='sent',
-        fast=['off_crash', 'on_none', 'on_drop']),
-}
+def specs() -> dict[str, Spec]:
+    """One Spec per entry of the catalog (properties.json), keyed by the
+    spec's short name: ``chord.qnt`` is ``chord``."""
+    short = {'resultstate': 'results', 'redis_transport': 'transport'}
+    out = {}
+    for file, s in catalog.load()['specs'].items():
+        stem = file.removesuffix('.qnt')
+        out[short.get(stem, stem)] = Spec(
+            file, instances(file), s['properties'], s['witnesses'],
+            apalache=s['apalache'], fast=s['fast'], metric=s['metric'],
+            types=s['types'])
+    return out
+
+
+SPECS = specs()
 
 
 def expected() -> dict:
@@ -228,6 +204,21 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
          jobs: int, every: bool = False) -> bool:
     ok = True
     t0 = time.time()
+    # the catalog: an entry per property, a reason per expected violation,
+    # the checklist, the generated tables
+    problems = catalog.check() + [f'{p}: generated tables are stale'
+                                  for p in catalog.stale()]
+    for line in problems:
+        ok = False
+        print('CATALOG', line)
+    # the code citations: every @cite resolves at its SHA and on main
+    cite_errors, cite_notes = citations.check()
+    for line in cite_errors:
+        ok = False
+        print('CITE', line)
+    for line in cite_notes:
+        if 'not set' in line:
+            print('note:', line)
     for name in names:
         text = quint('typecheck', str(tlc.spec_path(SPECS[name].file)))
         if 'error' in text.lower():
@@ -448,18 +439,23 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
 
 
 # ---- counterexamples as ITF traces (for the replay adapters) ---------------
-def write_cex(names: list[str], samples: int, seed: str) -> None:
+def write_cex(names: list[str], samples: int, seed: str,
+              only: str | None = None) -> None:
     exp = expected()
     out = HERE / 'traces' / 'cex'
     out.mkdir(parents=True, exist_ok=True)
     for name in names:
         spec = SPECS[name]
         for inst in spec.instances:
+            if only not in (None, inst):
+                continue
             e = exp.get(spec.file, {}).get(inst, {})
             for prop in e.get('violated', {}):
                 if prop in spec.witnesses:
                     continue
-                path = out / f'{inst}.{prop}.itf.json'
+                # next to its confirm script when a finding claims it
+                path = ((catalog.finding_of(f'{inst}.{prop}') or out)
+                        / f'{inst}.{prop}.itf.json')
                 text = quint('run', f'--main={inst}',
                              str(tlc.instance_file(spec.file, inst)),
                              f'--invariant={prop}',
@@ -469,6 +465,13 @@ def write_cex(names: list[str], samples: int, seed: str) -> None:
                 if '[violation]' not in text:
                     path.unlink(missing_ok=True)
                     print(f'{inst}.{prop}: not found by the simulator')
+                else:
+                    # the trace names the compiled file by its absolute
+                    # path; keep only the spec's path in the tree
+                    path.write_text(re.sub(
+                        r'"source":"[^"]*"',
+                        f'"source":"{tlc.spec_path(spec.file).relative_to(HERE)}"',
+                        path.read_text()))
 
 
 def main() -> int:
@@ -488,7 +491,7 @@ def main() -> int:
     args = ap.parse_args()
     names = [args.only] if args.only else list(SPECS)
     if args.cex:
-        write_cex(names, args.samples or 3000, args.seed)
+        write_cex(names, args.samples or 3000, args.seed, args.instance)
         return 0
     if args.tier == 'fast':
         return 0 if fast(names, args.instance, args.samples or 300,

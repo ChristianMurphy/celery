@@ -120,6 +120,27 @@ MUTANTS = [
      '      | CloseAlways => point != InClaimReply', '      | CloseAlways => handled'),
     ('interrupt: not handled (768e476)', 'chord.qnt', 'redisfix_interrupt', 'quietDone',
      '      | CloseAlways => untilSent\n', '      | CloseAlways => false\n'),
+    # one mutant for each property that had none
+    ('once: every run that finds the group gone fails the chord, as main', 'chord.qnt', 'once_lose_group', 'failsOnce',
+     'else if (not(groupSaved)) (if (doneKey) ChordDone else GroupGone)',
+     'else if (not(groupSaved)) GroupGone'),
+    ('transport: an ack that leaves the record', 'redis_transport.qnt', 'pr_none', 'exactlyOnce',
+     "unacked' = unacked.filter(e => not(e.m == m and e.tag == OwnTag)),\n    acked' = acked.union(Set(m)),",
+     "unacked' = unacked,\n    acked' = acked.union(Set(m)),"),
+    ('worker: with the pop token a channel still restores by tag', 'worker.qnt', 'ownrecord_late_etashutdown', 'restoresOwnOnly',
+     'tags.filter(m => if (D.restoreBy == ByPop) unacked.get(m) == HeldBy(c)',
+     'tags.filter(m => if (false) unacked.get(m) == HeldBy(c)'),
+    ('worker: the pop script costs two round trips', 'worker.qnt', 'pr_late_none', 'normalCost',
+     'did(Deliver({ c: c, m: m }), POP_COST),', 'did(Deliver({ c: c, m: m }), 2),'),
+    ('publisher: a resend that does not wait for the confirm to be overdue', 'publisher.qnt', 'on_none', 'publishedOnce',
+     "stalled(m), brokerUp,\n    frames' = frames.union(Set(m)),",
+     "pub.get(m) == Waiting, brokerUp,\n    frames' = frames.union(Set(m)),"),
+    ('publisher: a write to disk that keeps the copy in memory', 'publisher.qnt', 'off_none', 'exactlyOnce',
+     "memory' = memory.set(m, 0),", "memory' = memory,"),
+    ('publisher: the queue accepts a frame and keeps nothing', 'publisher.qnt', 'off_none', 'quietDone',
+     "memory' = memory.setBy(m, n => n + 1),", "memory' = memory,"),
+    ('publisher: reading a confirm costs nothing', 'publisher.qnt', 'on_none', 'normalCost',
+     'did(Confirm(m), 1),', 'did(Confirm(m), 0),'),
 ]
 
 

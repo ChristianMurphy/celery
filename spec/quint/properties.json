@@ -1,0 +1,1426 @@
+{
+ "specs": {
+  "resultstate.qnt": {
+   "family": "result",
+   "types": "resulttypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "successStable",
+    "readySticky",
+    "progress"
+   ],
+   "witnesses": [
+    "noSuccessEver"
+   ],
+   "apalache": [
+    "rtw",
+    "mongo",
+    "sql",
+    "es"
+   ],
+   "fast": [
+    "rtw",
+    "es"
+   ],
+   "passes_all": "es",
+   "progress": "closed form",
+   "checklist": "enforced"
+  },
+  "chord.qnt": {
+   "family": "canvas",
+   "types": "chordtypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "atMostOnce",
+    "noPremature",
+    "argsComplete",
+    "noErrorAfterDispatch",
+    "noDispatchAfterError",
+    "noSpuriousError",
+    "failsOnce",
+    "quietDone",
+    "progress"
+   ],
+   "witnesses": [
+    "neverDispatched",
+    "neverFailed",
+    "neverQuiet"
+   ],
+   "apalache": [],
+   "fast": [
+    "redis_dup",
+    "redis_wlost_late",
+    "kv_dup",
+    "unlock_child_reject",
+    "once_dup",
+    "oncev1_dup",
+    "skip_kill_before_count",
+    "mixed_dup",
+    "redisfix1_interrupt",
+    "redisfix_interrupt_dup"
+   ],
+   "passes_all": "redis_dup",
+   "progress": "closed form",
+   "checklist": "enforced"
+  },
+  "redis_transport.qnt": {
+   "family": "transport",
+   "types": "transporttypes",
+   "metric": "ops",
+   "pins": {
+    "kombu": "445027e",
+    "kombu PR 2831": "c61b525"
+   },
+   "properties": [
+    "inSomePlace",
+    "neverLost",
+    "notTwice",
+    "noDuplicate",
+    "prefetchRespected",
+    "noMissedWake",
+    "noStranded",
+    "quietDone",
+    "exactlyOnce"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverDuplicated",
+    "neverPutBack"
+   ],
+   "apalache": [],
+   "fast": [
+    "main_crash",
+    "paused_credit_timeout",
+    "pr_credit_timeout",
+    "renewblind_held_credit"
+   ],
+   "passes_all": "pr_credit_timeout",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced"
+  },
+  "worker.qnt": {
+   "family": "worker",
+   "types": "workertypes",
+   "metric": "ops",
+   "pins": {
+    "celery": "768e476",
+    "kombu": "445027e",
+    "kombu PR 2831": "c61b525"
+   },
+   "properties": [
+    "exactlyOnce",
+    "neverLost",
+    "quietDone",
+    "noAvoidableDup",
+    "noUnavoidableDup",
+    "restoresOwnOnly",
+    "workerSurvives",
+    "normalCost"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverTwice"
+   ],
+   "apalache": [],
+   "fast": [
+    "main_late_partition",
+    "pr_late_shutdown",
+    "pr_late_eta",
+    "pr_late_cut",
+    "renewall_late_hang",
+    "best_late_crash"
+   ],
+   "passes_all": "best_late_crash",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced"
+  },
+  "publisher.qnt": {
+   "family": "transport",
+   "types": "publishertypes",
+   "metric": "sent",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "neverLost",
+    "publishedOnce",
+    "exactlyOnce",
+    "quietDone",
+    "normalCost"
+   ],
+   "witnesses": [
+    "neverQuiet"
+   ],
+   "apalache": [],
+   "fast": [
+    "off_crash",
+    "on_none"
+   ],
+   "passes_all": "on_none",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced"
+  }
+ },
+ "properties": [
+  {
+   "id": "resultstate.successStable",
+   "spec": "resultstate.qnt",
+   "definition": "successStable",
+   "kind": "safety",
+   "pattern": "Universality, after a reader saw SUCCESS until forget()",
+   "statement": "Once a reader saw SUCCESS by a run, the store keeps that record until forget().",
+   "assumptions": "two duplicate runs of one task id, one reader, one forget()",
+   "source": "celery/backends/base.py:1362-1366 (768e476): \"if the status is a success then we ignore any following update to the state\"; celery PR 10920 (database), 10944 (mongodb), 10945 (cassandra)",
+   "instances": "all",
+   "evidence": "adapter/replay_results.py (161 traces on Redis, MongoDB, PostgreSQL, Elasticsearch); adapter/record_results.py and check_histories.py (600 recorded histories)",
+   "witness": "noSuccessEver",
+   "mutant": "mongo filter without $ne SUCCESS",
+   "violations": [
+    {
+     "instances": "rtw",
+     "reason": "open",
+     "where": "tracker structural-first-success (reply on celery discussion 10681)",
+     "note": "read-then-write stores: the read and the write are two round trips"
+    }
+   ]
+  },
+  {
+   "id": "resultstate.readySticky",
+   "spec": "resultstate.qnt",
+   "definition": "readySticky",
+   "kind": "safety",
+   "pattern": "Absence of an unready write, after a ready state until forget()",
+   "statement": "A ready state is never replaced by an unready one, except by forget().",
+   "assumptions": "two duplicate runs of one task id",
+   "source": "celery/backends/elasticsearch.py:166-176 (768e476); only Elasticsearch promises it",
+   "instances": "all",
+   "evidence": "adapter/replay_results.py; adapter/mutations.py (sql_no_row_lock, mongo_no_filter)",
+   "witness": "noSuccessEver",
+   "mutant": "es without the ready check",
+   "violations": [
+    {
+     "instances": "rtw",
+     "reason": "open",
+     "where": "tracker es-ready-states (merged into the reply on celery discussion 10681)",
+     "note": "a late RETRY replaces a final FAILURE"
+    },
+    {
+     "instances": "mongo",
+     "reason": "open",
+     "where": "tracker es-ready-states (merged into the reply on celery discussion 10681)",
+     "note": ""
+    },
+    {
+     "instances": "sql",
+     "reason": "open",
+     "where": "tracker es-ready-states (merged into the reply on celery discussion 10681)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "resultstate.progress",
+   "spec": "resultstate.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps + measure never exceeds its initial value, and measure is never negative: every run is finite.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: every action lowers `measure`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "noSuccessEver",
+   "mutant": "results: a commit that leaves the run begun (commits forever)",
+   "violations": []
+  },
+  {
+   "id": "resultstate.stepOrQuiet",
+   "spec": "resultstate.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Absence of a stop outside a quiet state (lemma 2 of 3)",
+   "statement": "A run stops only in a quiet state: every run wrote all it had to write.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: `quiet`, checked by TLC with deadlock detection on `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "resultstate.noSuccessEver",
+   "spec": "resultstate.qnt",
+   "definition": "noSuccessEver",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run stores SUCCESS.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chord.atMostOnce",
+   "spec": "chord.qnt",
+   "definition": "atMostOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one dispatch), global",
+   "statement": "The chord body is dispatched at most once.",
+   "assumptions": "two header tasks, three processes; holds on Redis while no claim expires under a live holder",
+   "source": "celery/backends/redis.py:139 (768e476): the claim is `SET NX`; celery PR 10998; docs/userguide/canvas.rst:905-906 (\"a task that only executes after all of the tasks in a group have finished\")",
+   "instances": "all",
+   "evidence": "adapter/replay_chord.py (340 traces, 18 counterexamples); adapter/mutations.py redis_lua_claim_no_nx",
+   "witness": "neverDispatched",
+   "mutant": "redis: claim without NX (before celery PR 10998)",
+   "violations": [
+    {
+     "instances": "mixed_dup",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4), which documents the rolling upgrade",
+     "note": "mixed fleet only: one process still runs main"
+    },
+    {
+     "instances": "once_dup_lose_done",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": "needs the done key evicted and a late copy; the done key lives twice as long as the results"
+    },
+    {
+     "instances": "redis_interrupt_dup",
+     "reason": "open",
+     "where": "tracker chord-time-limit-marks-done (celery issue 11039)",
+     "note": ""
+    },
+    {
+     "instances": "redis_lease",
+     "reason": "by design",
+     "where": "celery/backends/redis.py:169-170 (768e476): the extend script may \"reacquire an expired lease while chord data remains\"",
+     "note": "a lease that expires under a live holder"
+    },
+    {
+     "instances": "redis_wlost_late",
+     "reason": "by design",
+     "where": "celery/backends/redis.py:169-170 (768e476)",
+     "note": "a worker lost after the publish and before the cleanup, redelivered after the claim TTL"
+    },
+    {
+     "instances": "redisfix2_interrupt_dup",
+     "reason": "fixed",
+     "where": "ee48301 on the fix branch for celery issue 11039 (ad00b4a)",
+     "note": ""
+    },
+    {
+     "instances": "redisfix3_interrupt_dup",
+     "reason": "fixed",
+     "where": "ad00b4a on the fix branch for celery issue 11039 (ad00b4a)",
+     "note": ""
+    },
+    {
+     "instances": "unlock_child_reject",
+     "reason": "open",
+     "where": "tracker chord-unlock-dispatch-twice (celery issue 11037)",
+     "note": ""
+    },
+    {
+     "instances": "unlock_wlost_late",
+     "reason": "open",
+     "where": "tracker chord-unlock-dispatch-twice (celery issue 11037)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "chord.noPremature",
+   "spec": "chord.qnt",
+   "definition": "noPremature",
+   "kind": "safety",
+   "pattern": "Precedence: every header result stored precedes the dispatch",
+   "statement": "The body is not dispatched while a header result is missing.",
+   "assumptions": "",
+   "source": "docs/userguide/canvas.rst:905-906, 965 (celery 768e476): \"the callback can only be executed after all of the tasks in the header have returned\"",
+   "instances": "all",
+   "evidence": "adapter/replay_chord.py",
+   "witness": "neverDispatched",
+   "mutant": "kv: count on >= size",
+   "violations": []
+  },
+  {
+   "id": "chord.argsComplete",
+   "spec": "chord.qnt",
+   "definition": "argsComplete",
+   "kind": "safety",
+   "pattern": "Universality after the dispatch",
+   "statement": "The body gets exactly one result per header task.",
+   "assumptions": "",
+   "source": "docs/userguide/canvas.rst:905-906; celery PR 10919 (the Redis script dedupes a part that returns twice)",
+   "instances": "all",
+   "evidence": "adapter/replay_chord.py; adapter/mutations.py redis_lua_no_dedupe",
+   "witness": "neverDispatched",
+   "mutant": "redis: no dedupe (before celery PR 10919)",
+   "violations": []
+  },
+  {
+   "id": "chord.noErrorAfterDispatch",
+   "spec": "chord.qnt",
+   "definition": "noErrorAfterDispatch",
+   "kind": "safety",
+   "pattern": "Absence of a chord error, after the dispatch",
+   "statement": "A chord whose body was dispatched is not failed afterwards.",
+   "assumptions": "",
+   "source": "celery/backends/base.py:464-520 (768e476): chord_error_from_stack stores FAILURE for the body id and calls its errbacks",
+   "instances": "all",
+   "evidence": "findings/once-reread, findings/interrupt-cleanup",
+   "witness": "neverFailed",
+   "mutant": "once: a late copy fails the chord without the done key",
+   "violations": [
+    {
+     "instances": "kv_dup",
+     "reason": "open",
+     "where": "tracker chord-incr-errback-after-success (celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "kv_wlost_late",
+     "reason": "open",
+     "where": "tracker chord-incr-errback-after-success (celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "mixed_dup",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4), which documents the rolling upgrade",
+     "note": "mixed fleet only: one process still runs main"
+    },
+    {
+     "instances": "once_dup_lose_done",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": "needs the done key evicted and a late copy"
+    },
+    {
+     "instances": "redisfix1_interrupt",
+     "reason": "fixed",
+     "where": "5446659 on the fix branch for celery issue 11039 (ad00b4a)",
+     "note": ""
+    },
+    {
+     "instances": "redisfix_interrupt_sent",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11039 (ad00b4a)",
+     "note": "the interrupt lands inside the publish call after the broker took the body; the code cannot tell"
+    }
+   ]
+  },
+  {
+   "id": "chord.noDispatchAfterError",
+   "spec": "chord.qnt",
+   "definition": "noDispatchAfterError",
+   "kind": "safety",
+   "pattern": "Absence of a dispatch, after a chord error",
+   "statement": "The body is not dispatched after the chord was failed.",
+   "assumptions": "",
+   "source": "docs/userguide/canvas.rst:980 (celery 768e476): \"The chord callback result will transition to the failure state\"",
+   "instances": "all",
+   "evidence": "findings/interrupt-then-copy",
+   "witness": "neverFailed",
+   "mutant": "interrupt: leave the size key (5446659)",
+   "violations": [
+    {
+     "instances": "mixed_dup",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4), which documents the rolling upgrade",
+     "note": "mixed fleet only: one process still runs main"
+    },
+    {
+     "instances": "redisfix2_interrupt_dup",
+     "reason": "fixed",
+     "where": "ee48301 on the fix branch for celery issue 11039 (ad00b4a)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "chord.noSpuriousError",
+   "spec": "chord.qnt",
+   "definition": "noSpuriousError",
+   "kind": "safety",
+   "pattern": "Precedence: a cause precedes the chord error",
+   "statement": "The chord fails only for a header FAILURE, a refused publish, a lost key, a header that ignores its result, or an interrupted dispatch.",
+   "assumptions": "",
+   "source": "docs/userguide/canvas.rst:973-980 (celery 768e476): the chord fails when a header task raises",
+   "instances": "all",
+   "evidence": "findings/once-reread",
+   "witness": "neverFailed",
+   "mutant": "once: fail on the first read (cd8aa46)",
+   "violations": [
+    {
+     "instances": "kv_dup",
+     "reason": "open",
+     "where": "tracker chord-incr-double-count (follow-up on celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "kv_wlost_late",
+     "reason": "open",
+     "where": "tracker chord-incr-double-count (follow-up on celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "mixed_dup",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4), which documents the rolling upgrade",
+     "note": "mixed fleet only: one process still runs main"
+    },
+    {
+     "instances": "oncev1_dup",
+     "reason": "fixed",
+     "where": "1fa71d4 on the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "chord.failsOnce",
+   "spec": "chord.qnt",
+   "definition": "failsOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one chord error), global",
+   "statement": "The chord is failed at most once.",
+   "assumptions": "",
+   "source": "docs/userguide/canvas.rst:1055 (celery 768e476): the errback is called once",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "once: every run that finds the group gone fails the chord, as main",
+   "violations": [
+    {
+     "instances": "kv_dup",
+     "reason": "open",
+     "where": "tracker chord-incr-errback-after-success (celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "kv_wlost_late",
+     "reason": "open",
+     "where": "tracker chord-incr-errback-after-success (celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "kv_lose_group",
+     "reason": "open",
+     "where": "tracker chord-incr-errback-after-success (celery issue 11036)",
+     "note": "main fails the chord once per run that finds the group gone; the fix fails it once"
+    },
+    {
+     "instances": "mixed_dup",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4), which documents the rolling upgrade",
+     "note": "mixed fleet only: one process still runs main"
+    }
+   ]
+  },
+  {
+   "id": "chord.quietDone",
+   "spec": "chord.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response: a published chord leads to a dispatched body or a failed chord (lemma 3 of 3)",
+   "statement": "A quiet chord has its body dispatched or is failed. A violation is a hang.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; `chord_unlock` retries have a budget of 2",
+   "source": "docs/userguide/canvas.rst:905-906, 973-980 (celery 768e476)",
+   "instances": "all",
+   "evidence": "findings/mixed-fleet; adapter/replay_chord.py",
+   "witness": "neverQuiet",
+   "mutant": "once: a lost result never fails the chord",
+   "violations": [
+    {
+     "instances": "unlock_child_*",
+     "reason": "open",
+     "where": "tracker chord-unlock-lost-child (follow-up on celery issue 11037)",
+     "note": ""
+    },
+    {
+     "instances": "*_child_*",
+     "reason": "open",
+     "where": "tracker chord-lost-child-after-success (celery issue 11038)",
+     "note": ""
+    },
+    {
+     "instances": "*_wlost_early",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, \"so that a task invocation that already started is never executed again\"",
+     "note": "a header lost with early ack is not run again, so the chord waits"
+    },
+    {
+     "instances": "redis_wlost_late",
+     "reason": "open",
+     "where": "tracker chord-claim-blocks-redelivery (part of celery issue 11038)",
+     "note": ""
+    },
+    {
+     "instances": "kv_wlost_late",
+     "reason": "open",
+     "where": "tracker chord-incr-double-count (follow-up on celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "kv_kill_after_claim",
+     "reason": "open",
+     "where": "tracker chord-incr-double-count (follow-up on celery issue 11036)",
+     "note": ""
+    },
+    {
+     "instances": "*_lose_counter",
+     "reason": "by design",
+     "where": "celery/backends/base.py:1438-1466 (768e476): the counter is one key",
+     "note": "needs the counter key evicted"
+    },
+    {
+     "instances": "once_wlost_late",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": "a worker killed between adding the done key and publishing the body; as on main"
+    },
+    {
+     "instances": "once_kill_after_claim",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": ""
+    },
+    {
+     "instances": "once_dup_wlost",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": ""
+    },
+    {
+     "instances": "mixed_*",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4), which documents the rolling upgrade",
+     "note": "mixed fleet only: one process still runs main"
+    },
+    {
+     "instances": "once_lose_result_and_key",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4)",
+     "note": "needs two evictions; the keys live twice as long as the results"
+    },
+    {
+     "instances": "redis_interrupt*",
+     "reason": "open",
+     "where": "tracker chord-time-limit-marks-done (celery issue 11039)",
+     "note": ""
+    },
+    {
+     "instances": "redisfix_interrupt_reply",
+     "reason": "by design",
+     "where": "the fix branch for celery issue 11039 (ad00b4a)",
+     "note": "the interrupt lands in the reply of the claim script"
+    },
+    {
+     "instances": "skip_kill_before_count",
+     "reason": "fixed",
+     "where": "2057a3c on the fix branch for celery issue 11036 (2057a3c, code as at 1fa71d4) (09e5a59 was the intermediate fix)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "chord.progress",
+   "spec": "chord.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps + measure never exceeds its initial value, and measure is never negative: every run is finite.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: every action lowers `measure`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "a redelivery that uses no budget (redelivers forever)",
+   "violations": []
+  },
+  {
+   "id": "chord.stepOrQuiet",
+   "spec": "chord.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Absence of a stop outside a quiet state (lemma 2 of 3)",
+   "statement": "A run stops only in a quiet state: nothing is left that could change the chord's outcome without a new fault.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: `quiet`, checked by TLC with deadlock detection on `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chord.neverDispatched",
+   "spec": "chord.qnt",
+   "definition": "neverDispatched",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run dispatches the body.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chord.neverFailed",
+   "spec": "chord.qnt",
+   "definition": "neverFailed",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run fails the chord.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chord.neverQuiet",
+   "spec": "chord.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.inSomePlace",
+   "spec": "redis_transport.qnt",
+   "definition": "inSomePlace",
+   "kind": "safety",
+   "pattern": "Universality, global (conservation)",
+   "statement": "At every moment a published message is on the queue, in unacked, or acked.",
+   "assumptions": "one queue, two messages, two consumers with prefetch 1",
+   "source": "kombu PR 2831 (c61b525): its state-machine test states this conservation; redis.py:223-305 pops and records in one script",
+   "instances": "all",
+   "evidence": "adapter/record_transport.py (60 recorded command histories)",
+   "witness": "neverQuiet",
+   "mutant": "transport: the script pops without recording (main's BRPOP)",
+   "violations": [
+    {
+     "instances": "main_*",
+     "reason": "open",
+     "where": "tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it",
+     "note": "between BRPOP and the record the message is in no key; no fault needed"
+    }
+   ]
+  },
+  {
+   "id": "redis_transport.neverLost",
+   "spec": "redis_transport.qnt",
+   "definition": "neverLost",
+   "kind": "safety",
+   "pattern": "Universality, global (conservation, weak)",
+   "statement": "A published message is on the queue, in unacked, acked, or in a reply a live consumer is about to read.",
+   "assumptions": "",
+   "source": "kombu issue 305; kombu 445027e redis.py:1457-1496",
+   "instances": "all",
+   "evidence": "adapter/record_transport.py",
+   "witness": "neverQuiet",
+   "mutant": "transport: the script pops without recording (main's BRPOP)",
+   "violations": [
+    {
+     "instances": "main_*crash",
+     "reason": "open",
+     "where": "tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it",
+     "note": "a consumer killed between the pop and the record"
+    }
+   ]
+  },
+  {
+   "id": "redis_transport.notTwice",
+   "spec": "redis_transport.qnt",
+   "definition": "notTwice",
+   "kind": "safety",
+   "pattern": "Absence of a second place, global, while no consumer was killed and none held a message past the timeout",
+   "statement": "A published message is never in two places.",
+   "assumptions": "",
+   "source": "kombu PR 2831 (c61b525) redis.py:601-624: the second record replaces the script's in one transaction",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDuplicated",
+   "mutant": "transport: the second record keeps the script's record (before kombu 848904a)",
+   "violations": [
+    {
+     "instances": "paused_credit_timeout",
+     "reason": "fixed",
+     "where": "eb41008 in kombu PR 2831",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "redis_transport.noDuplicate",
+   "spec": "redis_transport.qnt",
+   "definition": "noDuplicate",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one delivery), while no consumer was killed and none held a message past the timeout",
+   "statement": "No message is delivered twice.",
+   "assumptions": "",
+   "source": "kombu PR 2831 (c61b525) redis.py:313-326, 1689-1698: `PUT_BACK` checks the score",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDuplicated",
+   "mutant": "transport: PUT_BACK without the score check",
+   "violations": [
+    {
+     "instances": "paused_credit_timeout",
+     "reason": "fixed",
+     "where": "eb41008 in kombu PR 2831",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "redis_transport.prefetchRespected",
+   "spec": "redis_transport.qnt",
+   "definition": "prefetchRespected",
+   "kind": "safety",
+   "pattern": "Universality, global",
+   "statement": "A consumer never holds more messages than its prefetch count.",
+   "assumptions": "",
+   "source": "docs/userguide/optimizing.rst:119 (celery 768e476): \"The prefetch limit is a limit for the number of tasks (messages) a worker can reserve for itself\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "transport: a reply is read without credit",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.noMissedWake",
+   "spec": "redis_transport.qnt",
+   "definition": "noMissedWake",
+   "kind": "safety",
+   "pattern": "Universality, global, while no consumer was killed",
+   "statement": "No message waits on the queue while a consumer with credit waits and no token or pop is on the way.",
+   "assumptions": "the pop script designs only",
+   "source": "kombu PR 2831 (c61b525) redis.py:279-292, 1442-1445, 1977-2007: wake tokens",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "transport: a pop that leaves messages puts no wake token back",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.noStranded",
+   "spec": "redis_transport.qnt",
+   "definition": "noStranded",
+   "kind": "safety",
+   "pattern": "Absence, global",
+   "statement": "No record is left in unacked with a consumer that dropped the message.",
+   "assumptions": "",
+   "source": "kombu PR 2831 (c61b525) redis.py:313-326: a put-back that finds its record gone does nothing",
+   "instances": "all",
+   "evidence": "findings/putback-renewal",
+   "witness": "neverPutBack",
+   "mutant": "transport: a renewal that compares the score moves another's record anyway",
+   "violations": [
+    {
+     "instances": "renewblind_held_credit",
+     "reason": "open",
+     "where": "tracker reply-kombu-337-renew-scope (kombu issue 337)",
+     "note": "a design variant: the blind `ZADD XX` renewal next to kombu PR 2831"
+    }
+   ]
+  },
+  {
+   "id": "redis_transport.quietDone",
+   "spec": "redis_transport.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response: published leads to acked (lemma 3 of 3)",
+   "statement": "A quiet system has acked every message and left no record behind.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "kombu 445027e redis.py:636-638 (`QoS.ack`), 660-699 (restore)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "transport: the script pops without recording (main's BRPOP)",
+   "violations": [
+    {
+     "instances": "main_*crash",
+     "reason": "open",
+     "where": "tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "redis_transport.exactlyOnce",
+   "spec": "redis_transport.qnt",
+   "definition": "exactlyOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (exactly one delivery), while no fault was used",
+   "statement": "Without a fault a message is never delivered twice, and when quiet it was delivered once and acked.",
+   "assumptions": "",
+   "source": "the transport contract; kombu PR 2831",
+   "instances": "all",
+   "evidence": "adapter/record_transport.py",
+   "witness": "neverQuiet",
+   "mutant": "transport: an ack that leaves the record",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.progress",
+   "spec": "redis_transport.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.stepOrQuiet",
+   "spec": "redis_transport.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Absence of a stop outside a quiet state (lemma 2 of 3)",
+   "statement": "A run stops only in a quiet state: no action other than a fault can run.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: `quiet`, checked by TLC with deadlock detection on `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.neverQuiet",
+   "spec": "redis_transport.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.neverDuplicated",
+   "spec": "redis_transport.qnt",
+   "definition": "neverDuplicated",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run delivers a message twice.",
+   "assumptions": "",
+   "source": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+   "instances": "all",
+   "evidence": "findings/restore-by-tag",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redis_transport.neverPutBack",
+   "spec": "redis_transport.qnt",
+   "definition": "neverPutBack",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run puts a reply back.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "worker.exactlyOnce",
+   "spec": "worker.qnt",
+   "definition": "exactlyOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (exactly one run), while no fault was used",
+   "statement": "While no fault was used a task never starts twice, and when quiet each one finished once and the broker is empty. Warm shutdowns and timeouts are not faults.",
+   "assumptions": "two workers with one pool process and prefetch 2, two messages, Redis",
+   "source": "docs/faq.rst:897 (celery 768e476): \"No tasks should be lost even with experimental transports as long as the shutdown completes\"; docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, \"so that a task invocation that already started is never executed again\"",
+   "instances": "all",
+   "evidence": "findings/flush-ack-modes",
+   "witness": "neverQuiet",
+   "mutant": "worker: flush() drops a written job in every design",
+   "violations": [
+    {
+     "instances": "*_etashutdown",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "tracker eo-redis-renew-unacked (kombu issue 337)"
+    },
+    {
+     "instances": "*_shutdown",
+     "reason": "open",
+     "where": "tracker eo-warm-shutdown-flush-duplicate (celery issue 3802)",
+     "note": "flush() drops a job the child already runs"
+    },
+    {
+     "instances": "*_eta",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "tracker eo-redis-renew-unacked (kombu issue 337)"
+    },
+    {
+     "instances": "*_long",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "tracker eo-redis-renew-unacked (kombu issue 337)"
+    },
+    {
+     "instances": "*_cutlong",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "an outage longer than the visibility timeout"
+    }
+   ]
+  },
+  {
+   "id": "worker.neverLost",
+   "spec": "worker.qnt",
+   "definition": "neverLost",
+   "kind": "safety",
+   "pattern": "Universality, global (at least once as an invariant)",
+   "statement": "A published message is on the queue or in unacked until a run of it finished; with early ack a run in a live worker counts.",
+   "assumptions": "",
+   "source": "docs/faq.rst:897; docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "worker: the pop script records nothing when its reply is lost",
+   "violations": [
+    {
+     "instances": "main_*_partition",
+     "reason": "open",
+     "where": "tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it",
+     "note": "a BRPOP whose reply is lost"
+    },
+    {
+     "instances": "pr_early_*",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, \"so that a task invocation that already started is never executed again\"",
+     "note": "early ack: a task lost with its worker is not run again"
+    }
+   ]
+  },
+  {
+   "id": "worker.quietDone",
+   "spec": "worker.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response: published leads to finished and acked (lemma 3 of 3)",
+   "statement": "A quiet system has finished every task and left nothing in the broker.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; the visibility timeout always passes for a record nothing will ack",
+   "source": "docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns; docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+   "instances": "all",
+   "evidence": "findings/renewal-hung",
+   "witness": "neverQuiet",
+   "mutant": "worker: renewing ETA messages also renews prefetched ones",
+   "violations": [
+    {
+     "instances": "main_*_partition",
+     "reason": "open",
+     "where": "tracker reply-kombu-305-pr (kombu issue 305); kombu PR 2831 fixes it",
+     "note": ""
+    },
+    {
+     "instances": "pr_early_*",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, \"so that a task invocation that already started is never executed again\"",
+     "note": ""
+    },
+    {
+     "instances": "renew*_late_hang",
+     "reason": "by design",
+     "where": "tracker reply-kombu-337-renew-scope (kombu issue 337)",
+     "note": "design variants RenewAll and RenewUnstarted: a hung task is never redelivered. Blocking; the reason RenewScheduled is proposed"
+    }
+   ]
+  },
+  {
+   "id": "worker.noAvoidableDup",
+   "spec": "worker.qnt",
+   "definition": "noAvoidableDup",
+   "kind": "safety",
+   "pattern": "Absence, global",
+   "statement": "No task runs twice for a reason a design could remove: the first run had finished, had not started, was acked early, or only outlasted the timeout.",
+   "assumptions": "",
+   "source": "docs/userguide/tasks.rst:24-26 (celery 768e476): early ack, \"so that a task invocation that already started is never executed again\"; docs/faq.rst:897",
+   "instances": "all",
+   "evidence": "findings/flush-ack-modes, findings/ack-after-loss",
+   "witness": "neverTwice",
+   "mutant": "worker: flush() drops a written job in every design",
+   "violations": [
+    {
+     "instances": "*_etashutdown",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "tracker eo-redis-renew-unacked (kombu issue 337)"
+    },
+    {
+     "instances": "*_shutdown",
+     "reason": "open",
+     "where": "tracker eo-warm-shutdown-flush-duplicate (celery issue 3802)",
+     "note": ""
+    },
+    {
+     "instances": "*_eta",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "tracker eo-redis-renew-unacked (kombu issue 337)"
+    },
+    {
+     "instances": "*_long",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "tracker eo-redis-renew-unacked (kombu issue 337)"
+    },
+    {
+     "instances": "*_cutlong",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": ""
+    },
+    {
+     "instances": "*_early_*",
+     "reason": "open",
+     "where": "tracker eo-early-ack-duplicates (celery issue 4426)",
+     "note": "early ack is not at most once across a lost connection or a kill between the start and the ack"
+    },
+    {
+     "instances": "*_late_kill",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns",
+     "note": "killed after the task finished and before its ack; worker_deduplicate_successful_tasks removes it"
+    },
+    {
+     "instances": "*_late_*",
+     "reason": "open",
+     "where": "tracker eo-redis-ack-after-connection-loss (celery issue 11054)",
+     "note": "a failed ack is forgotten, and flush() at the reconnect drops a written job (tracker eo-warm-shutdown-flush-duplicate (celery issue 3802))"
+    }
+   ]
+  },
+  {
+   "id": "worker.noUnavoidableDup",
+   "spec": "worker.qnt",
+   "definition": "noUnavoidableDup",
+   "kind": "safety",
+   "pattern": "Absence, global",
+   "statement": "No task runs twice with late ack after its first run was in progress when its worker or its connection was lost.",
+   "assumptions": "",
+   "source": "docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverTwice",
+   "mutant": "worker: a restore at reconnect of idle tags restores running ones too",
+   "violations": [
+    {
+     "instances": "restoreall_*",
+     "reason": "by design",
+     "where": "the variant ReconnectRestoresAll",
+     "note": "the reason the variant is rejected: it restores tasks that still run"
+    },
+    {
+     "instances": "*",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:28-30 (celery 768e476): acks_late is for idempotent tasks; the message is acknowledged after the task returns",
+     "note": "the at-least-once contract of late ack: a run in progress when its worker or connection is lost is run again"
+    }
+   ]
+  },
+  {
+   "id": "worker.restoresOwnOnly",
+   "spec": "worker.qnt",
+   "definition": "restoresOwnOnly",
+   "kind": "safety",
+   "pattern": "Absence, global",
+   "statement": "A closing or reconnecting channel restores only a record its own pop wrote.",
+   "assumptions": "",
+   "source": "kombu 445027e kombu/transport/virtual/base.py:277-314, redis.py restore_by_tag",
+   "instances": "all",
+   "evidence": "findings/restore-by-tag",
+   "witness": "neverTwice",
+   "mutant": "worker: with the pop token a channel still restores by tag",
+   "violations": [
+    {
+     "instances": "tagrestore_late_etashutdown",
+     "reason": "open",
+     "where": "tracker eo-restore-by-tag-third-delivery",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "worker.workerSurvives",
+   "spec": "worker.qnt",
+   "definition": "workerSurvives",
+   "kind": "safety",
+   "pattern": "Absence, global",
+   "statement": "No worker is stopped by an error in the ack path.",
+   "assumptions": "",
+   "source": "kombu 445027e redis.py:1957 (the AttributeError of celery issue 11054)",
+   "instances": "all",
+   "evidence": "findings/ack-after-loss",
+   "witness": "neverQuiet",
+   "mutant": "worker: an ack through a collected channel never stops the worker",
+   "violations": [
+    {
+     "instances": "*",
+     "reason": "open",
+     "where": "tracker eo-redis-ack-after-connection-loss (celery issue 11054)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "worker.normalCost",
+   "spec": "worker.qnt",
+   "definition": "normalCost",
+   "kind": "safety",
+   "pattern": "Universality at the end, while no fault was used",
+   "statement": "Without a fault a message costs one publish, one pop (two round trips on main) and one ack.",
+   "assumptions": "",
+   "source": "kombu 445027e redis.py:1457-1496; kombu PR 2831 redis.py:223-305",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "worker: the pop script costs two round trips",
+   "violations": []
+  },
+  {
+   "id": "worker.progress",
+   "spec": "worker.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "worker.stepOrQuiet",
+   "spec": "worker.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Absence of a stop outside a quiet state (lemma 2 of 3)",
+   "statement": "A run stops only in a quiet state: nothing can happen without a new fault.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: `quiet`, checked by TLC with deadlock detection on `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "worker.neverQuiet",
+   "spec": "worker.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "worker.neverTwice",
+   "spec": "worker.qnt",
+   "definition": "neverTwice",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run starts a task twice.",
+   "assumptions": "",
+   "source": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "publisher.neverLost",
+   "spec": "publisher.qnt",
+   "definition": "neverLost",
+   "kind": "safety",
+   "pattern": "Universality, global",
+   "statement": "A message whose publish returned is on its way, accepted or written.",
+   "assumptions": "RabbitMQ, a durable queue, two messages",
+   "source": "docs/userguide/calling.rst:527 and docs/getting-started/backends-and-brokers/rabbitmq.rst:195 (celery 768e476): enable `confirm_publish`",
+   "instances": "all",
+   "evidence": "the exactly-once report (191 of 2,280 lost without confirms, none with)",
+   "witness": "neverQuiet",
+   "mutant": "publisher: with confirms, the publish returns before the confirm",
+   "violations": [
+    {
+     "instances": "off_*",
+     "reason": "open",
+     "where": "tracker eo-rabbitmq-confirm-publish-loss (celery discussion 11073)",
+     "note": "confirms are off by default"
+    }
+   ]
+  },
+  {
+   "id": "publisher.publishedOnce",
+   "spec": "publisher.qnt",
+   "definition": "publishedOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one copy), global",
+   "statement": "The queue never has a message twice.",
+   "assumptions": "",
+   "source": "the publish retry policy, docs/userguide/calling.rst",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "publisher: a resend that does not wait for the confirm to be overdue",
+   "violations": [
+    {
+     "instances": "on_*",
+     "reason": "by design",
+     "where": "publisher confirms",
+     "note": "a lost confirm makes the publisher send again: silent loss becomes a duplicate"
+    }
+   ]
+  },
+  {
+   "id": "publisher.exactlyOnce",
+   "spec": "publisher.qnt",
+   "definition": "exactlyOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (exactly one copy), while no fault was used",
+   "statement": "Without a fault every message is on disk once when quiet.",
+   "assumptions": "",
+   "source": "the publish path",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "publisher: a write to disk that keeps the copy in memory",
+   "violations": []
+  },
+  {
+   "id": "publisher.quietDone",
+   "spec": "publisher.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response: a publish leads to a written message (lemma 3 of 3)",
+   "statement": "A quiet system has every message on disk and every publish returned.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "docs/userguide/calling.rst:527",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "publisher: the queue accepts a frame and keeps nothing",
+   "violations": [
+    {
+     "instances": "off_*",
+     "reason": "open",
+     "where": "tracker eo-rabbitmq-confirm-publish-loss (celery discussion 11073)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "publisher.normalCost",
+   "spec": "publisher.qnt",
+   "definition": "normalCost",
+   "kind": "safety",
+   "pattern": "Universality at the end, while no fault was used",
+   "statement": "One frame per publish without confirms, two with.",
+   "assumptions": "",
+   "source": "AMQP 0-9-1 basic.publish and basic.ack",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "publisher: reading a confirm costs nothing",
+   "violations": []
+  },
+  {
+   "id": "publisher.progress",
+   "spec": "publisher.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "publisher.stepOrQuiet",
+   "spec": "publisher.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Absence of a stop outside a quiet state (lemma 2 of 3)",
+   "statement": "A run stops only in a quiet state.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes",
+   "source": "the spec: `quiet`, checked by TLC with deadlock detection on `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "publisher.neverQuiet",
+   "spec": "publisher.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  }
+ ]
+}

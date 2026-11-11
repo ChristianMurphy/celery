@@ -1,0 +1,17 @@
+{
+ "id": "interrupt-then-copy",
+ "title": "The second fix for celery issue 11039 sent the body after the chord was failed",
+ "cells": [
+  "redisfix2_interrupt_dup.noDispatchAfterError",
+  "redisfix2_interrupt_dup.atMostOnce"
+ ],
+ "outcome": "duplicate",
+ "status": "fixed",
+ "where": "ee48301 on the fix branch for celery issue 11039 (5446659 had it)",
+ "thread": "the thread of celery issue 11039",
+ "confirm": [
+  "confirm_interrupt_then_copy.py"
+ ],
+ "scenarios": "scenarios.qnt interruptSecondFix, interruptFix",
+ "observed": "On Redis at 5446659: \"published 0, errors 1\", then \"published 1\" after the copy."
+}

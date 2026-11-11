@@ -1,0 +1,17 @@
+{
+ "id": "interrupt-cleanup",
+ "title": "The first fix for celery issue 11039 failed a chord after its body was sent",
+ "cells": [
+  "redisfix1_interrupt.noErrorAfterDispatch",
+  "redisfix3_interrupt_dup.atMostOnce"
+ ],
+ "outcome": "duplicate",
+ "status": "fixed",
+ "where": "5446659 and ad00b4a on the fix branch for celery issue 11039 (5f844ea and ee48301 had them)",
+ "thread": "the thread of celery issue 11039",
+ "confirm": [
+  "confirm_interrupt_cleanup.py"
+ ],
+ "scenarios": "scenarios.qnt interruptFirstFix, interruptThirdFix, interruptFix",
+ "observed": "On Redis at 5f844ea: the body published once and FAILURE stored. Main publishes twice after a later copy, ad00b4a once."
+}

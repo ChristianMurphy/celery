@@ -7,7 +7,7 @@ broker: the job is written to the pool process, then flush() runs as
 Consumer.on_close() calls it at a warm shutdown, then the loop turns until
 the child is done.
 
-    PYTHONPATH=<celery worktree> python adapter/confirm_flush_ack_modes.py
+    PYTHONPATH=<celery worktree> python findings/flush-ack-modes/confirm_flush_ack_modes.py
 
 768e476: with either ack mode the child runs the task, the parent never
 gets the result and the message is never acked, so the shutdown restores it

@@ -12,7 +12,7 @@ real Redis (6379), visibility timeout 2 s:
   5. B reads the reply and puts the message back
 
     PYTHONPATH=<kombu c61b525 + kombu-eo-lease.patch> \
-        python adapter/confirm_putback_renewal.py
+        python findings/putback-renewal/confirm_putback_renewal.py
 
 control: m is back on the queue and its record is gone. renew: A's ZADD XX
 moved the score of B's record, PUT_BACK compares the score and does nothing,

@@ -1,0 +1,17 @@
+{
+ "id": "renewal-hung",
+ "title": "Renewing every unacked message turns the recovery of a hung task into a hang",
+ "cells": [
+  "renewall_late_hang.quietDone",
+  "renewidle_late_hang.quietDone"
+ ],
+ "outcome": "hang",
+ "status": "by design",
+ "where": "the reason the renewal proposed for kombu issue 337 is narrowed to messages waiting for an ETA (tracker reply-kombu-337-renew-scope)",
+ "thread": "kombu issue 337",
+ "confirm": [
+  "confirm_renewal_hung.py"
+ ],
+ "scenarios": "",
+ "observed": "Main: the other consumer gets both messages after the visibility timeout. Renew-everything prototype: neither."
+}

@@ -1,0 +1,18 @@
+{
+ "id": "flush-ack-modes",
+ "title": "A warm shutdown or a reconnect runs a task twice: flush() drops a job the child already has",
+ "cells": [
+  "pr_late_shutdown.exactlyOnce",
+  "pr_early_shutdown.exactlyOnce",
+  "ackfull_late_cut.noAvoidableDup"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "tracker eo-warm-shutdown-flush-duplicate; the variant DropUnwritten removes it",
+ "thread": "the reply posted on celery issue 3802",
+ "confirm": [
+  "confirm_flush_ack_modes.py"
+ ],
+ "scenarios": "",
+ "observed": "Main: the child runs the task and the message is never acked, in both ack modes. With the variant: acked in both."
+}

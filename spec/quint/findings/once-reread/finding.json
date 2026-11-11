@@ -1,0 +1,16 @@
+{
+ "id": "once-reread",
+ "title": "The first fix for celery issue 11036 failed a chord whose header results were all SUCCESS",
+ "cells": [
+  "oncev1_dup.noSpuriousError"
+ ],
+ "outcome": "visible failure",
+ "status": "fixed",
+ "where": "1fa71d4 on the fix branch for celery issue 11036 (cd8aa46 had it)",
+ "thread": "the thread of celery issue 11036; reported in the reply on celery discussion 11041",
+ "confirm": [
+  "confirm_once_reread.py"
+ ],
+ "scenarios": "scenarios.qnt onceReadOnce, onceReadAgain",
+ "observed": "On memcached at cd8aa46: results SUCCESS and SUCCESS, the body published 0 times. At 1fa71d4: published once."
+}

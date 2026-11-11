@@ -7,7 +7,7 @@ kombu's Redis transport against a real Redis (6379), visibility timeout
 2 s. A holds one message unacked (prefetched, or an ETA) for 3 s; B then
 receives it and keeps it unacked (its task runs); A closes; C consumes.
 
-    PYTHONPATH=<kombu worktree> python adapter/confirm_restore_by_tag.py
+    PYTHONPATH=<kombu worktree> python findings/restore-by-tag/confirm_restore_by_tag.py
 
 kombu 445027e and c61b525: C receives the message while B still runs it, a
 third delivery, and B's copy has no record any more.

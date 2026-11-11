@@ -7,7 +7,7 @@ while header 2 still runs; header 2 stores its result and adds its key
 between the two reads. Only the order of the three runs' round trips is
 controlled (threads parked between backend calls).
 
-    PYTHONPATH=<celery worktree> python adapter/confirm_once_reread.py
+    PYTHONPATH=<celery worktree> python findings/once-reread/confirm_once_reread.py
 
 cd8aa46: both results SUCCESS, body published 0 times, ChordError "Chord
 header results missing". 1fa71d4: body published once, no error.

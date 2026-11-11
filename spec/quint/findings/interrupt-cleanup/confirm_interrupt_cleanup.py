@@ -4,7 +4,7 @@ backend and a real Redis (6379).
 The body is published and SystemExit (a hard time limit) lands in the
 cleanup script call, before it is sent or after it ran.
 
-    PYTHONPATH=<celery worktree> python adapter/confirm_interrupt_cleanup.py [before|after]
+    PYTHONPATH=<celery worktree> python findings/interrupt-cleanup/confirm_interrupt_cleanup.py [before|after]
 
 5f844ea: body published once and chord_error_from_stack called (body
 FAILURE). 768e476, 5446659 and later: published once, no error.
