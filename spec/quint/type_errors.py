@@ -101,6 +101,13 @@ CASES = [
   val bad = writes.get(1) < 2
 }
 '''),
+    ('a message id where a consumer id is expected',
+     '''module t {
+  import transporttypes.* from "./redis_transport"
+  import redis_transport(CFG = { design: PopScript, max: NO_FAULTS }).* from "./redis_transport"
+  val bad = consumers.get(M(1))
+}
+''', None),
     ('a chord key that is not one (evicting a header id)',
      NEW_CHORD % 'run bad = init.then(evict(H(1)))', None),
     ('an interrupt handling that does not exist',

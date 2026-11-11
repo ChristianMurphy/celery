@@ -96,6 +96,14 @@ SPECS = {
               'unlock_child_reject', 'once_dup', 'oncev1_dup',
               'skip_kill_before_count', 'mixed_dup', 'redisfix1_interrupt',
               'redisfix_interrupt_dup']),
+    'transport': Spec(
+        'redis_transport.qnt', instances('redis_transport.qnt'),
+        ['inSomePlace', 'neverLost', 'notTwice', 'noDuplicate',
+         'prefetchRespected', 'noMissedWake', 'quietDone', 'exactlyOnce'],
+        ['neverQuiet', 'neverDuplicated', 'neverPutBack'],
+        types='transporttypes', metric='ops',
+        fast=['main_crash', 'paused_credit_timeout', 'pr_crash',
+              'pr_credit_timeout']),
 }
 
 
