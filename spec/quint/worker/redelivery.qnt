@@ -76,7 +76,10 @@ module redeliverytypes {
   // AMQP: a delivery unacked on a channel of a worker.
   type Unacked = { k: int, by: WorkerId, ch: int, age: int }
 
-  type Result = Pending | Success
+  type Result = Pending | Success | Failure
+  pure def final(r: Result): bool = match r {
+    | Pending => false | Success => true | Failure => true
+  }
   // What the broker did with the message at the delivery limit.
   type End = Open | DeadLettered | Dropped
 
@@ -92,7 +95,15 @@ module redeliverytypes {
     alive: bool, conn: Conn, stopping: bool, held: Set[HeldView], n: int,
     unacked: Set[UnackedView],
   }
-  type Budget = { kills: int, cuts: int, losses: int }
+  // Faults: a worker killed, an AMQP connection cut, a write the broker
+  // acknowledged lost; and for deduplication: the stored result expires
+  // (result_expires), a read of the result backend fails, the publisher
+  // sends the message again (its reply or confirm was lost and its retry
+  // policy published it once more: a copy not marked redelivered).
+  type Budget = {
+    kills: int, cuts: int, losses: int,
+    expiries: int, readErrors: int, republishes: int,
+  }
   type Snap = {
     stored: Result, ready: int, redeliv: bool, rec: Record,
     returns: int, ended: End, workers: Set[WorkerView], used: Budget,
@@ -106,6 +117,7 @@ module redeliverytypes {
     | Deliver(WorkerId)
     | Start({ w: WorkerId, k: int, outcome: AckOutcome })
     | DedupSkip({ w: WorkerId, k: int })
+    | DedupReadFails({ w: WorkerId, k: int, ran: bool })
     | Finish({ w: WorkerId, k: int })
     | Ack({ w: WorkerId, k: int, outcome: AckOutcome })
     | RestoreVisible
@@ -116,11 +128,15 @@ module redeliverytypes {
     | Kill(WorkerId)
     | CutOff(WorkerId)
     | LoseData(Lost)
+    | Expire
+    | Republish
     | Tick
 
   // Faults, each a bounded number of times. A timeout, a warm stop and a
   // supervisor's restart are not faults.
-  pure val NONE: Budget = { kills: 0, cuts: 0, losses: 0 }
+  pure val NONE: Budget = {
+    kills: 0, cuts: 0, losses: 0, expiries: 0, readErrors: 0, republishes: 0,
+  }
 
   type Config = {
     broker: Broker,
@@ -131,6 +147,7 @@ module redeliverytypes {
     runLen: int,           // units of time a run takes
     timeout: int,          // visibility timeout or consumer_timeout, units
     dedup: bool,           // worker_deduplicate_successful_tasks
+    alwaysRetry: bool,     // result_backend_always_retry
     channelRetry: bool,    // broker_channel_error_retry
     limit: int,            // a quorum queue's delivery limit (0: none)
     dlx: bool,             // the queue has a dead letter exchange
@@ -140,7 +157,8 @@ module redeliverytypes {
   }
   pure def config(b: Broker, a: AckMode): Config = {
     broker: b, ack: a, workers: 2, prefetch: 1, disablePrefetch: false,
-    runLen: 1, timeout: 2, dedup: false, channelRetry: false,
+    runLen: 1, timeout: 2, dedup: false, alwaysRetry: false,
+    channelRetry: false,
     limit: if (b == Quorum) 2 else 0, dlx: false, confirm: true, cap: 4,
     max: NONE,
   }
@@ -180,6 +198,9 @@ module redelivery {
   var timedOut: bool           // a restore or a consumer timeout fired
   var ackFailed: bool          // an ack went to a closed channel or a cut
   var rerun: bool              // a run started while SUCCESS was stored
+  var effect: bool             // a run of the task finished
+  var rerunDone: bool          // a run started after a run had finished
+  var skipped: bool            // deduplication skipped a delivery
   var prevCopies: MsgId -> Copies  // the projection before the last step
   var used: Budget
   var lastAction: Action
@@ -191,6 +212,7 @@ module redelivery {
     workers' = WORKERS.mapBy(_ => Alive(FRESH)), gen' = WORKERS.mapBy(_ => 1),
     stored' = Pending, deliveries' = 0, runs' = 0, snaps' = Set(),
     looped' = false, timedOut' = false, ackFailed' = false, rerun' = false,
+    effect' = false, rerunDone' = false, skipped' = false,
     prevCopies' = Set(M(1)).mapBy(_ => NO_COPIES),
     used' = NONE, lastAction' = Init, steps' = 0,
   }
@@ -202,6 +224,7 @@ module redelivery {
   action keepObs: bool = all {
     deliveries' = deliveries, runs' = runs, snaps' = snaps, looped' = looped,
     timedOut' = timedOut, ackFailed' = ackFailed, rerun' = rerun,
+    effect' = effect, rerunDone' = rerunDone, skipped' = skipped,
   }
 
   // ---- reading the state ----
@@ -346,7 +369,8 @@ module redelivery {
       deliveries' = k, snaps' = snaps.union(Set(s)),
       looped' = (looped or snaps.contains(s)),
       runs' = runs, timedOut' = timedOut, ackFailed' = ackFailed,
-      rerun' = rerun, used' = used, did(Deliver(w)),
+      rerun' = rerun,
+      effect' = effect, rerunDone' = rerunDone, skipped' = skipped, used' = used, did(Deliver(w)),
     }
   }
 
@@ -375,16 +399,16 @@ module redelivery {
     val dedup = CFG.dedup and LATE and h.redelivered and stored == Success
     all {
       canStart(w), not(dedup),
+      runStarts(h),
       workers' = workers.set(w, Alive({ ...lv(w),
         held: held(w).exclude(Set(h)).union(Set({ ...h, stage: Running })) })),
       rec' = if (REDIS and not(LATE)) NoRec else rec,
       unacked' = if (LATE) unacked else unackedAfter(w, h),
       published' = published, ready' = ready, redeliv' = redeliv,
       returns' = returns, ended' = ended, gen' = gen, stored' = stored,
-      runs' = runs + 1, rerun' = (rerun or stored == Success),
       ackFailed' = (ackFailed or o == AckOnClosedChannel or o == AckIntoCut),
       deliveries' = deliveries, snaps' = snaps, looped' = looped,
-      timedOut' = timedOut, used' = used,
+      timedOut' = timedOut, effect' = effect, skipped' = skipped, used' = used,
       did(Start({ w: w, k: h.k, outcome: o })),
     }
   }
@@ -398,10 +422,55 @@ module redelivery {
       canStart(w), CFG.dedup, LATE, h.redelivered, stored == Success,
       workers' = workers.set(w, Alive({ ...lv(w),
         held: held(w).exclude(Set(h)).union(Set({ ...h, stage: Ran })) })),
-      keepBroker, gen' = gen, stored' = stored, keepObs, used' = used,
+      keepBroker, gen' = gen, stored' = stored,
+      deliveries' = deliveries, runs' = runs, snaps' = snaps, looped' = looped,
+      timedOut' = timedOut, ackFailed' = ackFailed, rerun' = rerun,
+      effect' = effect, rerunDone' = rerunDone, skipped' = true, used' = used,
       did(DedupSkip({ w: w, k: h.k })),
     }
   }
+  // A body starts: the observations of a run.
+  // @cite celery celery/app/trace.py:564 "R = retval = fun(*args, **kwargs)"
+  action runStarts(h: Held): bool = all {
+    runs' = runs + 1, rerun' = (rerun or stored == Success),
+    rerunDone' = (rerunDone or effect),
+  }
+  // The read of the stored state fails. With result_backend_always_retry
+  // the backend retries and raises BackendGetMetaError, which the check
+  // lets pass: the task runs (trace.py:494-497, base.py:827-860). Without
+  // it the backend's own error leaves the check, and the tracer's last
+  // handler reports an internal error and calls on_error: FAILURE is
+  // stored (unless SUCCESS is, base.py:1361-1366) and the message is acked
+  // as a failure (acks_on_failure, request.py:749-768). The task did not
+  // run.
+  // @cite celery celery/app/trace.py:492-497 "except BackendGetMetaError:"
+  // @cite celery celery/app/trace.py:687-694 "R = report_internal_error(task, exc)"
+  // @cite celery celery/backends/base.py:827-860 "if self.always_retry and self.exception_safe_to_retry(exc):"
+  // `stores`: the backend takes the FAILURE write (a read that failed
+  // once); otherwise it is down for the write too, the write raises out of
+  // on_error, and nothing is stored (trace.py:687-694).
+  action dedupReadFails(w: WorkerId): bool = {
+    nondet h = waiting(w).oneOf()
+    nondet stores = Set(true, false).oneOf()
+    all {
+      canStart(w), CFG.dedup, LATE, h.redelivered,
+      used.readErrors < CFG.max.readErrors,
+      workers' = workers.set(w, Alive({ ...lv(w),
+        held: held(w).exclude(Set(h)).union(Set(
+          { ...h, stage: if (CFG.alwaysRetry) Running else Ran })) })),
+      stored' = if (CFG.alwaysRetry or stored == Success or not(stores)) stored
+                else Failure,
+      if (CFG.alwaysRetry) runStarts(h)
+      else all { runs' = runs, rerun' = rerun, rerunDone' = rerunDone },
+      keepBroker, gen' = gen,
+      deliveries' = deliveries, snaps' = snaps, looped' = looped,
+      timedOut' = timedOut, ackFailed' = ackFailed, effect' = effect,
+      skipped' = skipped,
+      used' = { ...used, readErrors: used.readErrors + 1 },
+      did(DedupReadFails({ w: w, k: h.k, ran: CFG.alwaysRetry })),
+    }
+  }
+
   // The run ends and stores SUCCESS (mark_as_done, trace.py:604-608). With
   // early ack it is done; with late ack the ack is due.
   // @cite celery celery/app/trace.py:604-608 "task.backend.mark_as_done("
@@ -412,8 +481,12 @@ module redelivery {
       workers' = workers.set(w, Alive({ ...lv(w),
         held: if (LATE) held(w).exclude(Set(h)).union(Set({ ...h, stage: Ran }))
               else held(w).exclude(Set(h)) })),
+      // the backend does not replace a stored SUCCESS (base.py:1361-1366)
       stored' = Success,
-      keepBroker, gen' = gen, keepObs, used' = used,
+      keepBroker, gen' = gen,
+      deliveries' = deliveries, runs' = runs, snaps' = snaps, looped' = looped,
+      timedOut' = timedOut, ackFailed' = ackFailed, rerun' = rerun,
+      effect' = true, rerunDone' = rerunDone, skipped' = skipped, used' = used,
       did(Finish({ w: w, k: h.k })),
     }
   }
@@ -435,7 +508,8 @@ module redelivery {
       returns' = returns, ended' = ended, gen' = gen, stored' = stored,
       ackFailed' = (ackFailed or o == AckOnClosedChannel or o == AckIntoCut),
       deliveries' = deliveries, runs' = runs, snaps' = snaps,
-      looped' = looped, timedOut' = timedOut, rerun' = rerun, used' = used,
+      looped' = looped, timedOut' = timedOut, rerun' = rerun,
+      effect' = effect, rerunDone' = rerunDone, skipped' = skipped, used' = used,
       did(Ack({ w: w, k: h.k, outcome: o })),
     }
   }
@@ -452,7 +526,8 @@ module redelivery {
     published' = published, unacked' = unacked, returns' = returns,
     ended' = ended, workers' = workers, gen' = gen, stored' = stored,
     timedOut' = true, deliveries' = deliveries, runs' = runs, snaps' = snaps,
-    looped' = looped, ackFailed' = ackFailed, rerun' = rerun, used' = used,
+    looped' = looped, ackFailed' = ackFailed, rerun' = rerun,
+      effect' = effect, rerunDone' = rerunDone, skipped' = skipped, used' = used,
     did(RestoreVisible),
   }
   // RabbitMQ: a delivery unacked past consumer_timeout closes its channel
@@ -474,7 +549,8 @@ module redelivery {
     gen' = if (CFG.channelRetry) gen.setBy(w, g => g + 1) else gen,
     stored' = stored, timedOut' = true,
     deliveries' = deliveries, runs' = runs, snaps' = snaps, looped' = looped,
-    ackFailed' = ackFailed, rerun' = rerun, used' = used,
+    ackFailed' = ackFailed, rerun' = rerun,
+      effect' = effect, rerunDone' = rerunDone, skipped' = skipped, used' = used,
     did(ConsumerTimeout(w)),
   }
   // A stopping worker exits once its run has ended.
@@ -555,6 +631,31 @@ module redelivery {
     did(LoseData(what)),
   }
 
+  // The stored result expires (result_expires, a day by default; a TTL on
+  // Redis), or is evicted.
+  // @env result_expires and backend eviction
+  action expire: bool = all {
+    stored == Success, used.expiries < CFG.max.expiries,
+    stored' = Pending,
+    keepBroker, workers' = workers, gen' = gen, keepObs,
+    used' = { ...used, expiries: used.expiries + 1 },
+    did(Expire),
+  }
+  // The publisher sends the message once more: its publish raised after
+  // the broker had it (a lost reply or confirm) and the retry policy
+  // published it again (kombu Producer.publish with retry). The copy is not
+  // marked redelivered.
+  // @cite kombu kombu/messaging.py:349-351 "_publish = self.connection.ensure(self, _publish, **retry_policy)"
+  action republish: bool = all {
+    published, used.republishes < CFG.max.republishes,
+    ready' = ready + 1, redeliv' = (redeliv and ready > 0),
+    published' = published, rec' = rec, unacked' = unacked,
+    returns' = returns, ended' = ended,
+    workers' = workers, gen' = gen, stored' = stored, keepObs,
+    used' = { ...used, republishes: used.republishes + 1 },
+    did(Republish),
+  }
+
   // ---- time ----
   // One unit passes: nothing that is due can happen first.
   // @env the coarse clock
@@ -578,10 +679,10 @@ module redelivery {
   }
 
   action inner: bool = any {
-    publish, restoreVisible, tick,
+    publish, restoreVisible, tick, expire, republish,
     { nondet w = WORKERS.oneOf()
       any {
-        deliver(w), start(w), dedupSkip(w), finish(w), ack(w),
+        deliver(w), start(w), dedupSkip(w), dedupReadFails(w), finish(w), ack(w),
         consumerTimeout(w), exit(w), restart(w), notice(w),
         kill(w), cutOff(w),
       } },
@@ -595,18 +696,24 @@ module redelivery {
   // (counters and ids aside) that an earlier one started from.
   val noLoop: bool = not(looped)
   // Nothing is lost silently: a published task is on the queue, recorded
-  // as unacked, or held by a live worker, or its result is final, or the
-  // broker dead-lettered it.
+  // as unacked, or held by a live worker, or a run of it finished (its
+  // result may have expired since), or its result is final, or the broker
+  // dead-lettered it.
   def heldByWorker: bool = WORKERS.exists(w => alive(w) and held(w) != Set())
   val noSilentLoss: bool = published implies or {
     ready > 0, hasRec(rec), unacked != Set(), heldByWorker,
-    stored == Success, ended == DeadLettered,
+    final(stored), effect, ended == DeadLettered,
   }
   // Early ack: a task that started is never executed again
   // (docs/userguide/tasks.rst:24-26).
   val earlyAtMostOnce: bool = LATE or runs <= 1
   // No run starts while the task's SUCCESS is stored.
   val noRerunAfterSuccess: bool = not(rerun)
+  // A task whose body never raised is never stored FAILURE: deduplication
+  // does not fail a task it could not check.
+  val noFailWithoutError: bool = stored != Failure
+  // No run starts after a run finished (whatever is stored then).
+  val noRerunAfterDone: bool = not(rerunDone)
   // Every step is a step of the abstract delivery environment.
   val projectionOk: bool =
     stepsOf(prevCopies, copies, Set(M(1))).forall(s => not(isBad(s)))
@@ -622,9 +729,11 @@ module redelivery {
     lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
-  // A quiet state has a final result, or the broker dead-lettered the task.
+  // A quiet state has a final result or a finished run, or the broker
+  // dead-lettered the task.
   val quietDone: bool =
-    (quiet and not(capped)) implies (stored == Success or ended == DeadLettered)
+    (quiet and not(capped)) implies
+      (final(stored) or effect or ended == DeadLettered)
   // Exactly once while no fault was used.
   val obs: Set[MsgObs] = Set({
     published: published, runs: runs, done: stored == Success,
@@ -640,4 +749,5 @@ module redelivery {
   val neverDone: bool = stored != Success
   val neverTimedOut: bool = not(timedOut)
   val neverTwice: bool = runs <= 1
+  val neverSkipped: bool = not(skipped)
 }

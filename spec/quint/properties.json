@@ -211,6 +211,8 @@
     "noSilentLoss",
     "earlyAtMostOnce",
     "noRerunAfterSuccess",
+    "noFailWithoutError",
+    "noRerunAfterDone",
     "projectionOk",
     "exactlyOnce",
     "quietDone"
@@ -219,7 +221,8 @@
     "neverQuiet",
     "neverDone",
     "neverTimedOut",
-    "neverTwice"
+    "neverTwice",
+    "neverSkipped"
    ],
    "apalache": [],
    "fast": [
@@ -1897,6 +1900,12 @@
      "reason": "documented",
      "where": "docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): \"Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop\"",
      "note": "two kills with a delivery limit of 1"
+    },
+    {
+     "instances": "redis_dedup_readerr",
+     "reason": "open",
+     "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
+     "note": "the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever"
     }
    ]
   },
@@ -1936,6 +1945,18 @@
    "witness": "neverDone",
    "mutant": "redelivery: a restore that does not mark the copy redelivered",
    "violations": [
+    {
+     "instances": "redis_dedupretry_readerr",
+     "reason": "by design",
+     "where": "celery/app/trace.py:494-497 (768e476): with result_backend_always_retry a failed read raises BackendGetMetaError, which the check lets pass, and the task runs",
+     "note": "a read that fails while SUCCESS is stored: a rerun, the outcome the check accepts instead of a skip"
+    },
+    {
+     "instances": "redis_dedup_republish",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:3653-3655 (celery 768e476): \"Deduplication occurs only with tasks that have the same identifier, enabled late acknowledgment, were redelivered by the message broker and their state is SUCCESS in the result backend\"",
+     "note": "the publisher sent the message again after a lost reply: a copy not marked redelivered; finding dedup-republish (2 of 3 with injected reply loss)"
+    },
     {
      "instances": "classic_early_cut",
      "reason": "open",
@@ -2072,6 +2093,12 @@
      "reason": "documented",
      "where": "docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): \"Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop\"",
      "note": ""
+    },
+    {
+     "instances": "redis_dedup_readerr",
+     "reason": "open",
+     "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
+     "note": "the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever"
     }
    ]
   },
@@ -2157,6 +2184,125 @@
    "kind": "witness",
    "pattern": "Existence",
    "statement": "The task starts twice.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "redelivery.noFailWithoutError",
+   "spec": "redelivery.qnt",
+   "definition": "noFailWithoutError",
+   "kind": "safety",
+   "pattern": "Absence (FAILURE for a task whose body never raised), global",
+   "statement": "A task whose body never raised is never stored FAILURE, and a deduplication check that cannot read the backend does not end the task without running it.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/userguide/configuration.rst:3650-3655 (celery 768e476): deduplication skips only a task whose state is SUCCESS",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverSkipped",
+   "mutant": "redelivery: a failed read with always_retry that still fails the task",
+   "violations": [
+    {
+     "instances": "redis_dedup_readerr",
+     "reason": "open",
+     "where": "finding dedup-read-error (not in the tracker yet; no upstream thread found)",
+     "note": "the first run was lost before it stored anything; the redelivered copy's check gets the backend's own error (only BackendGetMetaError, raised under result_backend_always_retry, is let through), the tracer reports an internal error, on_error stores FAILURE and the message is acked: confirmed 3 of 3 (readonce: FAILURE) and 2 of 2 with the backend down (PENDING for ever)"
+    }
+   ]
+  },
+  {
+   "id": "redelivery.noRerunAfterDone",
+   "spec": "redelivery.qnt",
+   "definition": "noRerunAfterDone",
+   "kind": "safety",
+   "pattern": "Absence (a run that starts after a run finished), global",
+   "statement": "No run of a task starts after a run of it finished, whatever is stored then (an expired result included).",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "docs/userguide/configuration.rst:3650-3655 (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverSkipped",
+   "mutant": "redelivery: deduplication that ignores a stored SUCCESS",
+   "violations": [
+    {
+     "instances": "redis_dedup_expire",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:3653-3655 (celery 768e476): \"Deduplication occurs only with tasks that have the same identifier, enabled late acknowledgment, were redelivered by the message broker and their state is SUCCESS in the result backend\"",
+     "note": "the result expired (result_expires) before the copy came: the check reads PENDING"
+    },
+    {
+     "instances": "redis_dedupretry_readerr",
+     "reason": "by design",
+     "where": "celery/app/trace.py:494-497 (768e476): with result_backend_always_retry a failed read raises BackendGetMetaError, which the check lets pass, and the task runs",
+     "note": "a read that fails while SUCCESS is stored: a rerun, the outcome the check accepts instead of a skip"
+    },
+    {
+     "instances": "redis_dedup_republish",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:3653-3655 (celery 768e476): \"Deduplication occurs only with tasks that have the same identifier, enabled late acknowledgment, were redelivered by the message broker and their state is SUCCESS in the result backend\"",
+     "note": "the publisher sent the message again after a lost reply: a copy not marked redelivered; finding dedup-republish (2 of 3 with injected reply loss)"
+    },
+    {
+     "instances": "classic_early_cut",
+     "reason": "open",
+     "where": "tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026)",
+     "note": ""
+    },
+    {
+     "instances": "redis_*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "killed after the store and before the ack"
+    },
+    {
+     "instances": "classic_*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "killed after the store and before the ack"
+    },
+    {
+     "instances": "quorum_*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "killed after the store and before the ack"
+    },
+    {
+     "instances": "classic_late_cut",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack \"a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "a lost connection after the store and before the ack"
+    },
+    {
+     "instances": "redis_*",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+     "note": "the copy waits for the first run to end"
+    },
+    {
+     "instances": "classic_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": ""
+    },
+    {
+     "instances": "quorum_*",
+     "reason": "open",
+     "where": "tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "redelivery.neverSkipped",
+   "spec": "redelivery.qnt",
+   "definition": "neverSkipped",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Deduplication skips a delivery.",
    "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
    "source": "sanity",
    "instances": "all",

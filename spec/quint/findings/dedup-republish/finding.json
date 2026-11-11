@@ -1,0 +1,16 @@
+{
+ "id": "dedup-republish",
+ "title": "worker_deduplicate_successful_tasks does not see a copy the publisher sent again after a lost reply: the task runs again after its SUCCESS",
+ "cells": [
+  "redis_dedup_republish.noRerunAfterSuccess"
+ ],
+ "outcome": "duplicate",
+ "status": "documented",
+ "where": "docs/userguide/configuration.rst:3653-3655 (celery 768e476): only messages redelivered by the broker are checked",
+ "thread": "none needed: documented; worth a sentence in the idempotency Discussion draft",
+ "confirm": [
+  "confirm_republish.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, redis-py 8.1.0, a real prefork worker on Redis with dedup on; the publisher's replies dropped for 1.5 s by Toxiproxy (injected) with a 1 s socket timeout: 2 of 3 runs the task ran twice, SUCCESS stored before the second run, nothing skipped (the first run connected inside the drop and published once)."
+}

@@ -179,7 +179,12 @@ MUTANTS = [
      'REDIS, ageOf(rec) == T, hasRec(rec),', 'REDIS, hasRec(rec),'),
     ('redelivery: no restore_visible', 'redelivery.qnt', 'redis_late_kill', 'quietDone',
      'REDIS, ageOf(rec) == T, hasRec(rec),', 'false, ageOf(rec) == T, hasRec(rec),'),
+    ('redelivery: a failed read with always_retry that still fails the task', 'redelivery.qnt', 'redis_dedupretry_readerr', 'noFailWithoutError',
+     "stored' = if (CFG.alwaysRetry or stored == Success or not(stores)) stored", "stored' = if (stored == Success or not(stores)) stored"),
+    ('redelivery: deduplication that ignores a stored SUCCESS', 'redelivery.qnt', 'redis_dedup_kill', 'noRerunAfterDone',
+     'val dedup = CFG.dedup and LATE and h.redelivered and stored == Success\n', 'val dedup = false\n'),
 ]
+
 
 
 def violated(where: Path, spec_text: str, instance: str, prop: str,

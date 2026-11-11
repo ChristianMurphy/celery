@@ -856,12 +856,22 @@
     "neverQuiet": 7
    }
   },
+  "classic_dedup_kill": {
+   "D": 11,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverSkipped": 9,
+    "neverTwice": 7
+   }
+  },
   "classic_dedup_long": {
    "D": 23,
    "violated": {
     "exactlyOnce": 9,
     "neverDone": 11,
     "neverQuiet": 24,
+    "neverSkipped": 18,
     "neverTimedOut": 7,
     "neverTwice": 9
    }
@@ -873,6 +883,7 @@
     "neverDone": 6,
     "neverQuiet": 6,
     "neverTwice": 8,
+    "noRerunAfterDone": 10,
     "noRerunAfterSuccess": 10
    }
   },
@@ -883,6 +894,7 @@
     "neverQuiet": 7,
     "neverTimedOut": 13,
     "neverTwice": 8,
+    "noRerunAfterDone": 10,
     "noRerunAfterSuccess": 10
    }
   },
@@ -892,6 +904,7 @@
     "neverDone": 6,
     "neverQuiet": 7,
     "neverTwice": 7,
+    "noRerunAfterDone": 9,
     "noRerunAfterSuccess": 9
    }
   },
@@ -903,6 +916,7 @@
     "neverTimedOut": 7,
     "neverTwice": 9,
     "noLoop": 26,
+    "noRerunAfterDone": 18,
     "noRerunAfterSuccess": 18
    }
   },
@@ -930,6 +944,7 @@
     "neverTimedOut": 7,
     "neverTwice": 9,
     "noLoop": 22,
+    "noRerunAfterDone": 12,
     "noRerunAfterSuccess": 12
    }
   },
@@ -939,6 +954,7 @@
     "neverDone": 6,
     "neverQuiet": 7,
     "neverTwice": 7,
+    "noRerunAfterDone": 9,
     "noRerunAfterSuccess": 9
    }
   },
@@ -948,6 +964,7 @@
     "neverDone": 6,
     "neverQuiet": 7,
     "neverTwice": 7,
+    "noRerunAfterDone": 9,
     "noRerunAfterSuccess": 9,
     "noSilentLoss": 6,
     "quietDone": 8
@@ -961,7 +978,29 @@
     "neverQuiet": 30,
     "neverTimedOut": 7,
     "neverTwice": 9,
+    "noRerunAfterDone": 18,
     "noRerunAfterSuccess": 18
+   }
+  },
+  "redis_dedup_expire": {
+   "D": 15,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverSkipped": 12,
+    "neverTimedOut": 8,
+    "neverTwice": 11,
+    "noRerunAfterDone": 13
+   }
+  },
+  "redis_dedup_kill": {
+   "D": 13,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverSkipped": 12,
+    "neverTimedOut": 8,
+    "neverTwice": 11
    }
   },
   "redis_dedup_long_w1": {
@@ -969,7 +1008,43 @@
    "violated": {
     "neverDone": 9,
     "neverQuiet": 13,
+    "neverSkipped": 12,
     "neverTimedOut": 7
+   }
+  },
+  "redis_dedup_readerr": {
+   "D": 13,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverSkipped": 12,
+    "neverTimedOut": 8,
+    "neverTwice": 11,
+    "noFailWithoutError": 10,
+    "noSilentLoss": 11,
+    "quietDone": 11
+   }
+  },
+  "redis_dedup_republish": {
+   "D": 12,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverTwice": 7,
+    "noRerunAfterDone": 9,
+    "noRerunAfterSuccess": 9
+   }
+  },
+  "redis_dedupretry_readerr": {
+   "D": 14,
+   "violated": {
+    "neverDone": 6,
+    "neverQuiet": 7,
+    "neverSkipped": 12,
+    "neverTimedOut": 8,
+    "neverTwice": 11,
+    "noRerunAfterDone": 12,
+    "noRerunAfterSuccess": 12
    }
   },
   "redis_early_kill": {
@@ -989,6 +1064,7 @@
     "neverQuiet": 7,
     "neverTimedOut": 8,
     "neverTwice": 11,
+    "noRerunAfterDone": 12,
     "noRerunAfterSuccess": 12
    }
   },
@@ -1010,6 +1086,7 @@
     "neverTimedOut": 7,
     "neverTwice": 12,
     "noLoop": 19,
+    "noRerunAfterDone": 12,
     "noRerunAfterSuccess": 12
    }
   },
@@ -1021,6 +1098,7 @@
     "neverQuiet": 17,
     "neverTimedOut": 7,
     "neverTwice": 12,
+    "noRerunAfterDone": 12,
     "noRerunAfterSuccess": 12
    }
   },
@@ -1049,6 +1127,7 @@
     "neverTimedOut": 7,
     "neverTwice": 12,
     "noLoop": 19,
+    "noRerunAfterDone": 12,
     "noRerunAfterSuccess": 12
    }
   }

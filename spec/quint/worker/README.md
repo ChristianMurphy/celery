@@ -478,6 +478,8 @@ about a run stopped there.
 | `noSilentLoss` | safety | A published task is on the queue, recorded as unacked, or held by a live worker, or its result is final, or the broker dead-lettered it: it is never gone without anyone told. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Universality (a published task is held, final or dead-lettered), global | docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476); redis.rst:262-273 |
 | `earlyAtMostOnce` | safety | With early ack a task that started is never executed again. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Bounded existence (at most one run with early ack), global | docs/userguide/tasks.rst:24-26 (celery 768e476): early ack is sent "just before it's executed, so that a task invocation that already started is never executed again" |
 | `noRerunAfterSuccess` | safety | No run of a task starts while its SUCCESS is stored. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Absence (a run that starts while SUCCESS is stored), global | celery/app/trace.py:487-528 (768e476): worker_deduplicate_successful_tasks skips a redelivered acks_late task whose SUCCESS is stored |
+| `noFailWithoutError` | safety | A task whose body never raised is never stored FAILURE, and a deduplication check that cannot read the backend does not end the task without running it. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Absence (FAILURE for a task whose body never raised), global | docs/userguide/configuration.rst:3650-3655 (celery 768e476): deduplication skips only a task whose state is SUCCESS |
+| `noRerunAfterDone` | safety | No run of a task starts after a run of it finished, whatever is stored then (an expired result included). Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Absence (a run that starts after a run finished), global | docs/userguide/configuration.rst:3650-3655 (celery 768e476) |
 | `projectionOk` | safety | Every step changes the broker's copies of the message as a step of the abstract delivery environment does (publish, deliver, ack, requeue, take or lose), so the canvas specs built on that environment cover these brokers. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Universality (every step projects to steps of lib/delivery.qnt), global | lib/delivery.qnt; the same check as worker/worker_projection.qnt |
 | `exactlyOnce` | safety | While no fault was used (a timeout, a warm stop and a supervisor's restart are not faults), the task starts once, and a quiet system has stored its SUCCESS and holds no copy. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Bounded existence (exactly one run), while no fault was used | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
 | `quietDone` | liveness | A quiet system that the search did not stop at the delivery cap has stored the task's SUCCESS, or the broker dead-lettered it: every task ends, with the crash budget as the fairness assumption. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Response (lemma 3 of 3: a quiet system has ended) | docs/userguide/optimizing.rst:180-183 (celery 768e476) |
@@ -487,32 +489,39 @@ about a run stopped there.
 | `neverDone` | witness | Some run stores SUCCESS. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
 | `neverTimedOut` | witness | A restore_visible or a consumer timeout fires. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
 | `neverTwice` | witness | The task starts twice. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
+| `neverSkipped` | witness | Deduplication skips a delivery. Assumes: one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue. | Existence | sanity |
 <!-- end generated -->
 
 <!-- generated: results redelivery.qnt -->
 | instance | D | violated | reachable (witnesses) |
 |---|---|---|---|
 | classic_confirm_loss | 6 | none | neverQuiet (7), neverDone (6) |
-| classic_dedup_long | 23 | exactlyOnce (9) | neverQuiet (24), neverDone (11), neverTimedOut (7), neverTwice (9) |
-| classic_early_cut | 11 | earlyAtMostOnce (8), noRerunAfterSuccess (10) | neverQuiet (6), neverDone (6), neverTwice (8) |
-| classic_late_cut | 21 | noRerunAfterSuccess (10) | neverQuiet (7), neverDone (6), neverTimedOut (13), neverTwice (8) |
-| classic_late_kill | 12 | noRerunAfterSuccess (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
-| classic_late_long | 38 | noLoop (26), noRerunAfterSuccess (18), exactlyOnce (9) | neverDone (11), neverTimedOut (7), neverTwice (9) |
+| classic_dedup_kill | 11 | none | neverQuiet (7), neverDone (6), neverTwice (7), neverSkipped (9) |
+| classic_dedup_long | 23 | exactlyOnce (9) | neverQuiet (24), neverDone (11), neverTimedOut (7), neverTwice (9), neverSkipped (18) |
+| classic_early_cut | 11 | earlyAtMostOnce (8), noRerunAfterSuccess (10), noRerunAfterDone (10) | neverQuiet (6), neverDone (6), neverTwice (8) |
+| classic_late_cut | 21 | noRerunAfterSuccess (10), noRerunAfterDone (10) | neverQuiet (7), neverDone (6), neverTimedOut (13), neverTwice (8) |
+| classic_late_kill | 12 | noRerunAfterSuccess (9), noRerunAfterDone (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| classic_late_long | 38 | noLoop (26), noRerunAfterSuccess (18), noRerunAfterDone (18), exactlyOnce (9) | neverDone (11), neverTimedOut (7), neverTwice (9) |
 | classic_late_short | 6 | none | neverQuiet (7), neverDone (6) |
 | classic_noconfirm_loss | 6 | noSilentLoss (3), quietDone (3) | neverQuiet (3), neverDone (6) |
-| classic_retry_long | 32 | noLoop (22), noRerunAfterSuccess (12), exactlyOnce (9) | neverDone (10), neverTimedOut (7), neverTwice (9) |
-| quorum_dlx_kill | 14 | noRerunAfterSuccess (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
-| quorum_late_kill | 14 | noSilentLoss (6), noRerunAfterSuccess (9), quietDone (8) | neverQuiet (7), neverDone (6), neverTwice (7) |
-| quorum_late_long | 29 | noRerunAfterSuccess (18), exactlyOnce (9) | neverQuiet (30), neverDone (11), neverTimedOut (7), neverTwice (9) |
-| redis_dedup_long_w1 | 12 | none | neverQuiet (13), neverDone (9), neverTimedOut (7) |
+| classic_retry_long | 32 | noLoop (22), noRerunAfterSuccess (12), noRerunAfterDone (12), exactlyOnce (9) | neverDone (10), neverTimedOut (7), neverTwice (9) |
+| quorum_dlx_kill | 14 | noRerunAfterSuccess (9), noRerunAfterDone (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| quorum_late_kill | 14 | noSilentLoss (6), noRerunAfterSuccess (9), noRerunAfterDone (9), quietDone (8) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| quorum_late_long | 29 | noRerunAfterSuccess (18), noRerunAfterDone (18), exactlyOnce (9) | neverQuiet (30), neverDone (11), neverTimedOut (7), neverTwice (9) |
+| redis_dedup_expire | 15 | noRerunAfterDone (13) | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11), neverSkipped (12) |
+| redis_dedup_kill | 13 | none | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11), neverSkipped (12) |
+| redis_dedup_long_w1 | 12 | none | neverQuiet (13), neverDone (9), neverTimedOut (7), neverSkipped (12) |
+| redis_dedup_readerr | 13 | noSilentLoss (11), noFailWithoutError (10), quietDone (11) | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11), neverSkipped (12) |
+| redis_dedup_republish | 12 | noRerunAfterSuccess (9), noRerunAfterDone (9) | neverQuiet (7), neverDone (6), neverTwice (7) |
+| redis_dedupretry_readerr | 14 | noRerunAfterSuccess (12), noRerunAfterDone (12) | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11), neverSkipped (12) |
 | redis_early_kill | 11 | noSilentLoss (5), quietDone (6) | neverQuiet (6), neverDone (6), neverTimedOut (8) |
-| redis_late_kill | 14 | noRerunAfterSuccess (12) | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11) |
+| redis_late_kill | 14 | noRerunAfterSuccess (12), noRerunAfterDone (12) | neverQuiet (7), neverDone (6), neverTimedOut (8), neverTwice (11) |
 | redis_late_long | 15 | exactlyOnce (9) | neverQuiet (16), neverDone (11), neverTimedOut (7), neverTwice (9) |
-| redis_late_long_w1 | 33 | noLoop (19), noRerunAfterSuccess (12), exactlyOnce (12) | neverDone (9), neverTimedOut (7), neverTwice (12) |
-| redis_late_long_w1p2 | 16 | noRerunAfterSuccess (12), exactlyOnce (12) | neverQuiet (17), neverDone (10), neverTimedOut (7), neverTwice (12) |
+| redis_late_long_w1 | 33 | noLoop (19), noRerunAfterSuccess (12), noRerunAfterDone (12), exactlyOnce (12) | neverDone (9), neverTimedOut (7), neverTwice (12) |
+| redis_late_long_w1p2 | 16 | noRerunAfterSuccess (12), noRerunAfterDone (12), exactlyOnce (12) | neverQuiet (17), neverDone (10), neverTimedOut (7), neverTwice (12) |
 | redis_late_loss | 7 | noSilentLoss (3), quietDone (3) | neverQuiet (3), neverDone (6) |
 | redis_late_short | 6 | none | neverQuiet (7), neverDone (6) |
-| redis_nopf_long_w1p2 | 33 | noLoop (19), noRerunAfterSuccess (12), exactlyOnce (12) | neverQuiet (17), neverDone (9), neverTimedOut (7), neverTwice (12) |
+| redis_nopf_long_w1p2 | 33 | noLoop (19), noRerunAfterSuccess (12), noRerunAfterDone (12), exactlyOnce (12) | neverQuiet (17), neverDone (9), neverTimedOut (7), neverTwice (12) |
 <!-- end generated -->
 
 What the model says:
@@ -544,6 +553,24 @@ What the model says:
   dead letter exchange (`quorum_late_kill`; with one, `quorum_dlx_kill`
   passes).
 
+* `worker_deduplicate_successful_tasks` (`*_dedup_*`): it skips a
+  redelivered copy whose SUCCESS is stored and ends both loops. What it
+  cannot see: a result that expired (`redis_dedup_expire`, a rerun), a
+  copy the publisher sent again after a lost reply, which is not marked
+  redelivered (`redis_dedup_republish`), and a read that fails. The check
+  lets only `BackendGetMetaError` through, which the backend raises only
+  under `result_backend_always_retry`; any other error from the read ends
+  the task as an internal error: FAILURE is stored if the backend takes
+  the write, nothing if it is down, and the message is acked either way, so
+  a task whose first run was lost never runs (`redis_dedup_readerr`, 10
+  states). With `result_backend_always_retry` the task runs
+  (`redis_dedupretry_readerr`).
+* The prefork pool keeps the "local cache of successfully executed tasks"
+  (configuration.rst:3657-3660) in the parent (`task_ready`,
+  state.py:215-221), and the check reads it in the child, so it only
+  holds ids the child itself skipped. Not modeled: it costs a backend
+  read, not correctness.
+
 On the real code (celery 768e476, kombu 445027e, real prefork workers,
 nothing injected but the scaled timers unless named):
 [redis-visibility-loop](../findings/redis-visibility-loop/) (8 runs in 40 s
@@ -554,7 +581,11 @@ deduplication, 3 then dropped with SUCCESS on a quorum queue),
 [quorum-delivery-limit](../findings/quorum-delivery-limit/),
 [early-ack-amqp-cut](../findings/early-ack-amqp-cut/) (an injected cut: 3
 of 3 twice), [broker-loss-silent](../findings/broker-loss-silent/) (an
-injected restart: 3 of 3 lost, PENDING, nothing logged). The Redis
+injected restart: 3 of 3 lost, PENDING, nothing logged),
+[dedup-read-error](../findings/dedup-read-error/) (a killed first run, then
+a failed read: 3 of 3 FAILURE without a run; with the backend down 2 of 2
+PENDING for ever, acked), [dedup-republish](../findings/dedup-republish/)
+(injected reply loss: 2 of 3 ran twice). The Redis
 prefetch-2 run took ceil(5 / 2) = 3 runs where the instance, with a run of
 3 units against 2, takes 2: the same bound.
 
@@ -569,7 +600,10 @@ Why each violation is expected:
 | `noSilentLoss` | redis_late_loss (3) | documented | docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): "With the default RDB snapshotting you can lose tasks published since the last snapshot". a ready copy or the unacked record lost by a restart without fsync or a failover |
 | `noSilentLoss` | classic_noconfirm_loss (3) | documented | docs/userguide/calling.rst:525-527 (celery 768e476): "Messages can still be silently dropped ... Enable confirm_publish"; tracker entry for the Discussion on the confirm_publish default. a classic queue killed before it wrote a publish that was not confirmed; measured in the exactly-once report (3,659 of 5,100 lost without confirms, 0 with) |
 | `noSilentLoss` | quorum_late_kill (6) | documented | docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): "Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop". two kills with a delivery limit of 1 |
+| `noSilentLoss` | redis_dedup_readerr (11) | open | finding dedup-read-error (not in the tracker yet; no upstream thread found). the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever |
 | `earlyAtMostOnce` | classic_early_cut (8) | open | tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026); finding early-ack-amqp-cut (confirmed: 3 of 3 with an injected cut). acks written into a connection that is cut never reach RabbitMQ, the worker gets no error, and the broker returns the delivery when it closes the channel; measured 17 to 37 per run with 3 s and 25 s blackholes |
+| `noRerunAfterSuccess` | redis_dedupretry_readerr (12) | by design | celery/app/trace.py:494-497 (768e476): with result_backend_always_retry a failed read raises BackendGetMetaError, which the check lets pass, and the task runs. a read that fails while SUCCESS is stored: a rerun, the outcome the check accepts instead of a skip |
+| `noRerunAfterSuccess` | redis_dedup_republish (9) | documented | docs/userguide/configuration.rst:3653-3655 (celery 768e476): "Deduplication occurs only with tasks that have the same identifier, enabled late acknowledgment, were redelivered by the message broker and their state is SUCCESS in the result backend". the publisher sent the message again after a lost reply: a copy not marked redelivered; finding dedup-republish (2 of 3 with injected reply loss) |
 | `noRerunAfterSuccess` | classic_early_cut (10) | open | tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026) |
 | `noRerunAfterSuccess` | redis_late_kill (12) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
 | `noRerunAfterSuccess` | classic_late_kill (9) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
@@ -578,6 +612,18 @@ Why each violation is expected:
 | `noRerunAfterSuccess` | redis_late_long_w1 (12), redis_late_long_w1p2 (12), redis_nopf_long_w1p2 (12) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". the copy waits for the first run to end |
 | `noRerunAfterSuccess` | classic_late_long (18), classic_retry_long (12) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
 | `noRerunAfterSuccess` | quorum_late_long (18) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
+| `noFailWithoutError` | redis_dedup_readerr (10) | open | finding dedup-read-error (not in the tracker yet; no upstream thread found). the first run was lost before it stored anything; the redelivered copy's check gets the backend's own error (only BackendGetMetaError, raised under result_backend_always_retry, is let through), the tracer reports an internal error, on_error stores FAILURE and the message is acked: confirmed 3 of 3 (readonce: FAILURE) and 2 of 2 with the backend down (PENDING for ever) |
+| `noRerunAfterDone` | redis_dedup_expire (13) | documented | docs/userguide/configuration.rst:3653-3655 (celery 768e476): "Deduplication occurs only with tasks that have the same identifier, enabled late acknowledgment, were redelivered by the message broker and their state is SUCCESS in the result backend". the result expired (result_expires) before the copy came: the check reads PENDING |
+| `noRerunAfterDone` | redis_dedupretry_readerr (12) | by design | celery/app/trace.py:494-497 (768e476): with result_backend_always_retry a failed read raises BackendGetMetaError, which the check lets pass, and the task runs. a read that fails while SUCCESS is stored: a rerun, the outcome the check accepts instead of a skip |
+| `noRerunAfterDone` | redis_dedup_republish (9) | documented | docs/userguide/configuration.rst:3653-3655 (celery 768e476): "Deduplication occurs only with tasks that have the same identifier, enabled late acknowledgment, were redelivered by the message broker and their state is SUCCESS in the result backend". the publisher sent the message again after a lost reply: a copy not marked redelivered; finding dedup-republish (2 of 3 with injected reply loss) |
+| `noRerunAfterDone` | classic_early_cut (10) | open | tracker eo-early-ack-duplicates; celery issue 4426 (comments from 2019 and August 2026) |
+| `noRerunAfterDone` | redis_late_kill (12) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
+| `noRerunAfterDone` | classic_late_kill (9) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
+| `noRerunAfterDone` | quorum_dlx_kill (9), quorum_late_kill (9) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". killed after the store and before the ack |
+| `noRerunAfterDone` | classic_late_cut (10) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack "a task that's already started executing will be retried in the event of a power failure or the worker instance being killed abruptly". a lost connection after the store and before the ack |
+| `noRerunAfterDone` | redis_late_long_w1 (12), redis_late_long_w1p2 (12), redis_nopf_long_w1p2 (12) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed". the copy waits for the first run to end |
+| `noRerunAfterDone` | classic_late_long (18), classic_retry_long (12) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
+| `noRerunAfterDone` | quorum_late_long (18) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
 | `exactlyOnce` | redis_late_long (9), redis_late_long_w1 (12), redis_late_long_w1p2 (12), redis_nopf_long_w1p2 (12) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged within the visibility timeout "will be redelivered to another worker and executed" |
 | `exactlyOnce` | classic_dedup_long (9), classic_late_long (9), classic_retry_long (9) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only |
 | `exactlyOnce` | quorum_late_long (9) | open | tracker eo-consumer-timeout-acks-late-loop (a candidate, no public draft); docs/userguide/calling.rst:318-334 (celery 768e476) documents the channel close for countdowns only. the delivery limit (2) ends the loop with SUCCESS stored |
@@ -585,6 +631,7 @@ Why each violation is expected:
 | `quietDone` | redis_late_loss (3) | documented | docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): "With the default RDB snapshotting you can lose tasks published since the last snapshot" |
 | `quietDone` | classic_noconfirm_loss (3) | documented | docs/userguide/calling.rst:525-527 (celery 768e476): "Messages can still be silently dropped ... Enable confirm_publish"; tracker entry for the Discussion on the confirm_publish default |
 | `quietDone` | quorum_late_kill (8) | documented | docs/getting-started/backends-and-brokers/rabbitmq.rst:246-257 (celery 768e476): "Once the limit is reached, the task is dropped. Its state stays PENDING ... it doesn't log the drop" |
+| `quietDone` | redis_dedup_readerr (11) | open | finding dedup-read-error (not in the tracker yet; no upstream thread found). the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever |
 <!-- end generated -->
 
 ## Where this stopped
