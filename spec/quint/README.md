@@ -38,9 +38,9 @@ PYTHONPATH=$(git rev-parse --show-toplevel):$PWD ./run_all.sh full   # needs the
 ```
 
 `quint run`'s default Rust backend downloads its evaluator through the GitHub
-API, which this sandbox refuses; the evaluator was fetched from the release
-page into `~/.quint/rust-evaluator-v0.7.1/` instead. `quint verify` downloaded
-Apalache 0.62.4, and TLC is the one inside that jar.
+API on first use. Where that is blocked, fetch it from the release page into
+`~/.quint/rust-evaluator-v0.7.1/`. `quint verify` downloads Apalache 0.62.4,
+and TLC is the one inside that jar.
 
 ## Types
 

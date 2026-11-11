@@ -17,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 TIER=${1:-fast}
 ROOT=$(git rev-parse --show-toplevel)
-PY=${PY:-/home/user/.venv314/bin/python}
+PY=${PY:-python3}
 export PYTHONPATH="$ROOT:$PWD"
 START=$SECONDS
 tier_done() { echo "== $1 tier done in $((SECONDS - START)) s"; }
