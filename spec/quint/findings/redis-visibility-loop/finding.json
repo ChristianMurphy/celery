@@ -6,8 +6,8 @@
   "redis_nopf_long_w1p2.noLoop"
  ],
  "outcome": "duplicate",
- "status": "documented: redis.rst:318-320 says \"again, and again in a loop\" for ETA, countdown and retry tasks; not in the tracker yet",
- "where": "celery issue 5935 (a 2023 comment there says \"redelivered again and again in a loop\"; nobody names the condition); kombu issue 337 (the renewal reply drafted, tracker reply-kombu-337-renew-scope)",
+ "status": "documented",
+ "where": "redis.rst:318-320 says \"again, and again in a loop\" for ETA, countdown and retry tasks, not for long tasks or the condition; celery issue 5935 (a 2023 comment there says \"redelivered again and again in a loop\"); kombu issue 337; not in the tracker yet",
  "thread": "celery issue 5935, or the renewal reply on kombu issue 337 (the lead decides)",
  "confirm": [
   "confirm_redis_visibility_loop.py"
