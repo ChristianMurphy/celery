@@ -72,6 +72,9 @@ class Spec:
     # a counter variable whose value at the end of each sampled run is
     # reported (min, mean, max)
     metric: str = ''
+    # simulator samples per instance in the fast tier (catalog
+    # ``fast_samples``; --samples overrides it)
+    fast_samples: int = 300
     # the module whose ``type Action`` lists the actions and outcomes
     types: str = ''
 
@@ -93,7 +96,7 @@ def specs() -> dict[str, Spec]:
         out[short.get(stem, stem)] = Spec(
             file, instances(file), s['properties'], s['witnesses'],
             apalache=s['apalache'], fast=s['fast'], metric=s['metric'],
-            types=s['types'])
+            types=s['types'], fast_samples=s.get('fast_samples', 300))
     return out
 
 
@@ -200,7 +203,7 @@ def declared_actions(spec: Spec) -> list[str]:
     return tags
 
 
-def fast(names: list[str], only: str | None, samples: int, seed: str,
+def fast(names: list[str], only: str | None, samples: int | None, seed: str,
          jobs: int, every: bool = False) -> bool:
     ok = True
     t0 = time.time()
@@ -232,11 +235,12 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
         spec = SPECS[name]
         insts = [i for i in spec.instances
                  if (i == only if only else every or i in spec.fast)]
+        n = samples or spec.fast_samples
         with cf.ThreadPoolExecutor(jobs) as ex:
             res = dict(zip(insts, ex.map(
                 lambda i: simulate(spec, i, exp.get(spec.file, {}).get(i, {}),
-                                   samples, seed), insts)))
-        print(f'\n{spec.file} (simulator, {samples} samples per instance, '
+                                   n, seed), insts)))
+        print(f'\n{spec.file} (simulator, {n} samples per instance, '
               f'{len(insts)} of {len(spec.instances)} instances)')
         print('| instance | invariants and steps <= D | longest run | '
               'expected violations seen (traces) | '
@@ -259,7 +263,7 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
             # coverage: which actions and outcomes ran in the sampled traces
             declared = declared_actions(spec)
             missing = [t for t in declared if not total[t]]
-            print(f'\nactions and outcomes in {min(TRACES, samples)} sampled traces per '
+            print(f'\nactions and outcomes in {min(TRACES, n)} sampled traces per '
                   f'instance: {len(declared) - len(missing)} of {len(declared)}'
                   + (f'; not sampled: {", ".join(missing)}' if missing else ''))
             print(', '.join(f'{t} {total[t]}' for t in declared))
@@ -494,7 +498,7 @@ def main() -> int:
         write_cex(names, args.samples or 3000, args.seed, args.instance)
         return 0
     if args.tier == 'fast':
-        return 0 if fast(names, args.instance, args.samples or 300,
+        return 0 if fast(names, args.instance, args.samples,
                          args.seed, args.jobs, args.all) else 1
     ok = full(names, args.instance, args.jobs, args.update_expected,
               args.tier == 'long', args.apalache_timeout, args.json)

@@ -23,26 +23,28 @@ a finding only once the real code reproduced it ([findings/](findings/README.md)
 | Spec | Family | Pinned to | Properties | Instances | Fast tier | Lemma 1 (every run is finite) |
 |---|---|---|---|---|---|---|
 | [`resultstate.qnt`](result/resultstate.qnt) | [result/](result/README.md) | celery 768e476 | 3 and 1 witnesses | 4 | rtw, es | `progress`, a closed-form measure |
-| [`chord.qnt`](canvas/chord.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 3 witnesses | 69 | redis_dup, redis_wlost_late, kv_dup, unlock_child_reject, once_dup, oncev1_dup, skip_kill_before_count, mixed_dup, redisfix1_interrupt, redisfix_interrupt_dup | `progress`, a closed-form measure |
+| [`chord.qnt`](canvas/chord.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 3 witnesses | 69 | redis_dup, redis_wlost_late, kv_dup, unlock_child_reject, once_dup, oncev1_dup, mixed_dup, redisfix1_interrupt | `progress`, a closed-form measure |
 | [`redis_transport.qnt`](transport/redis_transport.qnt) | [transport/](transport/README.md) | kombu 445027e, kombu PR 2831 c61b525 | 9 and 3 witnesses | 27 | main_crash, paused_credit_timeout, pr_credit_timeout, renewblind_held_credit | finite by exhaustive search with the step counter in the state |
 | [`worker.qnt`](worker/worker.qnt) | [worker/](worker/README.md) | celery 768e476, kombu 445027e, kombu PR 2831 c61b525 | 8 and 2 witnesses | 94 | main_late_partition, pr_late_shutdown, pr_late_eta, pr_late_cut, renewall_late_hang, best_late_crash | finite by exhaustive search with the step counter in the state |
 | [`publisher.qnt`](transport/publisher.qnt) | [transport/](transport/README.md) | celery 768e476 | 5 and 1 witnesses | 6 | off_crash, on_none | finite by exhaustive search with the step counter in the state |
+| [`chain.qnt`](canvas/chain.qnt) | [canvas/](canvas/README.md) | celery 768e476 | 9 and 4 witnesses | 23 | late_none, late_unencodable | finite by exhaustive search with the step counter in the state |
 <!-- end generated -->
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `lib/` | What several specs share |
+| `lib/` | What several specs share: `observe.qnt` (exactlyOnce, neverLost, quietDone over a record per message), `delivery.qnt` (the abstract at-least-once delivery environment the canvas specs build on) |
 | `result/` | The stored result of one task id; four stores |
-| `canvas/` | Chords: five completion protocols, the fixes for celery issues 11036 and 11039; scenarios as `quint test` runs |
+| `canvas/` | Chords: five completion protocols, the fixes for celery issues 11036 and 11039; scenarios as `quint test` runs. Chains with a link and an errback, and two fix designs |
 | `transport/` | kombu's Redis consume path (main and kombu PR 2831) and a RabbitMQ publisher |
-| `worker/` | Two workers from the broker to a finished task, and eight design choices |
+| `worker/` | Two workers from the broker to a finished task, and eight design choices; the projection onto `lib/delivery.qnt` |
 | `properties.json` | The catalog: one entry per spec and per property |
 | `expected.json` | D and the expected violations of every instance |
 | `findings/` | One folder per finding confirmed on the real code: trace, confirm script, status |
 | `tools/check.py` | The tiers |
 | `tools/catalog.py` | Checks the catalog and the checklist; writes the tables in the READMEs |
+| `tools/citations.py` | Checks each `@cite` (file, range and anchor at the pinned SHA, anchor on main; `CELERY_REPO`, `KOMBU_REPO`) |
 | `tools/tlc.py` | Exhaustive search with TLC |
 | `tools/mutate_spec.py` | Spec mutants: each must make a property fail |
 | `tools/type_errors.py` | Mistakes the types reject |
@@ -212,6 +214,7 @@ reason, a witness, a mutant or the budget is missing.
 | Finding | Instance and property | Outcome | Status | Thread | On the real code |
 |---|---|---|---|---|---|
 | [ack-after-loss](ack-after-loss/): An ack that fails with its connection is forgotten, and one through a collected channel stops the worker | `pr_late_cut.noAvoidableDup`, `pr_late_cut.workerSurvives`, `main_late_partition.workerSurvives` | duplicate | open: tracker eo-redis-ack-after-connection-loss | the reply posted on celery issue 11054 | `confirm_ack_after_loss.py`. Main: delivered again when the channel closes. Resend prototype: not delivered again. The worker exit needs a worker; those runs are in the reply. |
+| [chain-store-error](chain-store-error/): A chain's link and next step run although the parent's result could not be stored, beside the errback, and the next step's FAILURE turns into SUCCESS | `late_unencodable.notBoth`, `late_unencodable.finalStable`, `late_storeerr.notBoth`, `late_storeerr.finalStable` | visible failure | open: related to celery issue 10954 (the same window, reached by a lost pool child); not yet in the tracker | a reply on celery issue 10954 (drafted by the lead) | `confirm_chain_store_error.py`. 768e476 with kombu 445027e, a real prefork worker on Redis: a returns a value the serializer cannot encode: 5 of 5 runs ran the link and the errback, and b was read PENDING, FAILURE, then SUCCESS (lead: 3 of 3 on main 9c2f238). Mode operational, a backend that raises kombu OperationalError on a's SUCCESS write: 3 of 3, the same, nothing redelivered. |
 | [flush-ack-modes](flush-ack-modes/): A warm shutdown or a reconnect runs a task twice: flush() drops a job the child already has | `pr_late_shutdown.exactlyOnce`, `pr_early_shutdown.exactlyOnce`, `ackfull_late_cut.noAvoidableDup` | duplicate | open: tracker eo-warm-shutdown-flush-duplicate; the variant DropUnwritten removes it | the reply posted on celery issue 3802 | `confirm_flush_ack_modes.py`. Main: the child runs the task and the message is never acked, in both ack modes. With the variant: acked in both. |
 | [interrupt-cleanup](interrupt-cleanup/): The first fix for celery issue 11039 failed a chord after its body was sent | `redisfix1_interrupt.noErrorAfterDispatch`, `redisfix3_interrupt_dup.atMostOnce` | duplicate | fixed: 5446659 and ad00b4a on the fix branch for celery issue 11039 (5f844ea and ee48301 had them) | the thread of celery issue 11039 | `confirm_interrupt_cleanup.py`. On Redis at 5f844ea: the body published once and FAILURE stored. Main publishes twice after a later copy, ad00b4a once. |
 | [interrupt-then-copy](interrupt-then-copy/): The second fix for celery issue 11039 sent the body after the chord was failed | `redisfix2_interrupt_dup.noDispatchAfterError`, `redisfix2_interrupt_dup.atMostOnce` | duplicate | fixed: ee48301 on the fix branch for celery issue 11039 (5446659 had it) | the thread of celery issue 11039 | `confirm_interrupt_then_copy.py`. On Redis at 5446659: "published 0, errors 1", then "published 1" after the copy. |

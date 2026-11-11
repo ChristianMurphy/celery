@@ -141,6 +141,27 @@ MUTANTS = [
      "memory' = memory.setBy(m, n => n + 1),", "memory' = memory,"),
     ('publisher: reading a confirm costs nothing', 'publisher.qnt', 'on_none', 'normalCost',
      'did(Confirm(m), 1),', 'did(Confirm(m), 0),'),
+    # chain.qnt: one mutant per property
+    ('chain: the next step is published twice', 'chain.qnt', 'late_none', 'nextOnce',
+     "pubs' = pubs.setBy(MB, n => n + 1),", "pubs' = pubs.setBy(MB, n => n + 2),"),
+    ('chain: a link that is published twice', 'chain.qnt', 'late_none', 'linkOnce',
+     "pubs' = pubs.setBy(ML, n => n + 1),", "pubs' = pubs.setBy(ML, n => n + 2),"),
+    ('chain: the next step is published before the body returns', 'chain.qnt', 'late_none', 'nextAfterReturn',
+     "returnedOk' = true,", "returnedOk' = returnedOk,"),
+    ('chain: the failure path also sends the link', 'chain.qnt', 'late_none', 'notBoth',
+     'used.refusals < CFG.max.refusals,', 'true,'),
+    ('chain: every failure runs the errback twice', 'chain.qnt', 'late_raises', 'errbackOnce',
+     "errbacks' = if (r.m == MA and not(quietFail)) errbacks + 1",
+     "errbacks' = if (r.m == MA and not(quietFail)) errbacks + 2"),
+    ('chain: any second store of b counts as a change', 'chain.qnt', 'late_dup', 'finalStable',
+     'ready(before) and before != after', 'ready(before)'),
+    ('chain: a run that starts twice without a fault', 'chain.qnt', 'late_none', 'exactlyOnce',
+     'if (late) Q::deliver(m) else Q::take(m),', 'if (late) Q::publish(m) else Q::take(m),'),
+    ('chain: encode-first that still sends the link', 'chain.qnt', 'encfirst_unencodable', 'noFailedParentAfterSend',
+     'not(CFG.unencodable and CFG.encodeFirst),', 'true,'),
+    ('chain: a lost node\'s message is not requeued', 'chain.qnt', 'late_node', 'quietDone',
+     '      if (r.acked) Q::dkeep else Q::requeue(r.m),\n      jobs\' = jobs.set(w, Idle), stored\' = stored, keepObs,\n      applied\' = applied, used\' = { ...used, nodes',
+     '      Q::dkeep,\n      jobs\' = jobs.set(w, Idle), stored\' = stored, keepObs,\n      applied\' = applied, used\' = { ...used, nodes'),
 ]
 
 

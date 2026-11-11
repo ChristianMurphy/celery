@@ -1,4 +1,237 @@
 {
+ "chain.qnt": {
+  "dedup_dup": {
+   "D": 26,
+   "violated": {
+    "linkOnce": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14,
+    "nextOnce": 11
+   }
+  },
+  "dedup_node": {
+   "D": 24,
+   "violated": {
+    "linkOnce": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14,
+    "nextOnce": 11
+   }
+  },
+  "early_child": {
+   "D": 13,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 4,
+    "neverQuiet": 4,
+    "noFailedParentAfterSend": 6,
+    "notBoth": 6
+   }
+  },
+  "early_node": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "early_none": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14
+   }
+  },
+  "early_unencodable": {
+   "D": 12,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 7,
+    "neverQuiet": 13,
+    "noFailedParentAfterSend": 7,
+    "notBoth": 7
+   }
+  },
+  "encfirst_none": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14
+   }
+  },
+  "encfirst_storeerr": {
+   "D": 13,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 7,
+    "neverQuiet": 13,
+    "noFailedParentAfterSend": 7,
+    "notBoth": 7
+   }
+  },
+  "encfirst_unencodable": {
+   "D": 4,
+   "violated": {
+    "neverFailed": 5,
+    "neverQuiet": 5
+   }
+  },
+  "late_child": {
+   "D": 13,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 4,
+    "neverQuiet": 4,
+    "noFailedParentAfterSend": 6,
+    "notBoth": 6
+   }
+  },
+  "late_dup": {
+   "D": 26,
+   "violated": {
+    "linkOnce": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14,
+    "nextOnce": 11
+   }
+  },
+  "late_node": {
+   "D": 25,
+   "violated": {
+    "linkOnce": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14,
+    "nextOnce": 11
+   }
+  },
+  "late_none": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14
+   }
+  },
+  "late_raises": {
+   "D": 3,
+   "violated": {
+    "neverFailed": 4,
+    "neverQuiet": 4
+   }
+  },
+  "late_refuse": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 5,
+    "neverQuiet": 5,
+    "noFailedParentAfterSend": 6,
+    "notBoth": 6
+   }
+  },
+  "late_storeerr": {
+   "D": 13,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 7,
+    "neverQuiet": 13,
+    "noFailedParentAfterSend": 7,
+    "notBoth": 7
+   }
+  },
+  "late_unencodable": {
+   "D": 12,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 7,
+    "neverQuiet": 13,
+    "noFailedParentAfterSend": 7,
+    "notBoth": 7
+   }
+  },
+  "quiet_child": {
+   "D": 13,
+   "violated": {
+    "finalStable": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 4,
+    "neverQuiet": 4,
+    "noFailedParentAfterSend": 6,
+    "notBoth": 6
+   }
+  },
+  "quiet_none": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14
+   }
+  },
+  "quiet_refuse": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 5,
+    "neverQuiet": 5,
+    "noFailedParentAfterSend": 6,
+    "notBoth": 6
+   }
+  },
+  "quiet_storeerr": {
+   "D": 13,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 7,
+    "neverQuiet": 13,
+    "noFailedParentAfterSend": 7
+   }
+  },
+  "quiet_unencodable": {
+   "D": 12,
+   "violated": {
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverFailed": 7,
+    "neverQuiet": 13,
+    "noFailedParentAfterSend": 7
+   }
+  },
+  "reject_child": {
+   "D": 24,
+   "violated": {
+    "linkOnce": 9,
+    "neverDone": 8,
+    "neverEarlyStart": 7,
+    "neverQuiet": 14,
+    "nextOnce": 11
+   }
+  }
+ },
  "chord.qnt": {
   "kv_child_early": {
    "D": 11,

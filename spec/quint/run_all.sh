@@ -27,6 +27,11 @@ python3 tools/check.py --tier fast
 for m in redisLost kvDup unlockChild onceReadOnce interruptFix; do
   quint test --main=$m canvas/scenarios.qnt
 done
+# worker.qnt projects onto the delivery environment of lib/delivery.qnt
+for m in proj_main_late_partition proj_pr_late_cut proj_pr_late_shutdown proj_pr_early_crash proj_pr_late_long; do
+  quint run --main=$m worker/worker_projection.qnt --init=pinit --step=pstep \
+    --invariant=projectionOk --max-steps=40 --max-samples=2000 --seed=5 | tail -1
+done
 tier_done fast
 [ "$TIER" = fast ] && exit 0
 

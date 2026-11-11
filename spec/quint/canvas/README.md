@@ -1,8 +1,12 @@
-# Canvas: chords
+# Canvas: chords and chains
 
 `chord.qnt`, `chord_instances.qnt` (69 instances), `scenarios.qnt` (the
 behaviors behind the findings, as `quint test` runs). Celery 768e476 and the
 fix branches for celery issues 11036 and 11039.
+
+`chain.qnt`, `chain_instances.qnt`: a chain with a link callback, on the
+abstract delivery environment of `../lib/delivery.qnt`. See
+[Chains](#chains) below.
 
 ## Model
 
@@ -374,3 +378,135 @@ later copy sent the body again, as on main (`redis_interrupt_dup`,
     (`redis_wlost_late.atMostOnce`); a lease that expires under a live holder
     (`redis_lease`) is the trade-off the code documents.
 
+## Chains
+
+`chain.qnt` models `a.s() | b.s()` where `a` also has a link `l` and an
+errback `e`, on two workers with one pool process each. The broker is the
+abstract at-least-once environment of `../lib/delivery.qnt` (publish,
+deliver, ack, requeue, deliver again); `../worker/worker_projection.qnt`
+checks that every step of `worker.qnt`, the detailed Redis model, is a step
+of that environment, so what holds here holds on any broker whose steps
+project the same way.
+
+A successful run of `a` (celery/app/trace.py:584-613 at 768e476): the body
+returns, the link is published, then the next step, each through
+`AMQP._retry_publish`; then `mark_as_done` stores SUCCESS with the children;
+with late ack the message is acked after that. The publish comes before the
+store on purpose ("callback tasks must be applied before the result is
+stored, so that result.children is populated"). Any error after the body
+returned goes to `on_error`: FAILURE for `a`, FAILURE for every later step
+(`_fail_chain`), the errbacks. A pool process lost while the parent lives
+goes through `Request.on_failure`: ack if SUCCESS is stored, requeue with
+`reject_on_worker_lost`, otherwise the same FAILURE path.
+
+Instances: the ack mode or design (`late`, `early`, `dedup` for
+`worker_deduplicate_successful_tasks`, `reject` for
+`task_reject_on_worker_lost`) and a fault class: `none`, `raises` (the body
+of `a` raises), `node` (a worker killed with its pool), `child` (a pool
+process lost), `refuse` (a publish refused until the retry policy gives
+up), `storeerr` (`mark_as_done` raises once: a result the serializer
+cannot encode, or a backend that stays down past its retry policy), `dup`
+(a message delivered again).
+
+<!-- generated: properties chain.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `nextOnce` | safety | The next step of the chain is published at most once. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Bounded existence (at most one publish), global | docs/userguide/canvas.rst:524-525 (celery 768e476): "The linked task will be applied with the result of its parent task"; celery/app/trace.py:414-417 (768e476) says a redelivery may publish it again |
+| `linkOnce` | safety | The link callback is published at most once. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Bounded existence (at most one publish), global | docs/userguide/canvas.rst:515-516 (celery 768e476): "the linked task is called when the task returns successfully" |
+| `nextAfterReturn` | safety | The next step is published only after a run of its parent returned without an error. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Precedence (a run of a returned precedes the publish of b), global | docs/userguide/canvas.rst:515-516 (celery 768e476): "the linked task is called when the task returns successfully" |
+| `notBoth` | safety | A task's link callback and its errback are not both called. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Absence (link and errback for one task), global | docs/userguide/calling.rst:197-199 (celery 768e476): callbacks are "called with the return value of the parent task"; canvas.rst:515-516 |
+| `errbackOnce` | safety | The errback runs at most once. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Bounded existence (at most one errback run), global | docs/userguide/calling.rst:140-142 (celery 768e476) |
+| `finalStable` | safety | Once b's stored result is ready (SUCCESS or FAILURE), it does not change. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Absence (a ready result of b that changes), global | celery/backends/base.py:1361-1366 (768e476): a stored SUCCESS is not overwritten, "a lost task overwrite the last successful result" |
+| `noFailedParentAfterSend` | safety | A reader never sees FAILURE for a task whose link callback or next step was sent, and so runs. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Absence (FAILURE stored for a task whose link or next step was sent), global | docs/userguide/canvas.rst:515-516 (celery 768e476): "the linked task is called when the task returns successfully" |
+| `exactlyOnce` | safety | While no fault was used, each task that was sent starts once, and a quiet chain has a final result for each. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Bounded existence (exactly one run of each task sent), while no fault was used | docs/userguide/canvas.rst:515-516 (celery 768e476) |
+| `quietDone` | liveness | A quiet chain has a final result for a and b, and for l if it was sent: nothing waits for ever. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Response (lemma 3 of 3: a quiet chain has ended) | docs/userguide/canvas.rst:515-516 (celery 768e476) |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: fault budgets are finite; exhaustive searches of small instances, not proofs for all sizes. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: a recovery step (a delivery, an ack, a requeue) is never refused for ever: weak fairness, built into quiet. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Existence | sanity |
+| `neverDone` | witness | Some run stores SUCCESS for b. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Existence | sanity |
+| `neverFailed` | witness | Some run stores FAILURE for a. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Existence | sanity |
+| `neverEarlyStart` | witness | b can start while a's SUCCESS is not stored yet: the links are published before the result is stored. Assumes: a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt). | Existence | celery/app/trace.py:591-593 (768e476): "callback tasks must be applied before the result is stored, so that result.children is populated" |
+<!-- end generated -->
+
+<!-- generated: results chain.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| dedup_dup | 26 | nextOnce (11), linkOnce (9) | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| dedup_node | 24 | nextOnce (11), linkOnce (9) | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| early_child | 13 | notBoth (6), finalStable (9), noFailedParentAfterSend (6) | neverQuiet (4), neverDone (8), neverFailed (4), neverEarlyStart (7) |
+| early_node | 13 | quietDone (4) | neverQuiet (4), neverDone (8), neverEarlyStart (7) |
+| early_none | 13 | none | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| early_unencodable | 12 | notBoth (7), finalStable (9), noFailedParentAfterSend (7) | neverQuiet (13), neverDone (8), neverFailed (7), neverEarlyStart (7) |
+| encfirst_none | 13 | none | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| encfirst_storeerr | 13 | notBoth (7), finalStable (9), noFailedParentAfterSend (7) | neverQuiet (13), neverDone (8), neverFailed (7), neverEarlyStart (7) |
+| encfirst_unencodable | 4 | none | neverQuiet (5), neverFailed (5) |
+| late_child | 13 | notBoth (6), finalStable (9), noFailedParentAfterSend (6) | neverQuiet (4), neverDone (8), neverFailed (4), neverEarlyStart (7) |
+| late_dup | 26 | nextOnce (11), linkOnce (9) | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| late_node | 25 | nextOnce (11), linkOnce (9) | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| late_none | 13 | none | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| late_raises | 3 | none | neverQuiet (4), neverFailed (4) |
+| late_refuse | 13 | notBoth (6), noFailedParentAfterSend (6) | neverQuiet (5), neverDone (8), neverFailed (5), neverEarlyStart (7) |
+| late_storeerr | 13 | notBoth (7), finalStable (9), noFailedParentAfterSend (7) | neverQuiet (13), neverDone (8), neverFailed (7), neverEarlyStart (7) |
+| late_unencodable | 12 | notBoth (7), finalStable (9), noFailedParentAfterSend (7) | neverQuiet (13), neverDone (8), neverFailed (7), neverEarlyStart (7) |
+| quiet_child | 13 | notBoth (6), finalStable (9), noFailedParentAfterSend (6) | neverQuiet (4), neverDone (8), neverFailed (4), neverEarlyStart (7) |
+| quiet_none | 13 | none | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+| quiet_refuse | 13 | notBoth (6), noFailedParentAfterSend (6) | neverQuiet (5), neverDone (8), neverFailed (5), neverEarlyStart (7) |
+| quiet_storeerr | 13 | noFailedParentAfterSend (7) | neverQuiet (13), neverDone (8), neverFailed (7), neverEarlyStart (7) |
+| quiet_unencodable | 12 | noFailedParentAfterSend (7) | neverQuiet (13), neverDone (8), neverFailed (7), neverEarlyStart (7) |
+| reject_child | 24 | nextOnce (11), linkOnce (9) | neverQuiet (14), neverDone (8), neverEarlyStart (7) |
+<!-- end generated -->
+
+What the model says:
+
+* A worker killed after the publish and before the store or the ack
+  (`late_node`, 11 states), a duplicate delivery (`late_dup`) and
+  `reject_on_worker_lost` (`reject_child`) publish the next step and the
+  link twice. Deduplication does not help: SUCCESS is not stored yet when
+  the copy runs (`dedup_node`, `dedup_dup`). Documented in the code
+  (trace.py:414-417) and for the settings.
+* With early ack a worker lost in the run leaves `a` PENDING for good
+  (`early_node`, `quietDone`, 4 states): documented.
+* Every failure after the link was sent runs the errback beside the link,
+  marks `b` FAILURE, and `b` then stores SUCCESS (`notBoth`, `finalStable`,
+  `noFailedParentAfterSend`): a lost pool process (celery issue 10954), a
+  refused next step, a store error, and deterministically a result the
+  serializer cannot encode (`late_unencodable`, 7 states). Confirmed on main:
+  [../findings/chain-store-error](../findings/chain-store-error/).
+* Two fix designs. `encodeFirst` (encode the result before publishing)
+  passes everything for the unencodable result and nothing else changes:
+  a store error or a lost process still breaks `notBoth` and
+  `finalStable`. `quietAfterSend` (once the callbacks were sent, a store
+  error stores FAILURE for `a` only: no `_fail_chain`, no errbacks)
+  restores `notBoth` and `finalStable` for store errors and unencodable
+  results; `a` still reads FAILURE while its link and next step run
+  (`noFailedParentAfterSend`), and the lost-process and refused-publish
+  instances are unchanged, since the parent process does not know what the
+  child sent. It moves no outcome right on the ranking: the error stays
+  visible as `a`'s FAILURE, only the errback no longer runs for a task
+  whose link ran.
+
+Why each violation is expected:
+
+<!-- generated: reasons chain.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `nextOnce` | dedup_node (11), late_node (11) | by design | celery/app/trace.py:414-417 (768e476): "a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model". a worker killed after the publish and before the store or the ack; deduplication does not help before the store |
+| `nextOnce` | reject_child (11) | documented | docs/userguide/configuration.rst:732-740 (celery 768e476): task_reject_on_worker_lost re-queues the message "so that the task will execute again", with a warning about message loops |
+| `nextOnce` | dedup_dup (11), late_dup (11) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged in time "will be redelivered to another worker and executed"; celery/app/trace.py:414-417 (768e476): "a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model". deduplication helps only once SUCCESS is stored |
+| `linkOnce` | dedup_node (9), late_node (9) | by design | celery/app/trace.py:414-417 (768e476): "a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model". a worker killed after the publish and before the store or the ack; deduplication does not help before the store |
+| `linkOnce` | reject_child (9) | documented | docs/userguide/configuration.rst:732-740 (celery 768e476): task_reject_on_worker_lost re-queues the message "so that the task will execute again", with a warning about message loops |
+| `linkOnce` | dedup_dup (9), late_dup (9) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged in time "will be redelivered to another worker and executed"; celery/app/trace.py:414-417 (768e476): "a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model". deduplication helps only once SUCCESS is stored |
+| `notBoth` | early_child (6), late_child (6), quiet_child (6) | open | celery issue 10954. a pool process lost between the publish and the store |
+| `notBoth` | late_refuse (6), quiet_refuse (6) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). the link was sent, then the next step was refused; calling.rst says the task then fails through the normal errback handling |
+| `notBoth` | late_storeerr (7) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). a backend error at the store (kombu OperationalError is re-raised and reaches the same on_error): 3 of 3 runs on a real worker |
+| `notBoth` | early_unencodable (7), late_unencodable (7) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). a result the serializer cannot encode: deterministic, 5 of 5 runs on a real worker |
+| `notBoth` | encfirst_storeerr (7) | by design | the encode-first variant (CFG.encodeFirst) removes only the encode trigger; a backend error at the store is the same window |
+| `finalStable` | early_child (9), late_child (9), quiet_child (9) | open | celery issue 10954. a pool process lost between the publish and the store |
+| `finalStable` | late_storeerr (9) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). a backend error at the store (kombu OperationalError is re-raised and reaches the same on_error): 3 of 3 runs on a real worker |
+| `finalStable` | early_unencodable (9), late_unencodable (9) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). a result the serializer cannot encode: deterministic, 5 of 5 runs on a real worker |
+| `finalStable` | encfirst_storeerr (9) | by design | the encode-first variant (CFG.encodeFirst) removes only the encode trigger; a backend error at the store is the same window |
+| `noFailedParentAfterSend` | quiet_child (6), quiet_refuse (6), quiet_storeerr (7), quiet_unencodable (7) | by design | the quiet-after-send variant (CFG.quietAfterSend) still records the store error as FAILURE for a; it only stops _fail_chain and the errbacks |
+| `noFailedParentAfterSend` | encfirst_storeerr (7) | by design | the encode-first variant removes only the encode trigger |
+| `noFailedParentAfterSend` | early_child (6), early_unencodable (7), late_child (6), late_refuse (6), late_storeerr (7), late_unencodable (7) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). a FAILURE for a task whose link and next step run |
+| `quietDone` | early_node (4) | documented | docs/userguide/tasks.rst:24-26 (celery 768e476): with early ack "a task invocation that already started is never executed again"; a run lost after the ack leaves its result PENDING. a hang for anyone waiting on a's result; b is not affected |
+<!-- end generated -->

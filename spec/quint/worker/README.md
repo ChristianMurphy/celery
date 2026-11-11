@@ -91,6 +91,16 @@ worker, a Redis that loses acknowledged writes (appendfsync everysec),
 RabbitMQ on the consumer side (an ack bound to its channel, the consumer
 timeout), and rate limits.
 
+`worker_projection.qnt` maps each state of `worker.qnt` to the abstract
+delivery environment of `../lib/delivery.qnt` (a message is ready when it is
+on the queue, taken when the unacked hash has its record) and checks that
+every step is a step of that environment (`projectionOk`; `run_all.sh`
+samples five instances). On main a lost BRPOP reply is a ready copy that
+disappears (`neverTaken` is reachable there and not with kombu PR 2831):
+the environment allows that only as a loss by the layer below. The canvas
+specs built on the environment (`../canvas/chain.qnt`) therefore hold for
+this transport with that loss named.
+
 ## Properties
 
 <!-- generated: properties worker.qnt -->

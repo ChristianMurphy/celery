@@ -47,7 +47,8 @@ ACTION = re.compile(r'^\s*action\s+(\w+)')
 #: Actions that only keep or set variables, or wrap others; no code of
 #: their own to cite.
 HELPERS = {'init', 'step', 'stutter', 'stepOrQuiet', 'did', 'keepBroker',
-           'keepStarts', 'keepRuns', 'setJob', 'setConn', 'restoreAll'}
+           'keepStarts', 'keepRuns', 'setJob', 'setConn', 'restoreAll',
+           'keepObs', 'setRun', 'dinit', 'dkeep'}
 
 
 def repo(name: str) -> Path | None:

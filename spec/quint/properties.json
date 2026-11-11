@@ -60,14 +60,13 @@
     "unlock_child_reject",
     "once_dup",
     "oncev1_dup",
-    "skip_kill_before_count",
     "mixed_dup",
-    "redisfix1_interrupt",
-    "redisfix_interrupt_dup"
+    "redisfix1_interrupt"
    ],
    "passes_all": "redis_dup",
    "progress": "closed form",
-   "checklist": "enforced"
+   "checklist": "enforced",
+   "fast_samples": 120
   },
   "redis_transport.qnt": {
    "family": "transport",
@@ -166,6 +165,40 @@
    "passes_all": "on_none",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced"
+  },
+  "chain.qnt": {
+   "family": "canvas",
+   "types": "chaintypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "nextOnce",
+    "linkOnce",
+    "nextAfterReturn",
+    "notBoth",
+    "errbackOnce",
+    "finalStable",
+    "noFailedParentAfterSend",
+    "exactlyOnce",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverDone",
+    "neverFailed",
+    "neverEarlyStart"
+   ],
+   "apalache": [],
+   "fast": [
+    "late_none",
+    "late_unencodable"
+   ],
+   "passes_all": "late_none",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
   }
  },
  "properties": [
@@ -1417,6 +1450,351 @@
    "statement": "Some run ends.",
    "assumptions": "",
    "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chain.nextOnce",
+   "spec": "chain.qnt",
+   "definition": "nextOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one publish), global",
+   "statement": "The next step of the chain is published at most once.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/canvas.rst:524-525 (celery 768e476): \"The linked task will be applied with the result of its parent task\"; celery/app/trace.py:414-417 (768e476) says a redelivery may publish it again",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "chain: the next step is published twice",
+   "violations": [
+    {
+     "instances": "*_node",
+     "reason": "by design",
+     "where": "celery/app/trace.py:414-417 (768e476): \"a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model\"",
+     "note": "a worker killed after the publish and before the store or the ack; deduplication does not help before the store"
+    },
+    {
+     "instances": "reject_child",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:732-740 (celery 768e476): task_reject_on_worker_lost re-queues the message \"so that the task will execute again\", with a warning about message loops",
+     "note": ""
+    },
+    {
+     "instances": "*_dup",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged in time \"will be redelivered to another worker and executed\"; celery/app/trace.py:414-417 (768e476): \"a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model\"",
+     "note": "deduplication helps only once SUCCESS is stored"
+    }
+   ]
+  },
+  {
+   "id": "chain.linkOnce",
+   "spec": "chain.qnt",
+   "definition": "linkOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one publish), global",
+   "statement": "The link callback is published at most once.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/canvas.rst:515-516 (celery 768e476): \"the linked task is called when the task returns successfully\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "chain: a link that is published twice",
+   "violations": [
+    {
+     "instances": "*_node",
+     "reason": "by design",
+     "where": "celery/app/trace.py:414-417 (768e476): \"a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model\"",
+     "note": "a worker killed after the publish and before the store or the ack; deduplication does not help before the store"
+    },
+    {
+     "instances": "reject_child",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:732-740 (celery 768e476): task_reject_on_worker_lost re-queues the message \"so that the task will execute again\", with a warning about message loops",
+     "note": ""
+    },
+    {
+     "instances": "*_dup",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a task not acknowledged in time \"will be redelivered to another worker and executed\"; celery/app/trace.py:414-417 (768e476): \"a Reject + redeliver may re-dispatch the already-sent callbacks. This is acceptable under Celery's at-least-once delivery model\"",
+     "note": "deduplication helps only once SUCCESS is stored"
+    }
+   ]
+  },
+  {
+   "id": "chain.nextAfterReturn",
+   "spec": "chain.qnt",
+   "definition": "nextAfterReturn",
+   "kind": "safety",
+   "pattern": "Precedence (a run of a returned precedes the publish of b), global",
+   "statement": "The next step is published only after a run of its parent returned without an error.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/canvas.rst:515-516 (celery 768e476): \"the linked task is called when the task returns successfully\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "chain: the next step is published before the body returns",
+   "violations": []
+  },
+  {
+   "id": "chain.notBoth",
+   "spec": "chain.qnt",
+   "definition": "notBoth",
+   "kind": "safety",
+   "pattern": "Absence (link and errback for one task), global",
+   "statement": "A task's link callback and its errback are not both called.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/calling.rst:197-199 (celery 768e476): callbacks are \"called with the return value of the parent task\"; canvas.rst:515-516",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "chain: the failure path also sends the link",
+   "violations": [
+    {
+     "instances": "*_child",
+     "reason": "open",
+     "where": "celery issue 10954",
+     "note": "a pool process lost between the publish and the store"
+    },
+    {
+     "instances": "*_refuse",
+     "reason": "open",
+     "where": "finding chain-store-error; celery issue 10954 (a pool child lost after the link was published)",
+     "note": "the link was sent, then the next step was refused; calling.rst says the task then fails through the normal errback handling"
+    },
+    {
+     "instances": "late_storeerr",
+     "reason": "open",
+     "where": "finding chain-store-error; celery issue 10954 (a pool child lost after the link was published)",
+     "note": "a backend error at the store (kombu OperationalError is re-raised and reaches the same on_error): 3 of 3 runs on a real worker"
+    },
+    {
+     "instances": "*_unencodable",
+     "reason": "open",
+     "where": "finding chain-store-error; celery issue 10954 (a pool child lost after the link was published)",
+     "note": "a result the serializer cannot encode: deterministic, 5 of 5 runs on a real worker"
+    },
+    {
+     "instances": "encfirst_storeerr",
+     "reason": "by design",
+     "where": "the encode-first variant (CFG.encodeFirst) removes only the encode trigger; a backend error at the store is the same window",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "chain.errbackOnce",
+   "spec": "chain.qnt",
+   "definition": "errbackOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one errback run), global",
+   "statement": "The errback runs at most once.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/calling.rst:140-142 (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "chain: every failure runs the errback twice",
+   "violations": []
+  },
+  {
+   "id": "chain.finalStable",
+   "spec": "chain.qnt",
+   "definition": "finalStable",
+   "kind": "safety",
+   "pattern": "Absence (a ready result of b that changes), global",
+   "statement": "Once b's stored result is ready (SUCCESS or FAILURE), it does not change.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "celery/backends/base.py:1361-1366 (768e476): a stored SUCCESS is not overwritten, \"a lost task overwrite the last successful result\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverDone",
+   "mutant": "chain: any second store of b counts as a change",
+   "violations": [
+    {
+     "instances": "*_child",
+     "reason": "open",
+     "where": "celery issue 10954",
+     "note": "a pool process lost between the publish and the store"
+    },
+    {
+     "instances": "late_storeerr",
+     "reason": "open",
+     "where": "finding chain-store-error; celery issue 10954 (a pool child lost after the link was published)",
+     "note": "a backend error at the store (kombu OperationalError is re-raised and reaches the same on_error): 3 of 3 runs on a real worker"
+    },
+    {
+     "instances": "*_unencodable",
+     "reason": "open",
+     "where": "finding chain-store-error; celery issue 10954 (a pool child lost after the link was published)",
+     "note": "a result the serializer cannot encode: deterministic, 5 of 5 runs on a real worker"
+    },
+    {
+     "instances": "encfirst_storeerr",
+     "reason": "by design",
+     "where": "the encode-first variant (CFG.encodeFirst) removes only the encode trigger; a backend error at the store is the same window",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "chain.noFailedParentAfterSend",
+   "spec": "chain.qnt",
+   "definition": "noFailedParentAfterSend",
+   "kind": "safety",
+   "pattern": "Absence (FAILURE stored for a task whose link or next step was sent), global",
+   "statement": "A reader never sees FAILURE for a task whose link callback or next step was sent, and so runs.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/canvas.rst:515-516 (celery 768e476): \"the linked task is called when the task returns successfully\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "chain: encode-first that still sends the link",
+   "violations": [
+    {
+     "instances": "quiet_*",
+     "reason": "by design",
+     "where": "the quiet-after-send variant (CFG.quietAfterSend) still records the store error as FAILURE for a; it only stops _fail_chain and the errbacks",
+     "note": ""
+    },
+    {
+     "instances": "encfirst_storeerr",
+     "reason": "by design",
+     "where": "the encode-first variant removes only the encode trigger",
+     "note": ""
+    },
+    {
+     "instances": "*",
+     "reason": "open",
+     "where": "finding chain-store-error; celery issue 10954 (a pool child lost after the link was published)",
+     "note": "a FAILURE for a task whose link and next step run"
+    }
+   ]
+  },
+  {
+   "id": "chain.exactlyOnce",
+   "spec": "chain.qnt",
+   "definition": "exactlyOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (exactly one run of each task sent), while no fault was used",
+   "statement": "While no fault was used, each task that was sent starts once, and a quiet chain has a final result for each.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/canvas.rst:515-516 (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "chain: a run that starts twice without a fault",
+   "violations": []
+  },
+  {
+   "id": "chain.quietDone",
+   "spec": "chain.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: a quiet chain has ended)",
+   "statement": "A quiet chain has a final result for a and b, and for l if it was sent: nothing waits for ever.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "docs/userguide/canvas.rst:515-516 (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "chain: a lost node's message is not requeued",
+   "violations": [
+    {
+     "instances": "early_node",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:24-26 (celery 768e476): with early ack \"a task invocation that already started is never executed again\"; a run lost after the ack leaves its result PENDING",
+     "note": "a hang for anyone waiting on a's result; b is not affected"
+    }
+   ]
+  },
+  {
+   "id": "chain.progress",
+   "spec": "chain.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "fault budgets are finite; exhaustive searches of small instances, not proofs for all sizes",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chain.stepOrQuiet",
+   "spec": "chain.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "a recovery step (a delivery, an ack, a requeue) is never refused for ever: weak fairness, built into quiet",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chain.neverQuiet",
+   "spec": "chain.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chain.neverDone",
+   "spec": "chain.qnt",
+   "definition": "neverDone",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run stores SUCCESS for b.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chain.neverFailed",
+   "spec": "chain.qnt",
+   "definition": "neverFailed",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run stores FAILURE for a.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chain.neverEarlyStart",
+   "spec": "chain.qnt",
+   "definition": "neverEarlyStart",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "b can start while a's SUCCESS is not stored yet: the links are published before the result is stored.",
+   "assumptions": "a chain a | b with a link l and an errback e on a; two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt)",
+   "source": "celery/app/trace.py:591-593 (768e476): \"callback tasks must be applied before the result is stored, so that result.children is populated\"",
    "instances": "all",
    "evidence": "",
    "witness": "",
