@@ -108,6 +108,19 @@ CASES = [
   val bad = consumers.get(M(1))
 }
 ''', None),
+    ('a message id where a worker id is expected (arguments swapped)',
+     '''module t {
+  import workertypes.* from "./worker"
+  import worker(CFG = config(Late, PR)).* from "./worker"
+  run bad = init.then(deliver(M(1), C(1)))
+}
+''', None),
+    ('a renewal design that does not exist',
+     '''module t {
+  import workertypes.* from "./worker"
+  import worker(CFG = config(Late, { ...PR, renewal: RenewSometimes })).* from "./worker"
+}
+''', None),
     ('a chord key that is not one (evicting a header id)',
      NEW_CHORD % 'run bad = init.then(evict(H(1)))', None),
     ('an interrupt handling that does not exist',

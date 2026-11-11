@@ -105,6 +105,21 @@ SPECS = {
         types='transporttypes', metric='ops',
         fast=['main_crash', 'paused_credit_timeout', 'pr_credit_timeout',
               'renewblind_held_credit']),
+    'worker': Spec(
+        'worker.qnt', instances('worker.qnt'),
+        ['exactlyOnce', 'neverLost', 'quietDone', 'noAvoidableDup',
+         'noUnavoidableDup', 'workerSurvives', 'normalCost'],
+        ['neverQuiet', 'neverTwice'],
+        types='workertypes', metric='ops',
+        fast=['main_late_partition', 'pr_late_shutdown', 'pr_late_eta',
+              'pr_late_cut', 'renewall_late_hang', 'best_late_crash']),
+    'publisher': Spec(
+        'publisher.qnt', instances('publisher.qnt'),
+        ['neverLost', 'publishedOnce', 'exactlyOnce', 'quietDone',
+         'normalCost'],
+        ['neverQuiet'],
+        types='publishertypes', metric='sent',
+        fast=['off_crash', 'on_drop']),
 }
 
 
