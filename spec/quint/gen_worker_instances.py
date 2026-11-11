@@ -25,7 +25,14 @@ DESIGNS = {
     'best': ('PR', 'flush: DropUnwritten, renewal: RenewScheduled, '
                    'failedAck: Resent, collectedAck: StillAcks, '
                    'closeRestore: CloseRestoresIdle, '
-                   'reconnectRestore: ReconnectRestoresIdle'),
+                   'reconnectRestore: ReconnectRestoresIdle, '
+                   'restoreBy: ByPop'),
+    # a channel restores only a record its own pop wrote (both with the
+    # flush variant, so that the restore is the only source of a third run)
+    # the pop token on its own: every fault class of the PR
+    'token': ('PR', 'restoreBy: ByPop'),
+    'tagrestore': ('PR', 'flush: DropUnwritten'),
+    'ownrecord': ('PR', 'flush: DropUnwritten, restoreBy: ByPop'),
 }
 # fault class -> (budget, eta)
 FAULTS = {
@@ -40,12 +47,17 @@ FAULTS = {
     'cutlong': ('cuts: 1, timeouts: 1, restarts: 1', False),
     'reset': ('resets: 1, restarts: 1', False),
     'hang': ('hangs: 1', False),
+    # an ETA outlasts the timeout, then its worker shuts down
+    'etashutdown': ('timeouts: 1, shutdowns: 1, restarts: 1', True),
 }
-EVERY = list(FAULTS)
+EVERY = [f for f in FAULTS if f != 'etashutdown']
 # design -> ack modes -> fault classes
 MATRIX = {
     'main': {'late': ['none', 'shutdown', 'eta', 'kill', 'partition'],
              'early': ['none', 'shutdown', 'partition']},
+    'token': {'late': EVERY, 'early': ['shutdown', 'eta', 'cut', 'reset']},
+    'tagrestore': {'late': ['etashutdown']},
+    'ownrecord': {'late': ['etashutdown']},
     'pr': {'late': EVERY,
            'early': ['none', 'shutdown', 'eta', 'long', 'kill', 'cut',
                      'reset', 'hang']},

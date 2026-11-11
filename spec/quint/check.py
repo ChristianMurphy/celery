@@ -108,7 +108,8 @@ SPECS = {
     'worker': Spec(
         'worker.qnt', instances('worker.qnt'),
         ['exactlyOnce', 'neverLost', 'quietDone', 'noAvoidableDup',
-         'noUnavoidableDup', 'workerSurvives', 'normalCost'],
+         'noUnavoidableDup', 'restoresOwnOnly', 'workerSurvives',
+         'normalCost'],
         ['neverQuiet', 'neverTwice'],
         types='workertypes', metric='ops',
         fast=['main_late_partition', 'pr_late_shutdown', 'pr_late_eta',
@@ -119,7 +120,7 @@ SPECS = {
          'normalCost'],
         ['neverQuiet'],
         types='publishertypes', metric='sent',
-        fast=['off_crash', 'on_drop']),
+        fast=['off_crash', 'on_none', 'on_drop']),
 }
 
 

@@ -104,7 +104,7 @@ CASES = [
     ('a message id where a consumer id is expected',
      '''module t {
   import transporttypes.* from "./redis_transport"
-  import redis_transport(CFG = { design: PopScript, renewal: NoRenewal, max: NO_FAULTS }).* from "./redis_transport"
+  import redis_transport(CFG = { design: PopScript, renewal: NoRenewal, putBack: ByScore, max: NO_FAULTS }).* from "./redis_transport"
   val bad = consumers.get(M(1))
 }
 ''', None),

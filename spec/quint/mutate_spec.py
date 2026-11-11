@@ -62,8 +62,8 @@ MUTANTS = [
      "pc' = pc.set(r, Idle),", "pc' = pc,"),
     # kombu PR 2831
     ('transport: PUT_BACK without the score check', 'redis_transport.qnt', 'pr_credit_timeout', 'noDuplicate',
-     'e.tag == p.tag\n                                   and e.score == p.score and not(e.moved))',
-     'e.tag == p.tag)'),
+     'e.m == p.m and e.tag == p.tag and e.score == p.score\n',
+     'e.m == p.m and e.tag == p.tag\n'),
     ('transport: the second record keeps the script\'s record (before kombu 848904a)', 'redis_transport.qnt', 'pr_mismatch', 'notTwice',
      'unacked.exclude(mine).union(Set(own))', 'unacked.union(Set(own))'),
     ('transport: a pop that leaves messages puts no wake token back', 'redis_transport.qnt', 'pr_none', 'noMissedWake',

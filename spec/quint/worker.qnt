@@ -49,6 +49,10 @@
 //   reconnectRestore  WaitsForTimeout (main) | ReconnectRestoresAll
 //                     | ReconnectRestoresIdle: restore after the reconnect
 //                     what the closing channel could not
+//   restoreBy         ByTag (main: restore_by_tag takes whatever record is
+//                     under the tag, and a message keeps its tag when it is
+//                     delivered again) | ByPop: a channel restores only a
+//                     record its own pop wrote
 //
 // Time is abstract. A record of a live worker that still has a job for it
 // is restored only with the `timeouts` budget (a task, an ETA or a
@@ -77,15 +81,17 @@ module workertypes {
   type CloseRestore = CloseRestoresAll | CloseRestoresIdle
   type ReconnectRestore =
     WaitsForTimeout | ReconnectRestoresAll | ReconnectRestoresIdle
+  type RestoreBy = ByTag | ByPop
   type Design = {
     pop: Pop, flush: Flush, renewal: Renewal, failedAck: FailedAck,
     collectedAck: CollectedAck, closeRestore: CloseRestore,
-    reconnectRestore: ReconnectRestore,
+    reconnectRestore: ReconnectRestore, restoreBy: RestoreBy,
   }
   pure val MAIN: Design = {
     pop: BrpopThenRecord, flush: DropUnaccepted, renewal: NoRenewal,
     failedAck: Forgotten, collectedAck: WorkerExits,
     closeRestore: CloseRestoresAll, reconnectRestore: WaitsForTimeout,
+    restoreBy: ByTag,
   }
   // kombu PR 2831 on top of main.
   pure val PR: Design = { ...MAIN, pop: PopScript }
@@ -237,6 +243,9 @@ module worker {
   var cause: MsgId -> DupClass // why it last went back to the queue
   var dupAvoidable: int
   var dupUnavoidable: int
+  // A closing or reconnecting channel restored a record that the pop of
+  // another worker wrote.
+  var strayRestore: bool
   var exits: int               // workers stopped by an error in the ack path
   var ops: int                 // round trips to the broker
   var used: Budget
@@ -253,6 +262,7 @@ module worker {
     workers' = WORKERS.mapBy(_ => Alive(FRESH)),
     starts' = MSGS.mapBy(_ => 0), finished' = MSGS.mapBy(_ => 0),
     cause' = MSGS.mapBy(_ => NoCause), dupAvoidable' = 0, dupUnavoidable' = 0,
+    strayRestore' = false,
     exits' = 0, ops' = 0, used' = NONE, lastAction' = Init, steps' = 0,
   }
 
@@ -289,10 +299,13 @@ module worker {
     unpublished' = unpublished, queue' = queue, unacked' = unacked,
     brokerUp' = brokerUp, lost' = lost,
   }
-  action keepRuns: bool = all {
+  action keepStarts: bool = all {
     starts' = starts, finished' = finished, dupAvoidable' = dupAvoidable,
     dupUnavoidable' = dupUnavoidable,
   }
+  action keepRuns: bool = all { keepStarts, strayRestore' = strayRestore }
+  def stray(c: WorkerId, back: Set[MsgId]): bool =
+    back.exists(m => unacked.get(m) != HeldBy(c))
 
   // ---- why a message goes back, for the task that then runs twice ----
   // `connectionLost`: the restore is the closing or reconnecting channel's.
@@ -308,9 +321,11 @@ module worker {
       Avoidable
     else Unavoidable
 
-  // The messages of `tags` that have a record go back to the queue.
-  def restorable(tags: Set[MsgId]): Set[MsgId] =
-    tags.filter(m => hasRec(unacked.get(m)))
+  // The messages of `tags` that a channel of worker c puts back on the
+  // queue: those with a record under the tag, or with its own record.
+  def restorable(c: WorkerId, tags: Set[MsgId]): Set[MsgId] =
+    tags.filter(m => if (D.restoreBy == ByPop) unacked.get(m) == HeldBy(c)
+                     else hasRec(unacked.get(m)))
   action restoreAll(back: Set[MsgId], connectionLost: bool): bool = all {
     queue' = queue.union(back),
     unacked' = MSGS.mapBy(m => if (back.contains(m)) NoRec else unacked.get(m)),
@@ -384,7 +399,7 @@ module worker {
       alive(c), job(c, m) == Received, live(c).phase == Consuming,
       childIdle(live(c)),
       setJob(c, m, Written),
-      starts' = starts.setBy(m, n => n + 1), finished' = finished,
+      starts' = starts.setBy(m, n => n + 1), finished' = finished, strayRestore' = strayRestore,
       dupAvoidable' = if (again and cause.get(m) == Avoidable) dupAvoidable + 1
                       else dupAvoidable,
       dupUnavoidable' = if (again and cause.get(m) == Unavoidable)
@@ -452,7 +467,7 @@ module worker {
   action finish(c: WorkerId, m: MsgId): bool = all {
     alive(c), job(c, m) == Accepted,
     setJob(c, m, Finished),
-    finished' = finished.setBy(m, n => n + 1), starts' = starts,
+    finished' = finished.setBy(m, n => n + 1), starts' = starts, strayRestore' = strayRestore,
     dupAvoidable' = dupAvoidable, dupUnavoidable' = dupUnavoidable,
     keepBroker, cause' = cause, exits' = exits, used' = used,
     did(Finish({ c: c, m: m }), 0),
@@ -463,7 +478,7 @@ module worker {
   action finishDropped(c: WorkerId, m: MsgId): bool = all {
     alive(c), job(c, m) == Dropped,
     setJob(c, m, NoJob),
-    finished' = finished.setBy(m, n => n + 1), starts' = starts,
+    finished' = finished.setBy(m, n => n + 1), starts' = starts, strayRestore' = strayRestore,
     dupAvoidable' = dupAvoidable, dupUnavoidable' = dupUnavoidable,
     keepBroker, cause' = cause, exits' = exits, used' = used,
     did(FinishDropped({ c: c, m: m }), 0),
@@ -526,13 +541,14 @@ module worker {
   }
   action exit(c: WorkerId): bool = {
     val l = live(c)
-    val back = if (l.conn == Up) restorable(l.tags) else Set()
+    val back = if (l.conn == Up) restorable(c, l.tags) else Set()
     all {
       alive(c), l.phase == Draining, childIdle(l),
       restoreAll(back, false),
       workers' = workers.set(c, Dead),
       unpublished' = unpublished, brokerUp' = brokerUp, lost' = lost,
-      keepRuns, exits' = exits, used' = used,
+      keepStarts, strayRestore' = (strayRestore or stray(c, back)),
+      exits' = exits, used' = used,
       did(Exit(c), back.size()),
     }
   }
@@ -641,14 +657,15 @@ module worker {
     val kept = if (D.closeRestore == CloseRestoresIdle)
                  l.tags.filter(m => l.jobs.get(m) != NoJob)
                else Set()
-    val back = restorable(l.tags.exclude(kept))
+    val back = restorable(c, l.tags.exclude(kept))
     all {
       alive(c), live(c).conn == Up, used.resets < CFG.max.resets,
       restoreAll(back, true),
       workers' = workers.set(c, Alive({
         ...l, conn: Closed, tags: Set(), oldTags: l.oldTags.union(kept) })),
       unpublished' = unpublished, brokerUp' = brokerUp, lost' = lost,
-      keepRuns, exits' = exits,
+      keepStarts, strayRestore' = (strayRestore or stray(c, back)),
+      exits' = exits,
       used' = { ...used, resets: used.resets + 1 },
       did(Reset(c), back.size()),
     }
@@ -662,7 +679,7 @@ module worker {
       | ReconnectRestoresAll => l.oldTags
       | ReconnectRestoresIdle => l.oldTags.filter(m => l.jobs.get(m) == NoJob)
     }
-    val back = restorable(tried)
+    val back = restorable(c, tried)
     all {
       alive(c), l.conn == Closed, brokerUp,
       queue' = queue.union(back),
@@ -674,7 +691,8 @@ module worker {
       workers' = workers.set(c, Alive({
         ...l, conn: Up, pending: Set(), oldTags: l.oldTags.exclude(tried) })),
       unpublished' = unpublished, brokerUp' = brokerUp, lost' = lost,
-      keepRuns, exits' = exits, used' = used,
+      keepStarts, strayRestore' = (strayRestore or stray(c, back)),
+      exits' = exits, used' = used,
       did(Reconnect(c), back.size() + l.pending.size()),
     }
   }
@@ -784,6 +802,9 @@ module worker {
   // Witnesses (violated means reachable).
   val neverQuiet: bool = not(quiet)
   val neverTwice: bool = MSGS.forall(m => starts.get(m) <= 1)
+  // A channel that closes or reconnects puts back only what its own pop
+  // recorded, not the copy another worker holds under the same tag.
+  val restoresOwnOnly: bool = not(strayRestore)
 
   // ---- quiet: nothing can happen without a new fault ----
   def freeRestore(m: MsgId): bool = WORKERS.exists(c => and {

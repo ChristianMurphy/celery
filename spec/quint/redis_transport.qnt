@@ -70,6 +70,10 @@ module transporttypes {
     m: MsgId, tag: Tag, score: Score, by: ConsumerId, moved: bool,
   }
   type Renewal = NoRenewal | RenewBlind | RenewOwn
+  // How PUT_BACK knows the record is still its pop's: by the index score
+  // (the PR), or by a token the pop stores with the record, which no
+  // renewal changes.
+  type PutBackBy = ByScore | ByToken
   // A popped message on its way to the consumer.
   type Popped = {
     m: MsgId,
@@ -83,13 +87,16 @@ module transporttypes {
     | Popping(Score)    // BRPOP or the pop script sent, not run yet
     | Reply(Popped)     // Redis popped a message; its reply is on the way
     | Waiting           // PopScript: BLPOP on the wake list
-  type Live = { poll: Poll, held: Set[MsgId], prefetch: int }
+  // `emptied`: its last pop left every queue empty, so its next command is
+  // the wait on the wake list, not a pop (_brpop_read :1700-1702).
+  type Live = { poll: Poll, held: Set[MsgId], prefetch: int, emptied: bool }
   type Consumer = Dead | Alive(Live)
 
   pure def isAlive(c: Consumer): bool = match c {
     | Dead => false | Alive(_) => true
   }
-  pure val NOT_LIVE: Live = { poll: Idle, held: Set(), prefetch: 0 }
+  pure val NOT_LIVE: Live =
+    { poll: Idle, held: Set(), prefetch: 0, emptied: false }
   // Only read under the guard isAlive(c).
   pure def liveOf(c: Consumer): Live = match c {
     | Dead => NOT_LIVE | Alive(s) => s
@@ -128,6 +135,7 @@ module transporttypes {
     | SendPop(ConsumerId)
     | ServerPop({ c: ConsumerId, m: MsgId, tag: Tag })
     | PopEmpty(ConsumerId)
+    | WaitAfterEmpty(ConsumerId)
     | WakeUp(ConsumerId)
     | WaitTimeout(ConsumerId)
     | Receive({ c: ConsumerId, m: MsgId, outcome: ReceiveOutcome })
@@ -146,7 +154,9 @@ module transporttypes {
     crashes: 0, heldTimeouts: 0, replyTimeouts: 0, creditLosses: 0,
     mismatches: 0,
   }
-  type Config = { design: Design, renewal: Renewal, max: Faults }
+  type Config = {
+    design: Design, renewal: Renewal, putBack: PutBackBy, max: Faults,
+  }
 }
 
 module redis_transport {
@@ -177,8 +187,8 @@ module redis_transport {
   action init: bool = all {
     queue' = Set(), unacked' = Set(), wake' = false,
     unpublished' = MSGS,
-    consumers' = CONSUMERS.mapBy(_ => Alive({ poll: Idle, held: Set(),
-                                              prefetch: PREFETCH })),
+    consumers' = CONSUMERS.mapBy(_ => Alive({
+      poll: Idle, held: Set(), prefetch: PREFETCH, emptied: false })),
     clock' = 0, acked' = Set(), deliveries' = MSGS.mapBy(_ => 0), ops' = 0,
     used' = NO_FAULTS, lastAction' = Init, steps' = 0,
   }
@@ -224,7 +234,7 @@ module redis_transport {
   // A consumer with credit sends its pop (_brpop_start; QoS.can_consume).
   // The script's score is the time the command was built (:1668, 1645).
   action sendPop(c: ConsumerId): bool = all {
-    alive(c), live(c).poll == Idle, credit(c),
+    alive(c), live(c).poll == Idle, credit(c), not(live(c).emptied),
     consumers' = consumers.set(c, Alive({ ...live(c),
                                           poll: Popping({ at: clock }) })),
     clock' = clock + 1,
@@ -253,7 +263,7 @@ module redis_transport {
                  else unacked,
       wake' = (wake or (scripted(CFG.design) and rest != Set())),
       consumers' = consumers.set(c, Alive({
-        ...live(c),
+        ...live(c), emptied: scripted(CFG.design) and rest == Set(),
         poll: Reply({ m: m, score: score, tag: tag, old: false }) })),
       used' = if (mismatch) { ...used, mismatches: used.mismatches + 1 }
               else used,
@@ -270,6 +280,16 @@ module redis_transport {
     consumers' = consumers.set(c, Alive({ ...live(c), poll: Waiting })),
     keepRedis, unpublished' = unpublished, clock' = clock, keepObs,
     used' = used, did(PopEmpty(c), 1),
+  }
+
+  // PR: the last pop said every queue was empty, so the consumer waits on
+  // the wake list without popping first, whatever was published since.
+  action waitAfterEmpty(c: ConsumerId): bool = all {
+    alive(c), live(c).poll == Idle, credit(c), live(c).emptied,
+    consumers' = consumers.set(c, Alive({
+      ...live(c), poll: Waiting, emptied: false })),
+    keepRedis, unpublished' = unpublished, clock' = clock, keepObs,
+    used' = used, did(WaitAfterEmpty(c), 1),
   }
 
   // PR: BLPOP takes the token; the consumer sends its pop (:1713-1722).
@@ -310,8 +330,9 @@ module redis_transport {
     val p = replyOf(s.poll)
     val putsBack = CFG.design == PopScript and (not(credit(c)) or p.old)
     // PUT_BACK: the record still has the score this pop wrote
-    val mine = unacked.filter(e => e.m == p.m and e.tag == p.tag
-                                   and e.score == p.score and not(e.moved))
+    val mine = unacked.filter(e =>
+      e.m == p.m and e.tag == p.tag and e.score == p.score
+      and (CFG.putBack == ByToken or not(e.moved)))
     val outcome: ReceiveOutcome =
       if (putsBack) (if (mine != Set()) PutBack else PutBackTooLate)
       else if (scripted(CFG.design) and p.tag == ScriptTag) Rerecorded
@@ -437,7 +458,8 @@ module redis_transport {
     {
       nondet c = CONSUMERS.oneOf()
       any {
-        sendPop(c), popEmpty(c), wakeUp(c), waitTimeout(c), receive(c),
+        sendPop(c), popEmpty(c), waitAfterEmpty(c), wakeUp(c), waitTimeout(c),
+        receive(c),
         crash(c), loseCredit(c), regainCredit(c),
       }
     },

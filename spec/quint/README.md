@@ -1,7 +1,8 @@
 # Quint specs: result state, chord completion, the Redis transport
 
-Three typed Quint specs of what Celery's result backends and kombu's Redis
-transport do, each rule citing the code it models, checked in three tiers and
+Five typed Quint specs of what Celery's result backends, chords and workers
+and kombu's Redis transport and publisher do, each rule citing the code it
+models, checked in three tiers and
 tied to the code in both directions: traces generated from the specs are
 replayed against the real backends, and histories recorded from real runs
 are checked against the specs.
@@ -11,6 +12,9 @@ are checked against the specs.
 | `resultstate.qnt` | Result state of one task id; four stores (`rtw`, `mongo`, `sql`, `es`) |
 | `chord.qnt`, `chord_instances.qnt` | Chord completion; five protocols (Redis Lua, incr counting on main, two fixes for celery issue 11036, `chord_unlock`), the interrupted dispatch of celery issue 11039, 69 instances |
 | `redis_transport.qnt`, `redis_transport_instances.qnt` | kombu's Redis consume path: BRPOP then record (main) and the pop script of kombu PR 2831, two consumers, 15 instances |
+| `worker.qnt`, `worker_instances.qnt`, `gen_worker_instances.py` | Two workers from the broker to a finished task: the pool hand-off, ack modes, shutdown, reconnect, the visibility timeout, and eight design choices; 94 instances. See [WORKER.md](WORKER.md) |
+| `publisher.qnt`, `publisher_instances.qnt` | A RabbitMQ publisher with confirms off or on; 6 instances. See WORKER.md |
+| `design_tables.py` | The worker results as one table per design, from `expected.json` |
 | `scenarios.qnt` | The behaviors behind the findings, as `quint test` runs |
 | `check.py`, `expected.json` | The tiers; D and the expected violations of every instance |
 | `tlc.py` | Exhaustive search with TLC |
@@ -155,7 +159,7 @@ The tiers:
 
 | Tier | What | Time |
 |---|---|---|
-| fast | typecheck; `type_errors.py`; one simulator run per listed instance (18 of 88) with the properties and `steps <= D` as invariants, the expected violations as witnesses, and the 300 traces read back to count actions and outcomes; `--all` for every instance | 69 s; 4 min with `--all` |
+| fast | typecheck; `type_errors.py`; one simulator run per listed instance (28 of 200) with the properties and `steps <= D` as invariants, the expected violations as witnesses, and the 300 traces read back to count actions and outcomes; `--all` for every instance | 69 s; 4 min with `--all` |
 | full | TLC: every reachable state of every instance, D, every property, the quiet-stop check, and a shortest counterexample per expected violation. Apalache on the result-state instances: `steps <= D` at depth D + 1, then each property at depth D | 32 min |
 | long | Apalache on the chord and transport instances (an hour's timeout each), a 20,000 sample simulator run | not run |
 
@@ -243,11 +247,15 @@ consumer with credit waits and no token or pop is on the way), `quietDone`,
 and `exactlyOnce` (while no fault was used: never delivered twice, and when
 quiet, delivered once and acked). `ops` counts round trips to Redis.
 
-This spec is the seed of a multi-worker transport model. Not in it yet:
-several queues and priorities, prefetch above 1, a warm shutdown, a broker
-that loses data, a partition that heals, the classification of duplicates as
-avoidable or not, and alternative designs to compare on duplicates against
-round trips.
+Since then it has `CFG.renewal` (the renewal of unacked messages proposed
+for kombu issue 337, as a blind `ZADD XX` or as compare and set), `CFG.putBack`
+(by score, or by a token stored with the record), the property `noStranded`
+(no record is left with a consumer that dropped the message), and the action
+`waitAfterEmpty`, which recorded command histories showed was missing. The
+worker side (prefetch above 1, the pool, shutdown, partitions, the classes of
+duplicates and the designs compared) is `worker.qnt`; both are described with
+their results in [WORKER.md](WORKER.md). Not modeled anywhere yet: several
+queues and priorities.
 
 ## Mapping to the code
 
@@ -287,9 +295,12 @@ Each action in the `.qnt` files carries the same citation in a comment.
 
 ## Results
 
-`python3 check.py --tier full` on the committed specs, 4 shared cores: 32
-minutes (compiling the 88 instances 9 minutes, TLC 17, Apalache 7), every cell
-as `expected.json` says. D is the longest run in steps, "states" the distinct
+`python3 check.py --tier full` on 4 shared cores, every cell as
+`expected.json` says: 32 minutes for the result, chord and first 15 transport
+instances (compiling 9 minutes, TLC 17, Apalache 7), and about 21 minutes for
+the 94 worker instances, 14 minutes for the 27 transport ones and under a
+minute for the publisher. The worker, publisher and renewal results are in
+[WORKER.md](WORKER.md). D is the longest run in steps, "states" the distinct
 reachable states, and a number after a property the states in a shortest
 counterexample. "Violated" lists properties that fail; "reachable" lists
 witnesses, where failing means the state can be reached. Every property not
@@ -426,39 +437,51 @@ long tier.
 ### Redis transport
 
 Properties: `inSomePlace`, `neverLost`, `notTwice`, `noDuplicate`,
-`prefetchRespected`, `noMissedWake`, `quietDone`, `exactlyOnce`. Witnesses:
+`prefetchRespected`, `noMissedWake`, `noStranded`, `quietDone`,
+`exactlyOnce`. Witnesses:
 `neverQuiet`, `neverDuplicated`, `neverPutBack`. `main_` is 445027e, `pr_` is
-c61b525, `paused_` is the PR before eb41008. Round trips are `ops` at the end
-of 300 sampled runs, for two messages and two consumers.
+c61b525, `paused_` is the PR before eb41008, `renewblind_` and `renewown_`
+add the renewal, `token_` the pop token (see WORKER.md).
 
-| instance | D | states | violated | reachable (witnesses) | stops only when quiet | round trips: min, mean, max | time |
-|---|---|---|---|---|---|---|---|
-| main_none | 12 | 395 | inSomePlace (4) | neverQuiet (13) | yes | 10, 10.0, 10 | 5.9 s |
-| main_crash | 16 | 1385 | inSomePlace (4), neverLost (5), quietDone (11) | neverQuiet (11), neverDuplicated (10) | yes | 7, 9.1, 12 | 14.3 s |
-| main_credit | 14 | 949 | inSomePlace (4) | neverQuiet (13) | yes | 10, 10.0, 10 | 7.2 s |
-| main_credit_crash | 18 | 3281 | inSomePlace (4), neverLost (5), quietDone (11) | neverQuiet (11), neverDuplicated (10) | yes | 7, 9.2, 12 | 16.5 s |
-| main_held_timeout | 17 | 1939 | inSomePlace (4) | neverQuiet (13), neverDuplicated (9) | yes | 10, 13.1, 14 | 11.6 s |
-| paused_credit_timeout | 37 | 131999 | notTwice (7), noDuplicate (9) | neverQuiet (17), neverDuplicated (9) | yes | 12, 15.4, 19 | 45.9 s |
-| pr_none | 26 | 6813 | none | neverQuiet (17) | yes | 12, 12.5, 16 | 8.3 s |
-| pr_crash | 33 | 22965 | none | neverQuiet (16), neverDuplicated (10) | yes | 10, 10.8, 16 | 13.5 s |
-| pr_credit | 35 | 35103 | none | neverQuiet (17), neverPutBack (6) | yes | 12, 13.3, 18 | 17.6 s |
-| pr_reply_timeout | 34 | 30041 | none | neverQuiet (17) | yes | 12, 15.1, 21 | 16.9 s |
-| pr_credit_timeout | 43 | 162735 | none | neverQuiet (17), neverPutBack (6) | yes | 12, 15.8, 23 | 54.2 s |
-| pr_mismatch | 26 | 15415 | none | neverQuiet (17) | yes | 12, 13.3, 17 | 11.0 s |
-| pr_mismatch_crash | 33 | 53595 | none | neverQuiet (16), neverDuplicated (10) | yes | 10, 11.6, 16 | 21.0 s |
-| pr_credit_crash | 42 | 113727 | none | neverQuiet (16), neverDuplicated (10), neverPutBack (6) | yes | 10, 11.5, 16 | 33.5 s |
-| pr_held_timeout | 35 | 34751 | none | neverQuiet (17), neverDuplicated (9) | yes | 12, 15.2, 21 | 16.4 s |
+| instance | D | states | violated | reachable (witnesses) | stops only when quiet | time |
+|---|---|---|---|---|---|---|
+| main_none | 12 | 395 | inSomePlace (4) | neverQuiet (13) | yes | 4.2 s |
+| main_crash | 16 | 1385 | inSomePlace (4), neverLost (5), quietDone (11) | neverQuiet (11), neverDuplicated (10) | yes | 9.0 s |
+| main_credit | 14 | 949 | inSomePlace (4) | neverQuiet (13) | yes | 4.6 s |
+| main_credit_crash | 18 | 3281 | inSomePlace (4), neverLost (5), quietDone (11) | neverQuiet (11), neverDuplicated (10) | yes | 9.8 s |
+| main_held_timeout | 17 | 1939 | inSomePlace (4) | neverQuiet (13), neverDuplicated (9) | yes | 6.4 s |
+| paused_credit_timeout | 36 | 239843 | notTwice (7), noDuplicate (9) | neverQuiet (15), neverDuplicated (9) | yes | 85.7 s |
+| pr_none | 24 | 8993 | none | neverQuiet (15) | yes | 6.7 s |
+| pr_crash | 31 | 28251 | none | neverQuiet (14), neverDuplicated (10) | yes | 12.5 s |
+| pr_credit | 34 | 55777 | none | neverQuiet (15), neverPutBack (6) | yes | 23.6 s |
+| pr_reply_timeout | 33 | 49101 | none | neverQuiet (15) | yes | 21.3 s |
+| pr_credit_timeout | 43 | 302577 | none | neverQuiet (15), neverPutBack (6) | yes | 117.2 s |
+| pr_mismatch | 24 | 20915 | none | neverQuiet (15) | yes | 12.3 s |
+| pr_mismatch_crash | 31 | 67283 | none | neverQuiet (14), neverDuplicated (10) | yes | 24.0 s |
+| pr_credit_crash | 41 | 163439 | none | neverQuiet (14), neverDuplicated (10), neverPutBack (6) | yes | 46.9 s |
+| pr_held_timeout | 34 | 67065 | none | neverQuiet (15), neverDuplicated (9) | yes | 26.5 s |
+| renewblind_held_credit | 44 | 452757 | noStranded (11) | neverQuiet (15), neverDuplicated (9), neverPutBack (6) | yes | 147.5 s |
+| renewown_held_credit | 44 | 386487 | none | neverQuiet (15), neverDuplicated (9), neverPutBack (6) | yes | 129.0 s |
+| token_none | 24 | 8993 | none | neverQuiet (15) | yes | 7.0 s |
+| token_crash | 31 | 28251 | none | neverQuiet (14), neverDuplicated (10) | yes | 13.7 s |
+| token_credit | 34 | 55777 | none | neverQuiet (15), neverPutBack (6) | yes | 25.9 s |
+| token_reply_timeout | 33 | 49101 | none | neverQuiet (15) | yes | 22.0 s |
+| token_credit_timeout | 43 | 302577 | none | neverQuiet (15), neverPutBack (6) | yes | 117.6 s |
+| token_mismatch | 24 | 20915 | none | neverQuiet (15) | yes | 12.9 s |
+| token_mismatch_crash | 31 | 67283 | none | neverQuiet (14), neverDuplicated (10) | yes | 25.6 s |
+| token_credit_crash | 41 | 163439 | none | neverQuiet (14), neverDuplicated (10), neverPutBack (6) | yes | 48.2 s |
+| token_held_timeout | 34 | 67065 | none | neverQuiet (15), neverDuplicated (9) | yes | 27.0 s |
+| token_renewblind_held_credit | 44 | 471439 | none | neverQuiet (15), neverDuplicated (9), neverPutBack (6) | yes | 148.2 s |
 
 On the consume path the PR makes 3 round trips per message (publish, pop,
 ack) where main makes 4 (publish, BRPOP, record, ack). A consumer that finds
 the queue empty costs the PR two (the empty pop, then the wait on the wake
-list) where main's BRPOP is one, which is why an idle end of a run costs it
-more: 12 against 10 here.
+list) where main's BRPOP is one; after a pop that emptied the queue it waits
+without popping first.
 
 ### Fast tier
 
-`python3 check.py`: 69 s for 18 of the 88 instances, 300 samples each; 4
-minutes with `--all`. In every simulated instance the longest sampled run is
+`python3 check.py`: 90 s for 28 of the 200 instances, 300 samples each. In every simulated instance the longest sampled run is
 at most the proven D, and equal to it in most.
 
 ## Findings (spec vs. code)
