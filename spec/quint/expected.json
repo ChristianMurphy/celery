@@ -683,6 +683,23 @@
    "violated": {
     "neverQuiet": 17
    }
+  },
+  "renewblind_held_credit": {
+   "D": 45,
+   "violated": {
+    "neverDuplicated": 9,
+    "neverPutBack": 6,
+    "neverQuiet": 17,
+    "noStranded": 11
+   }
+  },
+  "renewown_held_credit": {
+   "D": 44,
+   "violated": {
+    "neverDuplicated": 9,
+    "neverPutBack": 6,
+    "neverQuiet": 17
+   }
   }
  },
  "resultstate.qnt": {

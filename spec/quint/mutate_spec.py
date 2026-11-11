@@ -62,7 +62,7 @@ MUTANTS = [
      "pc' = pc.set(r, Idle),", "pc' = pc,"),
     # kombu PR 2831
     ('transport: PUT_BACK without the score check', 'redis_transport.qnt', 'pr_credit_timeout', 'noDuplicate',
-     'e.tag == p.tag\n                                   and e.score == p.score)',
+     'e.tag == p.tag\n                                   and e.score == p.score and not(e.moved))',
      'e.tag == p.tag)'),
     ('transport: the second record keeps the script\'s record (before kombu 848904a)', 'redis_transport.qnt', 'pr_mismatch', 'notTwice',
      'unacked.exclude(mine).union(Set(own))', 'unacked.union(Set(own))'),
@@ -74,8 +74,11 @@ MUTANTS = [
     ('transport: a reply is read without credit', 'redis_transport.qnt', 'main_credit', 'prefetchRespected',
      'alive(c), isReply(s.poll), putsBack or credit(c),', 'alive(c), isReply(s.poll),'),
     ('transport: the script pops without recording (main\'s BRPOP)', 'redis_transport.qnt', 'pr_crash', 'neverLost',
-     'unacked\' = if (scripted(CFG.design))\n                   unacked.union(Set({ m: m, tag: tag, score: score, by: c }))\n                 else unacked,',
+     'unacked\' = if (scripted(CFG.design))\n                   unacked.union(Set({ m: m, tag: tag, score: score, by: c,\n                                       moved: false }))\n                 else unacked,',
      "unacked' = unacked,"),
+    ('transport: a renewal that compares the score moves another\'s record anyway', 'redis_transport.qnt', 'renewown_held_credit', 'noStranded',
+     'CFG.renewal == RenewBlind, alive(c), live(c).held.contains(e.m),',
+     'CFG.renewal != NoRenewal, alive(c), live(c).held.contains(e.m),'),
     # celery issue 11036 and 11039
     ('once: fail on the first read (cd8aa46)', 'chord.qnt', 'once_dup', 'noSpuriousError',
      'else if (CFG.rereadMissing) KeysThere', 'else if (false) KeysThere'),

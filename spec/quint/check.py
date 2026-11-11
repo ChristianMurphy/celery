@@ -99,11 +99,12 @@ SPECS = {
     'transport': Spec(
         'redis_transport.qnt', instances('redis_transport.qnt'),
         ['inSomePlace', 'neverLost', 'notTwice', 'noDuplicate',
-         'prefetchRespected', 'noMissedWake', 'quietDone', 'exactlyOnce'],
+         'prefetchRespected', 'noMissedWake', 'noStranded', 'quietDone',
+         'exactlyOnce'],
         ['neverQuiet', 'neverDuplicated', 'neverPutBack'],
         types='transporttypes', metric='ops',
-        fast=['main_crash', 'paused_credit_timeout', 'pr_crash',
-              'pr_credit_timeout']),
+        fast=['main_crash', 'paused_credit_timeout', 'pr_credit_timeout',
+              'renewblind_held_credit']),
 }
 
 

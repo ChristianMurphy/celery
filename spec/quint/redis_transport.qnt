@@ -34,6 +34,13 @@
 // lowers the prefetch count when an ETA task finishes), and the script reads
 // another delivery tag than kombu does (max.mismatches).
 //
+// CFG.renewal adds the renewal of unacked messages proposed for kombu issue
+// 337 on top of the PR: a consumer moves the index score of the tags it
+// holds. RenewBlind is the prototype's `ZADD XX`, which also moves the
+// score of a record another consumer wrote under the same tag after a
+// restore; RenewOwn moves a score only if it is still the one this consumer
+// knows. PUT_BACK compares that score.
+//
 // Not modeled: priorities and several queues, fanout, no_ack consumers,
 // basic_get, a warm shutdown (restore_unacked), the broker losing data, and
 // a connection that drops and heals. They belong to the multi-worker model.
@@ -58,7 +65,11 @@ module transporttypes {
   // A record in the unacked hash and index. `by` is who popped it; Redis
   // does not store that, the spec uses it to tell a restore after a crash
   // from a visibility timeout on a live consumer.
-  type Entry = { m: MsgId, tag: Tag, score: Score, by: ConsumerId }
+  // `moved`: a renewal changed the score since the pop wrote it.
+  type Entry = {
+    m: MsgId, tag: Tag, score: Score, by: ConsumerId, moved: bool,
+  }
+  type Renewal = NoRenewal | RenewBlind | RenewOwn
   // A popped message on its way to the consumer.
   type Popped = {
     m: MsgId,
@@ -110,6 +121,7 @@ module transporttypes {
     | HolderDead          // the consumer that popped it was killed
     | HeldTooLong         // a live consumer holds it past the timeout
     | ReplyTooLong        // its reply is still on the way, or was put back
+    | Stranded            // its consumer dropped the reply, nobody renews it
   type Action =
     | Init
     | Publish(MsgId)
@@ -124,6 +136,7 @@ module transporttypes {
     | Restore({ c: ConsumerId, m: MsgId, reason: RestoreReason })
     | LoseCredit(ConsumerId)
     | RegainCredit(ConsumerId)
+    | RenewOthers({ c: ConsumerId, m: MsgId })
 
   type Faults = {
     crashes: int, heldTimeouts: int, replyTimeouts: int, creditLosses: int,
@@ -133,7 +146,7 @@ module transporttypes {
     crashes: 0, heldTimeouts: 0, replyTimeouts: 0, creditLosses: 0,
     mismatches: 0,
   }
-  type Config = { design: Design, max: Faults }
+  type Config = { design: Design, renewal: Renewal, max: Faults }
 }
 
 module redis_transport {
@@ -184,6 +197,18 @@ module redis_transport {
   def credit(c: ConsumerId): bool = live(c).held.size() < live(c).prefetch
   pure def entriesOf(u: Set[Entry], m: MsgId): Set[Entry] =
     u.filter(e => e.m == m)
+  // A record whose consumer is alive, does not hold the message and has no
+  // reply for it on the way: that consumer will neither ack it nor put it
+  // back.
+  def stranded(e: Entry): bool = and {
+    alive(e.by), not(live(e.by).held.contains(e.m)),
+    not(isReply(live(e.by).poll) and replyOf(live(e.by).poll).m == e.m
+        and replyOf(live(e.by).poll).score == e.score),
+  }
+  // Another consumer holds the same tag and keeps renewing it.
+  def renewedByAnother(e: Entry): bool =
+    CFG.renewal == RenewBlind and CONSUMERS.exists(c =>
+      c != e.by and alive(c) and live(c).held.contains(e.m))
 
   // A publisher puts a message on the queue (_put :1974-2007); with the PR
   // it also pushes a wake token in the same pipeline.
@@ -223,7 +248,8 @@ module redis_transport {
                         and used.mismatches < CFG.max.mismatches),
       queue' = rest,
       unacked' = if (scripted(CFG.design))
-                   unacked.union(Set({ m: m, tag: tag, score: score, by: c }))
+                   unacked.union(Set({ m: m, tag: tag, score: score, by: c,
+                                       moved: false }))
                  else unacked,
       wake' = (wake or (scripted(CFG.design) and rest != Set())),
       consumers' = consumers.set(c, Alive({
@@ -283,14 +309,16 @@ module redis_transport {
     val s = live(c)
     val p = replyOf(s.poll)
     val putsBack = CFG.design == PopScript and (not(credit(c)) or p.old)
+    // PUT_BACK: the record still has the score this pop wrote
     val mine = unacked.filter(e => e.m == p.m and e.tag == p.tag
-                                   and e.score == p.score)
+                                   and e.score == p.score and not(e.moved))
     val outcome: ReceiveOutcome =
       if (putsBack) (if (mine != Set()) PutBack else PutBackTooLate)
       else if (scripted(CFG.design) and p.tag == ScriptTag) Rerecorded
       else Delivered
     val delivers = not(putsBack)
-    val own: Entry = { m: p.m, tag: OwnTag, score: { at: clock }, by: c }
+    val own: Entry =
+      { m: p.m, tag: OwnTag, score: { at: clock }, by: c, moved: false }
     all {
       alive(c), isReply(s.poll), putsBack or credit(c),
       unacked' = if (outcome == PutBack) unacked.exclude(mine)
@@ -345,7 +373,8 @@ module redis_transport {
     val h = liveOf(holder)
     val reason: RestoreReason =
       if (not(isAlive(holder))) HolderDead
-      else if (h.held.contains(e.m)) HeldTooLong else ReplyTooLong
+      else if (h.held.contains(e.m)) HeldTooLong
+      else if (stranded(e)) Stranded else ReplyTooLong
     // the holder's reply for this very pop is now as old as the timeout
     val late = isAlive(holder) and isReply(h.poll)
                and replyOf(h.poll).m == e.m and replyOf(h.poll).score == e.score
@@ -355,7 +384,8 @@ module redis_transport {
                  else consumers
     all {
       alive(c), unacked.contains(e),
-      reason == HolderDead
+      reason != Stranded or not(renewedByAnother(e)),
+      reason == HolderDead or reason == Stranded
         or (reason == HeldTooLong and used.heldTimeouts < CFG.max.heldTimeouts)
         or (reason == ReplyTooLong
             and used.replyTimeouts < CFG.max.replyTimeouts),
@@ -371,6 +401,18 @@ module redis_transport {
       unpublished' = unpublished, clock' = clock, keepObs,
       did(Restore({ c: c, m: e.m, reason: reason }), 1),
     }
+  }
+
+  // A consumer that holds a message renews its tag. The record under that
+  // tag is another consumer's, written after a restore: RenewBlind moves
+  // its score all the same.
+  action renewOthers(c: ConsumerId, e: Entry): bool = all {
+    CFG.renewal == RenewBlind, alive(c), live(c).held.contains(e.m),
+    unacked.contains(e), e.by != c, e.tag == OwnTag, not(e.moved),
+    unacked' = unacked.exclude(Set(e)).union(Set({ ...e, moved: true })),
+    queue' = queue, wake' = wake, consumers' = consumers,
+    unpublished' = unpublished, clock' = clock, keepObs, used' = used,
+    did(RenewOthers({ c: c, m: e.m }), 1),
   }
 
   // The consumer's credit goes while a reply is on its way, and comes back.
@@ -417,7 +459,7 @@ module redis_transport {
     {
       nondet c = CONSUMERS.oneOf()
       nondet e = unacked.oneOf()
-      restore(c, e)
+      any { restore(c, e), renewOthers(c, e) }
     },
   }
 
@@ -448,6 +490,9 @@ module redis_transport {
   // A consumer never holds more messages than its prefetch count allows.
   val prefetchRespected: bool = CONSUMERS.forall(c =>
     alive(c) implies live(c).held.size() <= live(c).prefetch)
+  // A put-back that did nothing found its record gone: no record is left
+  // with a consumer that dropped the message.
+  val noStranded: bool = unacked.forall(e => not(stranded(e)))
   // PR: a message does not sit on the queue while a consumer with credit
   // waits and no token or pop is on the way, unless a consumer was killed
   // (a token it took dies with it; the wait's timeout covers that).
@@ -460,7 +505,8 @@ module redis_transport {
 
   // ---- liveness, in layers (see chord.qnt) --------------------------------
   // Quiet: no action other than a fault can run.
-  def restorable: bool = unacked.exists(e => not(alive(e.by)))
+  def restorable: bool = unacked.exists(e =>
+    not(alive(e.by)) or (stranded(e) and not(renewedByAnother(e))))
   def busy(c: ConsumerId): bool = {
     val s = live(c)
     alive(c) and (
@@ -469,7 +515,9 @@ module redis_transport {
       or (isPopping(s.poll) and (queue != Set() or scripted(CFG.design)))
       or (s.poll == Waiting and credit(c) and (wake or queue != Set()))
       or (isReply(s.poll) and (credit(c) or CFG.design == PopScript))
-      or restorable)
+      or restorable
+      or unacked.exists(e => CFG.renewal == RenewBlind and e.by != c
+           and e.tag == OwnTag and not(e.moved) and s.held.contains(e.m)))
   }
   val quiet: bool = unpublished == Set() and CONSUMERS.forall(c => not(busy(c)))
   // A quiet system has acked every message and left no record behind.
