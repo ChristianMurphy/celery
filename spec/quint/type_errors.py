@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Mistakes the types catch: each snippet must fail ``quint typecheck``.
 
-Every case pairs a mistake written against the typed specs (``new``) with
+Most cases pair a mistake written against the typed specs (``new``) with
 the same mistake against the specs at 355c8b7, where states were strings and
-ids were ints (``old``). The new one must be rejected. With ``--old`` the old
+ids were ints (``old``); the cases for what was specified since have none. The new one must be rejected. With ``--old`` the old
 one is checked too, against the old specs from git: it must be accepted,
 which shows the mistake used to pass.
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -100,6 +101,14 @@ CASES = [
   val bad = writes.get(1) < 2
 }
 '''),
+    ('a chord key that is not one (evicting a header id)',
+     NEW_CHORD % 'run bad = init.then(evict(H(1)))', None),
+    ('an interrupt handling that does not exist',
+     '''module t {
+  import chordtypes.* from "./chord"
+  import chord(CFG = { ...lateAck(Redis), onInterrupt: FailSometimes }).* from "./chord"
+}
+''', None),
     ('a commit outcome that no store returns',
      '''module t {
   import resulttypes.* from "./resultstate"
@@ -139,12 +148,18 @@ def main() -> int:
                 ['git', 'show', f'{OLD_REV}:spec/quint/{name}'], cwd=HERE,
                 capture_output=True, text=True, check=True).stdout)
     bad = 0
-    for what, new, old in CASES:
-        ok, why = typechecks(HERE, new)
+
+    def check(case: tuple) -> tuple:
+        what, new, old = case
+        was_ok = typechecks(old_dir, old)[0] if old_dir and old else None
+        return what, *typechecks(HERE, new), was_ok
+
+    with ThreadPoolExecutor(4) as ex:
+        results = list(ex.map(check, CASES))
+    for what, ok, why, was_ok in results:
         line = f'{"MISSED  " if ok else "rejected"} {what}'
         bad += ok
-        if old_dir:
-            was_ok, _ = typechecks(old_dir, old)
+        if was_ok is not None:
             line += f' (untyped spec: {"accepted" if was_ok else "REJECTED"})'
             bad += not was_ok
         print(line)

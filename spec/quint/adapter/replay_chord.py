@@ -67,7 +67,8 @@ PARK = {
 # the code returns
 PARK_DONE = {'PartReturn': 'partReturned', 'Extend': 'extended',
              'Cleanup': 'cleaned', 'Count': 'counted'}
-RESULT = {'Pending': 'PENDING', 'Success': 'SUCCESS', 'Failure': 'FAILURE'}
+RESULT = {'Pending': 'PENDING', 'Success': 'SUCCESS', 'Failure': 'FAILURE',
+          'Evicted': 'PENDING'}
 REPORT = {'Succeeded': 'SUCCESS', 'Failed': 'FAILURE'}
 
 
@@ -405,7 +406,8 @@ def replay(h: Harness, path: Path) -> int:
                 want = PARK[h.proto][e_new['pc']]
             if parked != want:
                 raise Mismatch(f'{where}: real thread at {parked}, spec pc '
-                               f'{e_new["pc"]} (expects {want})')
+                               f'{e_new["pc"] if e_new else "Free"} '
+                               f'(expects {want})')
             if parked == 'END':
                 threads.pop(w, None)
         # learn the real claim token when the spec's exec takes the claim

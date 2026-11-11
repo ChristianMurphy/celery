@@ -29,11 +29,59 @@
   "kv_dup": {
    "D": 21,
    "violated": {
+    "failsOnce": 13,
     "neverDispatched": 9,
     "neverFailed": 9,
     "neverQuiet": 12,
     "noErrorAfterDispatch": 14,
     "noSpuriousError": 9
+   }
+  },
+  "kv_ignore": {
+   "D": 10,
+   "violated": {
+    "neverFailed": 8,
+    "neverQuiet": 11
+   }
+  },
+  "kv_kill_after_claim": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 9,
+    "neverQuiet": 12,
+    "quietDone": 13
+   }
+  },
+  "kv_kill_before_count": {
+   "D": 14,
+   "violated": {
+    "neverDispatched": 9,
+    "neverQuiet": 12
+   }
+  },
+  "kv_lose_counter": {
+   "D": 12,
+   "violated": {
+    "neverDispatched": 9,
+    "neverQuiet": 10,
+    "quietDone": 10
+   }
+  },
+  "kv_lose_group": {
+   "D": 12,
+   "violated": {
+    "failsOnce": 8,
+    "neverDispatched": 9,
+    "neverFailed": 5,
+    "neverQuiet": 10
+   }
+  },
+  "kv_lose_result": {
+   "D": 12,
+   "violated": {
+    "neverDispatched": 9,
+    "neverFailed": 9,
+    "neverQuiet": 12
    }
   },
   "kv_none": {
@@ -62,12 +110,211 @@
   "kv_wlost_late": {
    "D": 15,
    "violated": {
+    "failsOnce": 13,
     "neverDispatched": 9,
     "neverFailed": 9,
     "neverQuiet": 12,
     "noErrorAfterDispatch": 14,
     "noSpuriousError": 9,
     "quietDone": 13
+   }
+  },
+  "mixed_dup": {
+   "D": 25,
+   "violated": {
+    "atMostOnce": 19,
+    "failsOnce": 14,
+    "neverDispatched": 10,
+    "neverFailed": 10,
+    "neverQuiet": 12,
+    "noDispatchAfterError": 18,
+    "noErrorAfterDispatch": 15,
+    "noSpuriousError": 10,
+    "quietDone": 17
+   }
+  },
+  "mixed_lose_result": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 10,
+    "neverQuiet": 12,
+    "quietDone": 13
+   }
+  },
+  "mixed_none": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 12
+   }
+  },
+  "once_child_early": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 12,
+    "neverQuiet": 9,
+    "quietDone": 9
+   }
+  },
+  "once_child_late": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 12,
+    "neverQuiet": 9,
+    "quietDone": 9
+   }
+  },
+  "once_child_reject": {
+   "D": 17,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 9,
+    "quietDone": 9
+   }
+  },
+  "once_dup": {
+   "D": 35,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16
+   }
+  },
+  "once_dup_lose_done": {
+   "D": 29,
+   "violated": {
+    "atMostOnce": 23,
+    "neverDispatched": 13,
+    "neverFailed": 19,
+    "neverQuiet": 16,
+    "noErrorAfterDispatch": 19
+   }
+  },
+  "once_dup_lose_result": {
+   "D": 27,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 13,
+    "neverQuiet": 15
+   }
+  },
+  "once_dup_wlost": {
+   "D": 34,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16,
+    "quietDone": 20
+   }
+  },
+  "once_ignore": {
+   "D": 9,
+   "violated": {
+    "neverFailed": 4,
+    "neverQuiet": 10
+   }
+  },
+  "once_kill_after_claim": {
+   "D": 20,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16,
+    "quietDone": 20
+   }
+  },
+  "once_kill_before_count": {
+   "D": 19,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16
+   }
+  },
+  "once_lose_counter": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 12,
+    "quietDone": 12
+   }
+  },
+  "once_lose_done": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16
+   }
+  },
+  "once_lose_group": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 5,
+    "neverQuiet": 10
+   }
+  },
+  "once_lose_partkey": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16
+   }
+  },
+  "once_lose_result": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 13,
+    "neverQuiet": 15
+   }
+  },
+  "once_lose_result_and_key": {
+   "D": 17,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 13,
+    "neverQuiet": 15,
+    "quietDone": 15
+   }
+  },
+  "once_none": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16
+   }
+  },
+  "once_refuse": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 13,
+    "neverQuiet": 16
+   }
+  },
+  "once_wlost_early": {
+   "D": 15,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 8,
+    "quietDone": 8
+   }
+  },
+  "once_wlost_late": {
+   "D": 24,
+   "violated": {
+    "neverDispatched": 13,
+    "neverQuiet": 16,
+    "quietDone": 20
+   }
+  },
+  "oncev1_dup": {
+   "D": 23,
+   "violated": {
+    "neverDispatched": 13,
+    "neverFailed": 15,
+    "neverQuiet": 16,
+    "noSpuriousError": 15
    }
   },
   "redis_child_early": {
@@ -101,6 +348,23 @@
    "violated": {
     "neverDispatched": 10,
     "neverQuiet": 13
+   }
+  },
+  "redis_interrupt": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 10,
+    "quietDone": 10
+   }
+  },
+  "redis_interrupt_dup": {
+   "D": 22,
+   "violated": {
+    "atMostOnce": 19,
+    "neverDispatched": 10,
+    "neverQuiet": 10,
+    "quietDone": 10
    }
   },
   "redis_lease": {
@@ -141,6 +405,105 @@
     "neverDispatched": 10,
     "neverQuiet": 13,
     "quietDone": 14
+   }
+  },
+  "redisfix1_interrupt": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10,
+    "noErrorAfterDispatch": 11
+   }
+  },
+  "redisfix2_interrupt": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10
+   }
+  },
+  "redisfix2_interrupt_dup": {
+   "D": 22,
+   "violated": {
+    "atMostOnce": 19,
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10,
+    "noDispatchAfterError": 16
+   }
+  },
+  "redisfix3_interrupt": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10
+   }
+  },
+  "redisfix3_interrupt_dup": {
+   "D": 22,
+   "violated": {
+    "atMostOnce": 19,
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10
+   }
+  },
+  "redisfix_interrupt": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10
+   }
+  },
+  "redisfix_interrupt_dup": {
+   "D": 18,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 8,
+    "neverQuiet": 10
+   }
+  },
+  "redisfix_interrupt_reply": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverQuiet": 10,
+    "quietDone": 10
+   }
+  },
+  "redisfix_interrupt_sent": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 10,
+    "neverFailed": 10,
+    "neverQuiet": 11,
+    "noErrorAfterDispatch": 10
+   }
+  },
+  "skip_dup": {
+   "D": 23,
+   "violated": {
+    "neverDispatched": 11,
+    "neverQuiet": 14
+   }
+  },
+  "skip_kill_before_count": {
+   "D": 16,
+   "violated": {
+    "neverDispatched": 11,
+    "neverQuiet": 14,
+    "quietDone": 14
+   }
+  },
+  "skip_none": {
+   "D": 13,
+   "violated": {
+    "neverDispatched": 11,
+    "neverQuiet": 14
    }
   },
   "unlock_child_early": {

@@ -46,8 +46,10 @@ import tlc
 
 HERE = Path(__file__).resolve().parent
 EXPECTED = HERE / 'expected.json'
-#: Traces per instance read back to count actions and outcomes.
-TRACES = 150
+#: Traces per instance read back to count actions and outcomes. With fewer
+#: than the samples, quint keeps the longest runs, and an action that ends a
+#: run early (an interrupt, a lost worker) is never among them.
+TRACES = 300
 SCRATCH = tlc.SCRATCH
 
 
@@ -63,29 +65,37 @@ class Spec:
     apalache: list[str] = field(default_factory=list)
     # instances the fast tier simulates unless --all is given
     fast: list[str] = field(default_factory=list)
+    # a counter variable whose value at the end of each sampled run is
+    # reported (min, mean, max)
+    metric: str = ''
     # the module whose ``type Action`` lists the actions and outcomes
     types: str = ''
 
 
-FAULTS = ['none', 'dup', 'refuse', 'wlost_late', 'wlost_early', 'child_late',
-          'child_early', 'child_reject']
+def instances(file: str) -> list[str]:
+    """The instance modules of a spec file, in the order it lists them."""
+    text = tlc.instances_file(HERE / file).read_text()
+    text = text.partition(tlc.INSTANCES)[2]
+    return re.findall(r'^module (\w+) \{', text, re.M)
+
+
 SPECS = {
     'results': Spec(
-        'resultstate.qnt', ['rtw', 'mongo', 'sql', 'es'],
+        'resultstate.qnt', instances('resultstate.qnt'),
         ['successStable', 'readySticky', 'progress'], ['noSuccessEver'],
         apalache=['rtw', 'mongo', 'sql', 'es'], types='resulttypes',
         fast=['rtw', 'mongo', 'sql', 'es']),
     'chord': Spec(
-        'chord.qnt',
-        [f'redis_{f}' for f in FAULTS] + ['redis_lease']
-        + [f'kv_{f}' for f in FAULTS] + [f'unlock_{f}' for f in FAULTS],
+        'chord.qnt', instances('chord.qnt'),
         ['atMostOnce', 'noPremature', 'argsComplete', 'noErrorAfterDispatch',
-         'noSpuriousError', 'quietDone', 'progress'],
+         'noDispatchAfterError', 'noSpuriousError', 'failsOnce', 'quietDone',
+         'progress'],
         ['neverDispatched', 'neverFailed', 'neverQuiet'],
         types='chordtypes',
-        fast=['redis_dup', 'redis_wlost_late', 'redis_child_late',
-              'redis_lease', 'kv_dup', 'kv_refuse', 'kv_wlost_late',
-              'unlock_dup', 'unlock_refuse', 'unlock_child_reject']),
+        fast=['redis_dup', 'redis_wlost_late', 'kv_dup',
+              'unlock_child_reject', 'once_dup', 'oncev1_dup',
+              'skip_kill_before_count', 'mixed_dup', 'redisfix1_interrupt',
+              'redisfix_interrupt_dup']),
 }
 
 
@@ -100,14 +110,19 @@ def quint(*args: str, timeout: float | None = None) -> str:
 
 
 # ---- fast tier -------------------------------------------------------------
+#: Fields of an Action variant whose value is reported with the action.
+DETAIL = ('outcome', 'reason', 'point')
+
+
 def action_tags(state: dict) -> list[str]:
-    """``Action`` and ``Action.Outcome`` of an ITF state's lastAction."""
+    """``Action`` and ``Action.Detail`` of an ITF state's lastAction."""
     for name, value in state.items():
         if name.endswith('lastAction'):
             tags = [value['tag']]
             inner = value['value']
-            if isinstance(inner, dict) and isinstance(inner.get('outcome'), dict):
-                tags.append(f'{value["tag"]}.{inner["outcome"]["tag"]}')
+            for detail in DETAIL:
+                if isinstance(inner, dict) and isinstance(inner.get(detail), dict):
+                    tags.append(f'{value["tag"]}.{inner[detail]["tag"]}')
             return tags
     return []
 
@@ -126,7 +141,7 @@ def simulate(spec: Spec, inst: str, exp: dict, samples: int,
             f'--invariant={" and ".join(holds + [f"steps <= {depth}"])}',
             '--witnesses', *[f'not({p})' for p in looked_for],
             f'--max-samples={samples}', f'--max-steps={depth + 2}',
-            f'--seed={seed}', f'--n-traces={TRACES}',
+            f'--seed={seed}', f'--n-traces={min(TRACES, samples)}',
             f'--out-itf={out}/t_{{seq}}.itf.json')
         res: dict = {'secs': round(time.time() - t0, 1),
                      'ok': '[ok]' in text, 'witnessed': {}, 'actions': Counter()}
@@ -147,30 +162,40 @@ def simulate(spec: Spec, inst: str, exp: dict, samples: int,
                             f'--max-steps={depth + 2}', f'--seed={seed}')
                 if '[violation]' in one:
                     res['why'].append(f'{prop} violated')
+        ends = []
         for trace in out.glob('*.itf.json'):
-            for state in json.loads(trace.read_text())['states']:
+            states = json.loads(trace.read_text())['states']
+            for state in states:
                 res['actions'].update(action_tags(state))
+            if spec.metric:
+                ends += [int(v['#bigint']) for k, v in states[-1].items()
+                         if k.rsplit('::', 1)[-1] == spec.metric]
+        if ends:
+            res['metric'] = (min(ends), round(sum(ends) / len(ends), 1),
+                             max(ends))
         return res
     finally:
         shutil.rmtree(out, ignore_errors=True)
 
 
 def declared_actions(spec: Spec) -> list[str]:
-    """``Action`` and ``Action.Outcome`` for every variant of the spec's
+    """``Action`` and ``Action.Detail`` for every variant of the spec's
     Action type, read from its types module."""
     text = (HERE / spec.file).read_text()
     text = text[text.index(f'module {spec.types} {{'):]
-    sums = {m[1]: re.findall(r'\b([A-Z]\w*)\b(?:\([^|]*?\))?\s*(?:\||$)',
-                             m[2].split('//')[0])
-            for m in re.finditer(r'type (\w+) =((?:[^\n]|\n\s+\|)*)', text)}
-    body = re.search(r'type Action =\n((?:\s+\|[^\n]*\n)+)', text)[1]
+    text = re.sub(r'//[^\n]*', '', text)
+    sums = {m[1]: re.findall(r'\b([A-Z]\w*)\b', re.sub(r'\([^)]*\)', '', m[2]))
+            for m in re.finditer(
+                r'type (\w+) =((?:[^\n]|\n\s*\|)*)', text)}
+    body = re.search(r'type Action =\s*\n((?:\s+\|[^\n]*\n)+)', text)[1]
     tags = []
     for line in body.splitlines():
         m = re.match(r'\s+\| (\w+)(.*)', line)
         tags.append(m[1])
-        outcome = re.search(r'outcome: (\w+)', m[2])
-        if outcome:
-            tags += [f'{m[1]}.{o}' for o in sums[outcome[1]]]
+        for detail in DETAIL:
+            kind = re.search(rf'{detail}: (\w+)', m[2])
+            if kind:
+                tags += [f'{m[1]}.{o}' for o in sums[kind[1]]]
     return tags
 
 
@@ -183,10 +208,9 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
         if 'error' in text.lower():
             ok = False
             print(f'TYPECHECK FAILED {SPECS[name].file}\n{text}')
-    p = subprocess.run([sys.executable, 'type_errors.py'], cwd=HERE,
-                       capture_output=True, text=True)
-    print(p.stdout.strip().splitlines()[-1])
-    ok &= p.returncode == 0
+    # the type-error cases run beside the simulator
+    type_errors = subprocess.Popen([sys.executable, 'type_errors.py'],
+                                   cwd=HERE, stdout=subprocess.PIPE, text=True)
     exp = expected()
     for name in names:
         spec = SPECS[name]
@@ -199,8 +223,10 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
         print(f'\n{spec.file} (simulator, {samples} samples per instance, '
               f'{len(insts)} of {len(spec.instances)} instances)')
         print('| instance | invariants and steps <= D | longest run | '
-              'expected violations seen (traces) | time |')
-        print('|---|---|---|---|---|')
+              'expected violations seen (traces) | '
+              + (f'{spec.metric} at the end: min, mean, max | '
+                 if spec.metric else '') + 'time |')
+        print('|---|---|---|---|---|' + ('---|' if spec.metric else ''))
         total: Counter = Counter()
         for inst in insts:
             r = res[inst]
@@ -208,19 +234,25 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
             total.update(r['actions'])
             seen = ', '.join(f'{p} {n}' for p, n in r['witnessed'].items())
             d = exp.get(spec.file, {}).get(inst, {}).get('D', '?')
+            metric = (' | ' + ', '.join(map(str, r.get('metric', ())))
+                      if spec.metric else '')
             print(f'| {inst} | {"ok" if r["ok"] else "FAILED " + str(r["why"])}'
-                  f' | {r["longest"]} of {d} | {seen or "-"} | {r["secs"]} s |')
+                  f' | {r["longest"]} of {d} | {seen or "-"}{metric}'
+                  f' | {r["secs"]} s |')
         if only is None:
             # coverage: which actions and outcomes ran in the sampled traces
             declared = declared_actions(spec)
             missing = [t for t in declared if not total[t]]
-            print(f'\nactions and outcomes in {TRACES} sampled traces per '
+            print(f'\nactions and outcomes in {min(TRACES, samples)} sampled traces per '
                   f'instance: {len(declared) - len(missing)} of {len(declared)}'
                   + (f'; not sampled: {", ".join(missing)}' if missing else ''))
             print(', '.join(f'{t} {total[t]}' for t in declared))
             if every:
                 ok &= not missing
-    print(f'\nfast tier: {time.time() - t0:.0f} s wall, '
+    out = type_errors.communicate()[0]
+    print('\n' + out.strip().splitlines()[-1])
+    ok &= type_errors.returncode == 0
+    print(f'fast tier: {time.time() - t0:.0f} s wall, '
           f'{"ok" if ok else "FAILED"}')
     return ok
 
@@ -234,27 +266,27 @@ def search(spec: Spec, inst: str, tla: Path, exp: dict) -> dict:
     # a witness expected to hold (its state is unreachable here) is checked
     # in the same pass
     holds = [p for p in spec.props + spec.witnesses if p not in violated]
-    res: dict = {'cells': {}}
-    main = tlc.run_tlc(tla, holds, deadlock=True)
-    res['secs'] = main['secs']
-    res['states'] = main.get('distinct')
-    if main['result'] == 'holds':
-        res['D'] = main['depth'] - 1
-        res['cells'] = {p: 'holds' for p in holds}
-        res['stops_quiet'] = True
-    else:
-        # something unexpected: check each on its own to report all of them
-        res['stops_quiet'] = main['result'] != 'deadlock'
-        if main['result'] == 'deadlock':
+    res: dict = {'cells': {}, 'secs': 0.0, 'stops_quiet': True}
+    while True:
+        # One pass over every reachable state. An invariant that fails here
+        # was expected to hold: breadth-first, so its trace is a shortest
+        # one; note it and search again without it.
+        main = tlc.run_tlc(tla, holds, deadlock=res['stops_quiet'])
+        res['secs'] += main['secs']
+        if main['result'] == 'violated':
+            res['cells'][main['violated']] = main['trace']
+            holds = [p for p in holds if p != main['violated']]
+        elif main['result'] == 'deadlock':
+            res['stops_quiet'] = False
             res['deadlock'] = main['trace']
-        for prop in holds:
-            r = tlc.run_tlc(tla, prop)
-            res['secs'] += r['secs']
-            res['cells'][prop] = (r['trace'] if r['result'] == 'violated'
-                                  else r['result'])
-        r = tlc.run_tlc(tla, [])
-        res['D'] = r.get('depth', 0) - 1
-        res['states'] = r.get('distinct')
+        else:
+            break
+    if main['result'] != 'holds':
+        raise RuntimeError(f'{inst}: TLC {main["result"]}: '
+                           + main.get('text', '')[-1500:])
+    res['states'] = main['distinct']
+    res['D'] = main['depth'] - 1
+    res['cells'].update({p: 'holds' for p in holds})
     for prop in spec.props + spec.witnesses:
         if prop in violated:
             r = tlc.run_tlc(tla, prop)
@@ -322,30 +354,36 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
         report[spec.file] = res
         cols = spec.props + spec.witnesses
         print(f'\n{spec.file} (TLC, every reachable state; compile '
-              f'{compile_secs:.0f} s)')
-        print('| instance | D | states | ' + ' | '.join(cols)
-              + ' | stops only when quiet | time |')
-        print('|---' * (len(cols) + 5) + '|')
+              f'{compile_secs:.0f} s). Properties: {", ".join(spec.props)}. '
+              f'Witnesses: {", ".join(spec.witnesses)}. A number is the '
+              'states in a shortest counterexample.')
+        print('| instance | D | states | violated | reachable (witnesses) | '
+              'stops only when quiet | time |')
+        print('|---|---|---|---|---|---|---|')
         for inst in insts:
             r = res[inst]
             e = exp.get(spec.file, {}).get(inst, {})
-            cells = []
+            cells: dict[str, list[str]] = {'props': [], 'witnesses': []}
             for prop in cols:
                 got = r['cells'].get(prop)
                 want = e.get('violated', {}).get(prop, 'holds')
-                cell = 'ok' if got == 'holds' else f'VIOLATED ({got})'
+                cell = '' if got == 'holds' else f'{prop} ({got})'
                 if got != want and not update:
                     ok = False
-                    cell += f' EXPECTED {want}'
-                cells.append(cell)
+                    cell = f'{prop} ({got}) EXPECTED {want}'
+                if cell:
+                    cells['witnesses' if prop in spec.witnesses
+                          else 'props'].append(cell)
             d = str(r['D'])
             if e.get('D') != r['D'] and not update:
                 ok = False
                 d += f' EXPECTED {e.get("D")}'
             quiet = 'yes' if r['stops_quiet'] else 'NO'
             ok &= r['stops_quiet']
-            print(f'| {inst} | {d} | {r["states"]} | ' + ' | '.join(cells)
-                  + f' | {quiet} | {r["secs"]} s |')
+            print(f'| {inst} | {d} | {r["states"]} | '
+                  f'{", ".join(cells["props"]) or "none"} | '
+                  f'{", ".join(cells["witnesses"]) or "none"} | {quiet} | '
+                  f'{r["secs"]} s |')
         if update:
             exp[spec.file] = exp.get(spec.file, {})
             for inst in insts:
@@ -396,6 +434,8 @@ def write_cex(names: list[str], samples: int, seed: str) -> None:
         for inst in spec.instances:
             e = exp.get(spec.file, {}).get(inst, {})
             for prop in e.get('violated', {}):
+                if prop in spec.witnesses:
+                    continue
                 path = out / f'{inst}.{prop}.itf.json'
                 text = quint('run', f'--main={inst}',
                              str(tlc.instance_file(spec.file, inst)),
@@ -428,7 +468,7 @@ def main() -> int:
         write_cex(names, args.samples or 3000, args.seed)
         return 0
     if args.tier == 'fast':
-        return 0 if fast(names, args.instance, args.samples or 400,
+        return 0 if fast(names, args.instance, args.samples or 300,
                          args.seed, args.jobs, args.all) else 1
     ok = full(names, args.instance, args.jobs, args.update_expected,
               args.tier == 'long', args.apalache_timeout, args.json)

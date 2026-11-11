@@ -6,12 +6,16 @@ before a fix (or a plausible slip). The property named must be violated on
 an instance where the unmutated spec satisfies it.
 
     python3 mutate_spec.py
+    python3 mutate_spec.py transport      # only mutants that mention a word
 """
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+import tlc
 
 HERE = Path(__file__).resolve().parent
 
@@ -37,8 +41,8 @@ MUTANTS = [
      'val mine = ckey == Claimed(r.tok)\n    val reacquire = ckey == NoClaim and skey',
      'val mine = true\n    val reacquire = ckey == NoClaim and skey'),
     ('EQUIV redis: cleanup ignores the owner (celery issue 10997)', 'chord.qnt', 'redis_dup', 'atMostOnce',
-     'val mine = ckey == Claimed(r.tok)\n    all {\n      CFG.proto == Redis, isHeader(e), r.pc == RedisPublished',
-     'val mine = true\n    all {\n      CFG.proto == Redis, isHeader(e), r.pc == RedisPublished'),
+     'val mine = ckey == Claimed(r.tok)\n    all {\n      CFG.proto == Redis, isHeader(e), at(r.pc) == AtRedisPublished',
+     'val mine = true\n    all {\n      CFG.proto == Redis, isHeader(e), at(r.pc) == AtRedisPublished'),
     ('kv: count on >= size', 'chord.qnt', 'kv_dup', 'atMostOnce',
      '...r, pc: if (counter + 1 == N) KvComplete else HeaderDone',
      '...r, pc: if (counter + 1 >= N) KvComplete else HeaderDone'),
@@ -56,6 +60,30 @@ MUTANTS = [
      "used' = { ...used, dups: used.dups + 1 },", "used' = used,"),
     ('results: a commit that leaves the run begun (commits forever)', 'resultstate.qnt', 'rtw', 'progress',
      "pc' = pc.set(r, Idle),", "pc' = pc,"),
+    # celery issue 11036 and 11039
+    ('once: fail on the first read (cd8aa46)', 'chord.qnt', 'once_dup', 'noSpuriousError',
+     'else if (CFG.rereadMissing) KeysThere', 'else if (false) KeysThere'),
+    ('once: complete without the done key', 'chord.qnt', 'once_dup', 'atMostOnce',
+     'pc: if (doneKey) HeaderDone else KvComplete', 'pc: if (false) HeaderDone else KvComplete'),
+    ('once: count on == size, as main', 'chord.qnt', 'once_dup', 'quietDone',
+     'pc: if (p == KvOnce) (if (v >= N) OnceCheck else HeaderDone)',
+     'pc: if (p == KvOnce) (if (v == N) OnceCheck else HeaderDone)'),
+    ('once: complete without reading the results', 'chord.qnt', 'once_dup', 'noSpuriousError',
+     'pc: if (missing == Set()) OnceClaim else OnceKeys(missing) })),',
+     'pc: OnceClaim })),'),
+    ('once: a late copy fails the chord without the done key', 'chord.qnt', 'once_dup', 'noErrorAfterDispatch',
+     'else if (not(groupSaved)) (if (doneKey) ChordDone else GroupGone)',
+     'else if (not(groupSaved)) GroupGone'),
+    ('once: a lost result never fails the chord', 'chord.qnt', 'once_lose_result', 'quietDone',
+     'else if (doneKey) StillLostButClaimed else StillLost', 'else StillLostButClaimed'),
+    ('interrupt: fail the chord after the publish returned (5f844ea)', 'chord.qnt', 'redisfix_interrupt', 'noErrorAfterDispatch',
+     'or (point == InCleanup and r.pc == RedisPublished(Refused))', 'or point == InCleanup'),
+    ('interrupt: leave the size key (5446659)', 'chord.qnt', 'redisfix_interrupt_dup', 'noDispatchAfterError',
+     '      | CloseAlways => point != InClaimReply', '      | CloseAlways => false'),
+    ('interrupt: leave the size key once the body is sent (ee48301)', 'chord.qnt', 'redisfix_interrupt_dup', 'atMostOnce',
+     '      | CloseAlways => point != InClaimReply', '      | CloseAlways => handled'),
+    ('interrupt: not handled (768e476)', 'chord.qnt', 'redisfix_interrupt', 'quietDone',
+     '      | CloseAlways => untilSent\n', '      | CloseAlways => false\n'),
 ]
 
 
@@ -77,11 +105,16 @@ def violated(spec_text: str, instance: str, prop: str, samples: int) -> bool:
 
 def main() -> None:
     caught = 0
-    for name, spec, inst, prop, old, new in MUTANTS:
+    chosen = [m for m in MUTANTS
+              if all(word in m[0] + m[1] for word in sys.argv[1:])]
+    for name, spec, inst, prop, old, new in chosen:
         text = (HERE / spec).read_text()
+        instances = tlc.instances_file(HERE / spec).read_text()
         assert text.count(old) == 1, f'{name}: pattern found {text.count(old)}x'
-        base = violated(text, inst, prop, 3000)
-        mut = violated(text.replace(old, new), inst, prop, 3000)
+        base = violated(tlc.single_instance(text, instances, inst), inst,
+                        prop, 3000)
+        mut = violated(tlc.single_instance(text.replace(old, new), instances,
+                                           inst), inst, prop, 3000)
         ok = mut and not base
         if name.startswith('EQUIV'):
             ok = not ok
@@ -92,7 +125,7 @@ def main() -> None:
         print(f'{label} {name}: {inst}.{prop} '
               f'(original {"violated" if base else "holds"}, mutant '
               f'{"violated" if mut else "holds"})')
-    print(f'{caught}/{len(MUTANTS)} spec mutants behaved as expected')
+    print(f'{caught}/{len(chosen)} spec mutants behaved as expected')
 
 
 if __name__ == '__main__':

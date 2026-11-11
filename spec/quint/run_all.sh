@@ -49,7 +49,7 @@ for p in redis kv; do
   for f in none dup refuse wlost_late wlost_early child_late child_early child_reject lease; do
     m=${p}_$f; [ "$m" = kv_lease ] && continue
     mkdir -p traces/chord/$m
-    quint run --main=$m chord.qnt --max-steps=40 --n-traces=20 --max-samples=20 \
+    quint run --main=$m chord_instances.qnt --max-steps=40 --n-traces=20 --max-samples=20 \
       --seed=11 --out-itf="traces/chord/$m/random_{seq}.itf.json" >/dev/null
     $PY -m adapter.replay_chord --instance $m traces/chord/$m/*.json $(ls traces/cex/$m.*.json 2>/dev/null)
   done

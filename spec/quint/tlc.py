@@ -40,29 +40,43 @@ def _spec_hash(spec: Path) -> str:
     return h.hexdigest()[:16]
 
 
-#: In a spec file, the line after which only instance modules follow.
+#: In a file of instances, the line after which the instance modules follow.
 INSTANCES = '// ---- instances'
 
 
-def instance_file(spec: str | Path, main: str) -> Path:
-    """A copy of ``spec`` that holds only the instance ``main``.
+def instances_file(spec: Path) -> Path:
+    """Where the instances of ``spec`` are: ``<spec>_instances.qnt`` next to
+    it, or the spec file itself."""
+    other = spec.with_name(f'{spec.stem}_instances.qnt')
+    return other if other.exists() else spec
 
-    quint flattens every module of the file it is given, which takes about a
+
+def single_instance(spec_text: str, instances_text: str, main: str) -> str:
+    """The text of a spec followed by its one instance ``main``."""
+    base = spec_text.partition(INSTANCES)[0]
+    rest = instances_text.partition(INSTANCES)[2]
+    m = re.search(rf'^module {main} \{{\n.*?^\}}\n', rest, re.M | re.S)
+    if not m:
+        raise KeyError(f'no instance {main} after "{INSTANCES}"')
+    # the instance sits in the spec's own file here
+    return base + re.sub(r' from "\./\w+"', '', m[0])
+
+
+def instance_file(spec: str | Path, main: str) -> Path:
+    """A file that holds ``spec`` and only its instance ``main``.
+
+    quint flattens every module of every file it loads, which takes about a
     second per instance module, whichever one is the main module. With one
-    instance left, a compile or a simulator start takes a fifth of the
-    time."""
+    instance in the file, a compile or a simulator start takes a fifth of
+    the time."""
     spec = (HERE / spec).resolve()
     key = hashlib.sha1(f'{_spec_hash(spec)}:{spec.name}:{main}'.encode()
                        ).hexdigest()[:16]
     out = CACHE / key / spec.name
     if not out.exists():
-        base, mark, rest = spec.read_text().partition(INSTANCES)
-        m = re.search(rf'^module {main} \{{\n.*?^\}}\n', rest, re.M | re.S)
-        if not mark or not m:
-            raise KeyError(f'no instance {main} after "{INSTANCES}" in '
-                           f'{spec.name}')
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(base + m[0])
+        out.write_text(single_instance(
+            spec.read_text(), instances_file(spec).read_text(), main))
     return out
 
 
