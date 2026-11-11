@@ -88,19 +88,21 @@ def compile_tla(spec: str | Path, main: str, props: list[str],
     single = instance_file(spec, main)
     key = hashlib.sha1(f'{step}:{",".join(props)}'.encode()).hexdigest()[:8]
     out = single.parent / key / f'{main}.tla'
-    if out.exists():
+    if out.exists() and out.stat().st_size:
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
     # stdout to a file, not a pipe: quint can exit before a pipe took all
-    # of its output, which cuts the module off at 64 KiB
-    with open(out, 'w') as f:
+    # of its output, which cuts the module off at 64 KiB. The file gets its
+    # name only when it is whole, so an interrupted compile leaves nothing.
+    part = out.with_suffix('.part')
+    with open(part, 'w') as f:
         p = subprocess.run(
             ['quint', 'compile', '--target=tlaplus', f'--main={main}',
              str(single), f'--step={step}', f'--invariant={",".join(props)}'],
             cwd=HERE, stdout=f, stderr=subprocess.PIPE, text=True)
-    text = out.read_text()
+    text = part.read_text()
+    part.unlink()
     if p.returncode or 'q_step ==' not in text:
-        out.unlink()
         raise RuntimeError(f'quint compile {single.name} {main}: '
                            + (p.stderr or text)[-2000:])
     out.write_text(text[text.index('----'):])
@@ -116,7 +118,7 @@ def operator(tla: Path, name: str) -> str:
 
 
 def run_tlc(tla: Path, invariants: list[str] | str | None, workers: int = 1,
-            heap: str = '-Xmx6G', timeout: float | None = None,
+            heap: str = '-Xmx3G', timeout: float | None = None,
             deadlock: bool = False) -> dict:
     """Run TLC on a compiled instance. Returns
     {result: 'holds'|'violated'|'deadlock'|'error', states, distinct, depth,
