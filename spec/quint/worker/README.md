@@ -52,8 +52,9 @@ two branches; `keepwritten`, `renewall`, `renewidle`, `reneweta`, `resend`,
 `ackfull` (resend and `StillAcks`), `restoreall`, `restoreidle`, `token`,
 `tagrestore` and `ownrecord` each change one mechanism of `pr`; `best` is
 `DropUnwritten`, `RenewScheduled`, `Resent`, `StillAcks`, `CloseRestoresIdle`,
-`ReconnectRestoresIdle` and `ByPop` together. `tools/gen_worker_instances.py`
-writes `worker_instances.qnt`.
+`ReconnectRestoresIdle` and `ByPop` together. Each design is a named value
+in `workertypes` (`MAIN`, `PR`, `KEEPWRITTEN`, ..., `BEST`);
+`tools/gen_worker_instances.py` writes `worker_instances.qnt` from them.
 
 Properties:
 

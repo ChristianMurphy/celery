@@ -63,20 +63,20 @@ module main_early_partition {
 module token_late_none {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
   }).* from "./worker"
 }
 module token_late_shutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_late_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -84,70 +84,70 @@ module token_late_eta {
 module token_late_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module token_late_kill {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, kills: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_late_crash {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, crashes: 1, restarts: 2 },
   }).* from "./worker"
 }
 module token_late_partition {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, partitions: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_late_cutlong {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, cuts: 1, timeouts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_late_reset {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, resets: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_late_hang {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, restoreBy: ByPop }),
+    ...config(Late, TOKEN),
     max: { ...NONE, hangs: 1 },
   }).* from "./worker"
 }
 module token_early_shutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, restoreBy: ByPop }),
+    ...config(Early, TOKEN),
     max: { ...NONE, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_early_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, restoreBy: ByPop }),
+    ...config(Early, TOKEN),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -155,21 +155,21 @@ module token_early_eta {
 module token_early_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, restoreBy: ByPop }),
+    ...config(Early, TOKEN),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module token_early_reset {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, restoreBy: ByPop }),
+    ...config(Early, TOKEN),
     max: { ...NONE, resets: 1, restarts: 1 },
   }).* from "./worker"
 }
 module tagrestore_late_etashutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten }),
+    ...config(Late, TAGRESTORE),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
@@ -177,7 +177,7 @@ module tagrestore_late_etashutdown {
 module ownrecord_late_etashutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, restoreBy: ByPop }),
+    ...config(Late, OWNRECORD),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
@@ -318,42 +318,42 @@ module pr_early_hang {
 module keepwritten_late_shutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten }),
+    ...config(Late, KEEPWRITTEN),
     max: { ...NONE, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
 }
 module keepwritten_late_reset {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten }),
+    ...config(Late, KEEPWRITTEN),
     max: { ...NONE, resets: 1, restarts: 1 },
   }).* from "./worker"
 }
 module keepwritten_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten }),
+    ...config(Late, KEEPWRITTEN),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module keepwritten_early_shutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, flush: DropUnwritten }),
+    ...config(Early, KEEPWRITTEN),
     max: { ...NONE, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
 }
 module keepwritten_early_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, flush: DropUnwritten }),
+    ...config(Early, KEEPWRITTEN),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module renewall_late_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewAll }),
+    ...config(Late, RENEWALL),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -361,35 +361,35 @@ module renewall_late_eta {
 module renewall_late_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewAll }),
+    ...config(Late, RENEWALL),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module renewall_late_hang {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewAll }),
+    ...config(Late, RENEWALL),
     max: { ...NONE, hangs: 1 },
   }).* from "./worker"
 }
 module renewall_late_kill {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewAll }),
+    ...config(Late, RENEWALL),
     max: { ...NONE, kills: 1, restarts: 1 },
   }).* from "./worker"
 }
 module renewall_late_cutlong {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewAll }),
+    ...config(Late, RENEWALL),
     max: { ...NONE, cuts: 1, timeouts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module renewall_early_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, renewal: RenewAll }),
+    ...config(Early, RENEWALL),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -397,14 +397,14 @@ module renewall_early_eta {
 module renewall_early_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, renewal: RenewAll }),
+    ...config(Early, RENEWALL),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module renewidle_late_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewUnstarted }),
+    ...config(Late, RENEWIDLE),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -412,35 +412,35 @@ module renewidle_late_eta {
 module renewidle_late_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewUnstarted }),
+    ...config(Late, RENEWIDLE),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module renewidle_late_hang {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewUnstarted }),
+    ...config(Late, RENEWIDLE),
     max: { ...NONE, hangs: 1 },
   }).* from "./worker"
 }
 module renewidle_late_kill {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewUnstarted }),
+    ...config(Late, RENEWIDLE),
     max: { ...NONE, kills: 1, restarts: 1 },
   }).* from "./worker"
 }
 module renewidle_early_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, renewal: RenewUnstarted }),
+    ...config(Early, RENEWIDLE),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module reneweta_late_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewScheduled }),
+    ...config(Late, RENEWETA),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -448,139 +448,139 @@ module reneweta_late_eta {
 module reneweta_late_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewScheduled }),
+    ...config(Late, RENEWETA),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module reneweta_late_hang {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewScheduled }),
+    ...config(Late, RENEWETA),
     max: { ...NONE, hangs: 1 },
   }).* from "./worker"
 }
 module reneweta_late_kill {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, renewal: RenewScheduled }),
+    ...config(Late, RENEWETA),
     max: { ...NONE, kills: 1, restarts: 1 },
   }).* from "./worker"
 }
 module resend_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent }),
+    ...config(Late, RESEND),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module resend_late_crash {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent }),
+    ...config(Late, RESEND),
     max: { ...NONE, crashes: 1, restarts: 2 },
   }).* from "./worker"
 }
 module resend_late_partition {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent }),
+    ...config(Late, RESEND),
     max: { ...NONE, partitions: 1, restarts: 1 },
   }).* from "./worker"
 }
 module resend_early_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, failedAck: Resent }),
+    ...config(Early, RESEND),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module ackfull_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks }),
+    ...config(Late, ACKFULL),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module ackfull_late_crash {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks }),
+    ...config(Late, ACKFULL),
     max: { ...NONE, crashes: 1, restarts: 2 },
   }).* from "./worker"
 }
 module ackfull_late_reset {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks }),
+    ...config(Late, ACKFULL),
     max: { ...NONE, resets: 1, restarts: 1 },
   }).* from "./worker"
 }
 module ackfull_late_cutlong {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks }),
+    ...config(Late, ACKFULL),
     max: { ...NONE, cuts: 1, timeouts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module ackfull_early_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, failedAck: Resent, collectedAck: StillAcks }),
+    ...config(Early, ACKFULL),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module restoreall_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks, reconnectRestore: ReconnectRestoresAll }),
+    ...config(Late, RESTOREALL),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module restoreall_late_crash {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks, reconnectRestore: ReconnectRestoresAll }),
+    ...config(Late, RESTOREALL),
     max: { ...NONE, crashes: 1, restarts: 2 },
   }).* from "./worker"
 }
 module restoreidle_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks, reconnectRestore: ReconnectRestoresIdle }),
+    ...config(Late, RESTOREIDLE),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module restoreidle_late_crash {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks, reconnectRestore: ReconnectRestoresIdle }),
+    ...config(Late, RESTOREIDLE),
     max: { ...NONE, crashes: 1, restarts: 2 },
   }).* from "./worker"
 }
 module restoreidle_late_kill {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, failedAck: Resent, collectedAck: StillAcks, reconnectRestore: ReconnectRestoresIdle }),
+    ...config(Late, RESTOREIDLE),
     max: { ...NONE, kills: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_none {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
   }).* from "./worker"
 }
 module best_late_shutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -588,76 +588,76 @@ module best_late_eta {
 module best_late_long {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
 }
 module best_late_kill {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, kills: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_crash {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, crashes: 1, restarts: 2 },
   }).* from "./worker"
 }
 module best_late_partition {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, partitions: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_cutlong {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, cuts: 1, timeouts: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_reset {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, resets: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_late_hang {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Late, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Late, BEST),
     max: { ...NONE, hangs: 1 },
   }).* from "./worker"
 }
 module best_early_none {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Early, BEST),
   }).* from "./worker"
 }
 module best_early_shutdown {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Early, BEST),
     max: { ...NONE, shutdowns: 1, restarts: 1 },
   }).* from "./worker"
 }
 module best_early_eta {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Early, BEST),
     eta: Set(M(1)), outlasts: OnlyEta,
     max: { ...NONE, timeouts: 1 },
   }).* from "./worker"
@@ -665,7 +665,7 @@ module best_early_eta {
 module best_early_cut {
   import workertypes.* from "./worker"
   import worker(CFG = {
-    ...config(Early, { ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent, collectedAck: StillAcks, closeRestore: CloseRestoresIdle, reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop }),
+    ...config(Early, BEST),
     max: { ...NONE, cuts: 1, restarts: 1 },
   }).* from "./worker"
 }

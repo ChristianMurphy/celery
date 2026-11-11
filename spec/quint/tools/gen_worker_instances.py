@@ -3,37 +3,12 @@
 class. Edit the tables here and run it again."""
 from pathlib import Path
 
-# design name -> (base, overrides)
-DESIGNS = {
-    'main': ('MAIN', ''),
-    'pr': ('PR', ''),
-    # 1. flush() keeps a job the child already has
-    'keepwritten': ('PR', 'flush: DropUnwritten'),
-    # 2. renewal of unacked messages
-    'renewall': ('PR', 'renewal: RenewAll'),
-    'renewidle': ('PR', 'renewal: RenewUnstarted'),
-    'reneweta': ('PR', 'renewal: RenewScheduled'),
-    # 3. a failed ack is sent again; a collected channel can still ack
-    'resend': ('PR', 'failedAck: Resent'),
-    'ackfull': ('PR', 'failedAck: Resent, collectedAck: StillAcks'),
-    # 4. restore at reconnect what the closing channel could not
-    'restoreall': ('PR', 'failedAck: Resent, collectedAck: StillAcks, '
-                         'reconnectRestore: ReconnectRestoresAll'),
-    'restoreidle': ('PR', 'failedAck: Resent, collectedAck: StillAcks, '
-                          'reconnectRestore: ReconnectRestoresIdle'),
-    # 6. and a closing channel leaves running tasks alone
-    'best': ('PR', 'flush: DropUnwritten, renewal: RenewScheduled, '
-                   'failedAck: Resent, collectedAck: StillAcks, '
-                   'closeRestore: CloseRestoresIdle, '
-                   'reconnectRestore: ReconnectRestoresIdle, '
-                   'restoreBy: ByPop'),
-    # a channel restores only a record its own pop wrote (both with the
-    # flush variant, so that the restore is the only source of a third run)
-    # the pop token on its own: every fault class of the PR
-    'token': ('PR', 'restoreBy: ByPop'),
-    'tagrestore': ('PR', 'flush: DropUnwritten'),
-    'ownrecord': ('PR', 'flush: DropUnwritten, restoreBy: ByPop'),
-}
+# design name -> its value in workertypes (worker.qnt), where the designs
+# are defined
+DESIGNS = {name: name.upper() for name in [
+    'main', 'pr', 'keepwritten', 'renewall', 'renewidle', 'reneweta',
+    'resend', 'ackfull', 'restoreall', 'restoreidle', 'best', 'token',
+    'tagrestore', 'ownrecord']}
 # fault class -> (budget, eta)
 FAULTS = {
     'none': ('', False),
@@ -84,8 +59,7 @@ out = ['''// -*- mode: Bluespec; -*-
 // ---- instances: a design, an ack mode and a fault class -------------------
 ''']
 for design, modes in MATRIX.items():
-    base, over = DESIGNS[design]
-    d = f'{{ ...{base}, {over} }}' if over else base
+    d = DESIGNS[design]
     for ack, classes in modes.items():
         for fault in classes:
             budget, eta = FAULTS[fault]

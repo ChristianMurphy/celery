@@ -95,6 +95,35 @@ module workertypes {
   }
   // kombu PR 2831 on top of main.
   pure val PR: Design = { ...MAIN, pop: PopScript }
+  // The variants compared in README.md, each on top of PR. Instances name
+  // them in lower case: <design>_<ack mode>_<fault class>.
+  // 1. flush() keeps a job the child already has
+  pure val KEEPWRITTEN: Design = { ...PR, flush: DropUnwritten }
+  // 2. renewal of unacked messages
+  pure val RENEWALL: Design = { ...PR, renewal: RenewAll }
+  pure val RENEWIDLE: Design = { ...PR, renewal: RenewUnstarted }
+  pure val RENEWETA: Design = { ...PR, renewal: RenewScheduled }
+  // 3. a failed ack is sent again; a collected channel can still ack
+  pure val RESEND: Design = { ...PR, failedAck: Resent }
+  pure val ACKFULL: Design =
+    { ...PR, failedAck: Resent, collectedAck: StillAcks }
+  // 4. restore at reconnect what the closing channel could not
+  pure val RESTOREALL: Design =
+    { ...ACKFULL, reconnectRestore: ReconnectRestoresAll }
+  pure val RESTOREIDLE: Design =
+    { ...ACKFULL, reconnectRestore: ReconnectRestoresIdle }
+  // 5. a channel restores only a record its own pop wrote; the pop token
+  // on its own, and with the flush variant so that the restore is the only
+  // source of a third run (TAGRESTORE is its baseline)
+  pure val TOKEN: Design = { ...PR, restoreBy: ByPop }
+  pure val TAGRESTORE: Design = KEEPWRITTEN
+  pure val OWNRECORD: Design = { ...KEEPWRITTEN, restoreBy: ByPop }
+  // 6. all of them, and a closing channel leaves running tasks alone
+  pure val BEST: Design = {
+    ...PR, flush: DropUnwritten, renewal: RenewScheduled, failedAck: Resent,
+    collectedAck: StillAcks, closeRestore: CloseRestoresIdle,
+    reconnectRestore: ReconnectRestoresIdle, restoreBy: ByPop,
+  }
 
   // A worker's connection to the broker.
   type Conn =
@@ -218,6 +247,7 @@ module workertypes {
 
 module worker {
   import workertypes.*
+  import observe.* from "../lib/observe"
 
   const CFG: Config
 
@@ -334,6 +364,7 @@ module worker {
   }
 
   // ---- publish, deliver ----
+  // @cite kombu kombu/transport/redis.py:1677-1680 "def _put(self, queue, message, **kwargs):"
   action publish(m: MsgId): bool = all {
     unpublished.contains(m), brokerUp,
     unpublished' = unpublished.exclude(Set(m)), queue' = queue.union(Set(m)),
@@ -346,6 +377,8 @@ module worker {
   // delivered and not acked (virtual/base.py:197-204), so with early ack a
   // slot frees when the pool accepts a task and with late ack when it ends.
   def credit(c: WorkerId): bool = live(c).tags.size() < PREFETCH
+  // @cite kombu kombu/transport/virtual/base.py:197-204 "return not pcount or len(self._delivered) - len(self._dirty) < pcount"
+  // @cite kombu kombu/transport/redis.py:474-495 "def append(self, message, delivery_tag):"
   action deliver(c: WorkerId, m: MsgId): bool = {
     val l = live(c)
     all {
@@ -366,6 +399,7 @@ module worker {
   // The pop arrives, its reply does not. BRPOP has removed the message and
   // nothing records it (kombu issue 305); the script has recorded it under
   // a tag this worker never learns.
+  // @cite kombu kombu/transport/redis.py:1457-1460 "def _brpop_start(self, timeout=None):"
   action lostPop(c: WorkerId, m: MsgId): bool = {
     val l = live(c)
     all {
@@ -385,6 +419,7 @@ module worker {
   action setJob(c: WorkerId, m: MsgId, s: Stage): bool =
     workers' = workers.set(c, Alive({ ...live(c), jobs: live(c).jobs.set(m, s) }))
 
+  // @cite celery celery/worker/consumer/consumer.py:734-738 "def apply_eta_task(self, task):"
   action etaDue(c: WorkerId, m: MsgId): bool = all {
     alive(c), job(c, m) == Scheduled,
     setJob(c, m, Received),
@@ -393,6 +428,7 @@ module worker {
   }
 
   // The job is written to the idle child, which starts the task.
+  // @cite celery celery/concurrency/asynpool.py:977-980 "def _write_job(proc, fd, job):"
   action write(c: WorkerId, m: MsgId): bool = {
     val again = starts.get(m) > 0
     all {
@@ -446,6 +482,7 @@ module worker {
       { worker: Alive(l), unacked: unacked, ops: 0, outcome: TagGone }
 
   // The parent reads the accept (on_accepted): early ack.
+  // @cite celery celery/worker/request.py:524-533 "if not self.task.acks_late:"
   action accept(c: WorkerId, m: MsgId): bool = {
     val l = { ...live(c), jobs: live(c).jobs.set(m, Accepted) }
     val a = ackOf(c, l, m)
@@ -464,6 +501,7 @@ module worker {
     }
   }
 
+  // @cite celery celery/app/trace.py:564 "R = retval = fun(*args, **kwargs)"
   action finish(c: WorkerId, m: MsgId): bool = all {
     alive(c), job(c, m) == Accepted,
     setJob(c, m, Finished),
@@ -475,6 +513,7 @@ module worker {
 
   // A job flush() dropped: the child runs the task to the end, and its
   // result has no job to go to, so nothing acks the message.
+  // @cite celery celery/concurrency/asynpool.py:1079-1090 "if not job._accepted:"
   action finishDropped(c: WorkerId, m: MsgId): bool = all {
     alive(c), job(c, m) == Dropped,
     setJob(c, m, NoJob),
@@ -484,6 +523,7 @@ module worker {
     did(FinishDropped({ c: c, m: m }), 0),
   }
 
+  // @env a task body that never returns (no time limit)
   action hang(c: WorkerId, m: MsgId): bool = all {
     alive(c), job(c, m) == Accepted, used.hangs < CFG.max.hangs,
     setJob(c, m, Hung),
@@ -493,6 +533,7 @@ module worker {
   }
 
   // The parent reads the result (on_success): late ack.
+  // @cite celery celery/worker/request.py:616-631 "if self.task.acks_late:"
   action readResult(c: WorkerId, m: MsgId): bool = {
     val l = { ...live(c), jobs: live(c).jobs.set(m, NoJob) }
     val a = ackOf(c, l, m)
@@ -527,6 +568,7 @@ module worker {
 
   // Warm shutdown: stop consuming, flush, let the pool finish, then restore
   // what is left unacked (restore_at_shutdown) and exit.
+  // @cite celery celery/worker/consumer/consumer.py:581-590 "def on_close(self):"
   action sigterm(c: WorkerId): bool = {
     val l = live(c)
     all {
@@ -539,6 +581,7 @@ module worker {
       did(Sigterm(c), 0),
     }
   }
+  // @cite kombu kombu/transport/virtual/base.py:277-290 "def restore_unacked_once(self, stderr=None):"
   action exit(c: WorkerId): bool = {
     val l = live(c)
     val back = if (l.conn == Up) restorable(c, l.tags) else Set()
@@ -554,6 +597,7 @@ module worker {
   }
 
   // ---- faults ----
+  // @env SIGKILL of the worker and its pool
   action kill(c: WorkerId): bool = all {
     alive(c), used.kills < CFG.max.kills,
     workers' = workers.set(c, Dead),
@@ -562,6 +606,7 @@ module worker {
     did(Kill(c), 0),
   }
   // The supervisor starts a worker that is gone.
+  // @env the supervisor starts the worker again
   action restart(c: WorkerId): bool = all {
     not(alive(c)), used.restarts < CFG.max.restarts,
     workers' = workers.set(c, Alive(if (brokerUp) FRESH
@@ -577,6 +622,7 @@ module worker {
     | Dead => Dead
     | Alive(l) => Alive(if (l.conn == Closed) l else { ...l, conn: Broken })
   }
+  // @env the Redis server dies; it keeps the queue and the unacked hash
   action crash: bool = all {
     brokerUp, used.crashes < CFG.max.crashes,
     brokerUp' = false,
@@ -586,6 +632,7 @@ module worker {
     used' = { ...used, crashes: used.crashes + 1 },
     did(Crash, 0),
   }
+  // @env the Redis server comes back
   action brokerRestart: bool = all {
     not(brokerUp), brokerUp' = true,
     unpublished' = unpublished, queue' = queue, unacked' = unacked,
@@ -595,6 +642,7 @@ module worker {
 
   action setConn(c: WorkerId, state: Conn): bool =
     workers' = workers.set(c, Alive({ ...live(c), conn: state }))
+  // @env a partition that drops the replies to this worker
   action partition(c: WorkerId): bool = all {
     alive(c), live(c).conn == Up, used.partitions < CFG.max.partitions,
     setConn(c, RepliesDropped),
@@ -602,6 +650,7 @@ module worker {
     used' = { ...used, partitions: used.partitions + 1 },
     did(Partition(c), 0),
   }
+  // @env a partition that drops everything to and from this worker
   action cutOff(c: WorkerId): bool = all {
     alive(c), live(c).conn == Up, used.cuts < CFG.max.cuts,
     setConn(c, Cut),
@@ -611,6 +660,7 @@ module worker {
   }
 
   // The partition heals: a blocked ack goes through.
+  // @env the partition heals
   action heal(c: WorkerId): bool = {
     val l = live(c)
     all {
@@ -637,6 +687,8 @@ module worker {
   }
   // The worker notices a dead connection that cannot reach the broker: the
   // closing channel cannot restore anything (redis.py:491-495).
+  // @cite kombu kombu/transport/redis.py:491-495 "def restore_unacked(self, client=None):"
+  // @cite celery celery/worker/consumer/consumer.py:466-470 "def on_connection_error_after_connected(self, exc):"
   action noticeLoss(c: WorkerId): bool = {
     val l = closing(D, live(c))
     all {
@@ -651,6 +703,8 @@ module worker {
   }
   // A connection reset: the worker notices at once and Redis answers a new
   // connection, so the closing channel restores its messages.
+  // @env the connection is reset and Redis answers a new one
+  // @cite kombu kombu/transport/virtual/base.py:277-290 "def restore_unacked_once(self, stderr=None):"
   action reset(c: WorkerId): bool = {
     val l = closing(D, live(c))
     // CloseRestoresIdle leaves a message whose task still runs here
@@ -672,6 +726,7 @@ module worker {
   }
   // The worker reconnects. Resent sends the acks it kept; the
   // reconnectRestore variants restore what the closed channel could not.
+  // @cite celery celery/worker/consumer/consumer.py:466-470 "def on_connection_error_after_connected(self, exc):"
   action reconnect(c: WorkerId): bool = {
     val l = live(c)
     val tried = match D.reconnectRestore {
@@ -725,6 +780,7 @@ module worker {
       NobodyWillAck
     else HeldPastTimeout
   }
+  // @cite kombu kombu/transport/redis.py:521-530 "def restore_visible(self, start=0, num=10, interval=10):"
   action restoreVisible(m: MsgId, c: WorkerId): bool = {
     val why = restoreWhy(m, c)
     all {
@@ -772,24 +828,29 @@ module worker {
   // ---- properties ---------------------------------------------------------
   def published: Set[MsgId] = MSGS.exclude(unpublished)
   def inBroker(m: MsgId): bool = queue.contains(m) or hasRec(unacked.get(m))
+  // The observation the shared properties read (../lib/observe.qnt): a run
+  // is a start in a pool process; done is a finished run; held is in the
+  // broker, or (early ack) running in a live worker; settled is finished
+  // and gone from the broker.
+  val obs: Set[MsgObs] = MSGS.map(m => {
+    published: published.contains(m), runs: starts.get(m),
+    done: finished.get(m) > 0,
+    held: inBroker(m) or (not(late) and WORKERS.exists(c =>
+      alive(c) and running(job(c, m)))),
+    settled: finished.get(m) > 0 and not(inBroker(m)),
+  })
 
   // Exactly once while no fault was used: a task never starts twice, and
   // when the system is quiet each one finished once and the broker is
   // empty. Warm shutdowns and visibility timeouts are not faults.
-  val exactlyOnce: bool = faults(used) == 0 implies (
-    MSGS.forall(m => starts.get(m) <= 1)
-    and (quiet implies MSGS.forall(m =>
-      finished.get(m) == 1 and not(inBroker(m)))))
+  val exactlyOnce: bool = exactlyOnceOf(faults(used) == 0, quiet, obs)
   // At least once, as a safety property: a published message is on the
   // queue or in unacked until a run of it has finished. With early ack a
   // run in a live worker counts too (at most once is the contract there).
-  val neverLost: bool = published.forall(m =>
-    finished.get(m) > 0 or inBroker(m)
-    or (not(late) and WORKERS.exists(c => alive(c) and running(job(c, m)))))
+  val neverLost: bool = neverLostOf(obs)
   // And as an outcome: a quiet system has finished every task and left
   // nothing in the broker.
-  val quietDone: bool = quiet implies MSGS.forall(m =>
-    finished.get(m) > 0 and not(inBroker(m)))
+  val quietDone: bool = quietDoneOf(quiet, obs)
   // No task runs twice for a reason a design could remove, and none at all.
   val noAvoidableDup: bool = dupAvoidable == 0
   val noUnavoidableDup: bool = dupUnavoidable == 0

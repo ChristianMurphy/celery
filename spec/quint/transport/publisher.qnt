@@ -46,6 +46,7 @@ module publishertypes {
 
 module publisher {
   import publishertypes.*
+  import observe.* from "../lib/observe"
 
   const CFG: Config
 
@@ -153,16 +154,24 @@ module publisher {
 
   // ---- properties ----
   // A message whose publish returned is on its way, accepted or written.
-  val neverLost: bool = MSGS.forall(m => pub.get(m) == Returned implies (
-    frames.contains(m) or memory.get(m) > 0 or disk.get(m) > 0))
+  val neverLost: bool = neverLostOf(obs)
   // The queue never has a message twice.
   val publishedOnce: bool = MSGS.forall(m => memory.get(m) + disk.get(m) <= 1)
   // Exactly once while no fault was used.
-  val exactlyOnce: bool = used == NONE implies (
-    publishedOnce and (quiet implies MSGS.forall(m => disk.get(m) == 1)))
+  val exactlyOnce: bool = exactlyOnceOf(used == NONE, quiet, obs)
   // A quiet system has every message on disk and every publish returned.
-  val quietDone: bool = quiet implies MSGS.forall(m =>
-    disk.get(m) > 0 and pub.get(m) == Returned)
+  val quietDone: bool = quietDoneOf(quiet, obs)
+  // The observation the shared properties read (../lib/observe.qnt): a
+  // message counts as published once apply_async() returned; a run is a
+  // copy the queue keeps; done is written; held is on the wire or
+  // accepted; settled is written and returned.
+  val obs: Set[MsgObs] = MSGS.map(m => {
+    published: pub.get(m) == Returned,
+    runs: memory.get(m) + disk.get(m),
+    done: disk.get(m) > 0,
+    held: frames.contains(m) or memory.get(m) > 0,
+    settled: disk.get(m) > 0 and pub.get(m) == Returned,
+  })
   // One frame per publish without confirms, two with.
   val normalCost: bool = (used == NONE and quiet) implies
     sent == MSGS.size() * (if (CFG.confirms == ConfirmsOn) 2 else 1)

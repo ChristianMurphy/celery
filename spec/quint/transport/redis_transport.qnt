@@ -161,6 +161,7 @@ module transporttypes {
 
 module redis_transport {
   import transporttypes.*
+  import observe.* from "../lib/observe"
 
   const CFG: Config
 
@@ -499,7 +500,7 @@ module redis_transport {
   val inSomePlace: bool = published.forall(m => places(m) >= 1)
   // Conservation, weak: or a live consumer is about to read it. A message
   // that breaks this is lost for good.
-  val neverLost: bool = published.forall(m => places(m) >= 1 or inFlight(m))
+  val neverLost: bool = neverLostOf(obs)
   // And never in two places, unless a consumer was killed or held a
   // message past the visibility timeout.
   val notTwice: bool =
@@ -543,14 +544,21 @@ module redis_transport {
   }
   val quiet: bool = unpublished == Set() and CONSUMERS.forall(c => not(busy(c)))
   // A quiet system has acked every message and left no record behind.
-  val quietDone: bool =
-    quiet implies (MSGS.forall(m => acked.contains(m)) and unacked == Set())
+  val quietDone: bool = quietDoneOf(quiet, obs)
   // Exactly once, when no fault was used: never delivered twice, and when
   // quiet, delivered once and acked.
-  val exactlyOnce: bool = used == NO_FAULTS implies (
-    MSGS.forall(m => deliveries.get(m) <= 1)
-    and (quiet implies MSGS.forall(m => deliveries.get(m) == 1
-                                        and acked.contains(m))))
+  val exactlyOnce: bool = exactlyOnceOf(used == NO_FAULTS, quiet, obs)
+  // The observation the shared properties read (../lib/observe.qnt): a run
+  // is a delivery; done is acked; held is on the queue, in unacked, or in a
+  // reply a live consumer is about to read; settled is acked with no
+  // record left.
+  val obs: Set[MsgObs] = MSGS.map(m => {
+    published: published.contains(m), runs: deliveries.get(m),
+    done: acked.contains(m),
+    held: queue.contains(m) or entriesOf(unacked, m).size() > 0
+          or inFlight(m),
+    settled: acked.contains(m) and entriesOf(unacked, m).size() == 0,
+  })
   // Witnesses (violated means reachable).
   val neverQuiet: bool = not(quiet)
   val neverDuplicated: bool = MSGS.forall(m => deliveries.get(m) <= 1)

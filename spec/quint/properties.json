@@ -138,7 +138,8 @@
    ],
    "passes_all": "best_late_crash",
    "progress": "finite by exhaustive search with the step counter in the state",
-   "checklist": "enforced"
+   "checklist": "enforced",
+   "cite": "enforced"
   },
   "publisher.qnt": {
    "family": "transport",
