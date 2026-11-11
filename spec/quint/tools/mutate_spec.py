@@ -220,6 +220,16 @@ MUTANTS = [
      "    val back = if (LATE) cancelled.filter(r => not(r.stale)) else Set()", "    val back = if (LATE) Set() else Set()"),
     ('revoke: an ack that settles nothing', 'revoke.qnt', 'late_revoke', 'quietDone',
      "  action settle(r: Req): bool = if (r.stale) Q::dkeep else Q::ack(r.m)", "  action settle(r: Req): bool = Q::dkeep"),
+    # reader.qnt: one mutant per property
+    ('reader: KeepReady that keeps SUCCESS only', 'reader.qnt', 'keepready_late', 'readersAgree',
+     '      | KeepReady => isReady(cur)', '      | KeepReady => cur == Success'),
+    ('reader: an expired key read as SUCCESS', 'reader.qnt', 'poll_expire', 'answerWasWritten',
+     '| Absent => Pending | Present(x) => x | Expired => Pending', '| Absent => Pending | Present(x) => x | Expired => Success'),
+    ('reader: a restore that looks for the wrong key', 'reader.qnt', 'poll_none', 'restoreFinds',
+     'val found = gkey == Saved', 'val found = gkey == NoGroup'),
+    ('reader: the first read before the subscribe', 'reader.qnt', 'pubsub_none', 'quietDone',
+     "CFG.mode == PubSub, joining(r), view(r, t).sub, not(view(r, t).primed),",
+     "CFG.mode == PubSub, joining(r), not(view(r, t).primed),"),
 ]
 
 

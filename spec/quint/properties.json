@@ -94,7 +94,6 @@
    "apalache": [],
    "fast": [
     "main_crash",
-    "paused_credit_timeout",
     "pr_credit_timeout",
     "renewblind_held_credit"
    ],
@@ -297,6 +296,33 @@
     "checkaccept_expire"
    ],
    "passes_all": "checkaccept_expire",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "reader.qnt": {
+   "family": "result",
+   "types": "readertypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "readersAgree",
+    "answerWasWritten",
+    "restoreFinds",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverAnswered",
+    "neverFailed"
+   ],
+   "apalache": [],
+   "fast": [
+    "pubsub_none"
+   ],
+   "passes_all": "pubsub_none",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -2992,6 +3018,186 @@
    "pattern": "Existence",
    "statement": "Some worker applies the revoke.",
    "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "reader.readersAgree",
+   "spec": "reader.qnt",
+   "definition": "readersAgree",
+   "kind": "safety",
+   "pattern": "Absence (two readers with different ready answers for one task), global",
+   "statement": "Two readers that have a ready answer for a task have the same one.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "docs/userguide/tasks.rst (celery 768e476), States: SUCCESS and FAILURE are ready states; result.py:463-470 caches the first one read",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverAnswered",
+   "mutant": "reader: KeepReady that keeps SUCCESS only",
+   "violations": [
+    {
+     "instances": "poll_late",
+     "reason": "open",
+     "where": "the same class as finding retry-over-failure and tracker es-ready-states: a key-value store replaces a ready state other than SUCCESS (base.py:1369, celery 768e476), and AsyncResult keeps the first ready state it read (result.py:463-470)",
+     "note": "a late write replaces FAILURE with SUCCESS (a duplicate run): the reader that read first keeps FAILURE, the other reads SUCCESS"
+    },
+    {
+     "instances": "pubsub_late",
+     "reason": "open",
+     "where": "the same class as finding retry-over-failure and tracker es-ready-states: a key-value store replaces a ready state other than SUCCESS (base.py:1369, celery 768e476), and AsyncResult keeps the first ready state it read (result.py:463-470)",
+     "note": "the same with pub/sub: the first message is cached, a later reader reads the key"
+    }
+   ]
+  },
+  {
+   "id": "reader.answerWasWritten",
+   "spec": "reader.qnt",
+   "definition": "answerWasWritten",
+   "kind": "safety",
+   "pattern": "Absence (an answer no write stored), global",
+   "statement": "Nothing from nothing: every ready answer a reader has was stored by a write for that task.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "celery/result.py:463-475 (celery 768e476): the answer is what get_task_meta returned",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverAnswered",
+   "mutant": "reader: an expired key read as SUCCESS",
+   "violations": []
+  },
+  {
+   "id": "reader.restoreFinds",
+   "spec": "reader.qnt",
+   "definition": "restoreFinds",
+   "kind": "safety",
+   "pattern": "Absence (a restore that finds nothing after a save that returned), global",
+   "statement": "GroupResult.restore(id) after a GroupResult.save() that returned finds the group.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "celery/result.py:979-987 (celery 768e476): save the group-result \"for later retrieval using restore\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverAnswered",
+   "mutant": "reader: a restore that looks for the wrong key",
+   "violations": [
+    {
+     "instances": "*_expire",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:1070-1086 (celery 768e476), result_expires: stored results are deleted after this time; the group key is set with it (base.py:1379-1382)",
+     "note": "the group key expired before the restore: restore_group returns None"
+    }
+   ]
+  },
+  {
+   "id": "reader.quietDone",
+   "spec": "reader.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: a quiet reader has ended)",
+   "statement": "In a quiet state every reader has ended: it has every answer, or its save, restore or read raised, or the restore found nothing. A join that waits there waits for ever.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "celery/result.py:759-842 (celery 768e476), ResultSet.join: \"Gather the results of all tasks\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "reader: the first read before the subscribe",
+   "violations": [
+    {
+     "instances": "*_expire",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:1070-1086 (celery 768e476), result_expires; docs/userguide/tasks.rst:1335-1336: any task id that is not known is PENDING",
+     "note": "the task key expired before the reader read it: it reads PENDING for ever"
+    },
+    {
+     "instances": "rpc_*",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1293-1296 (celery 768e476): with rpc:// a result can only be retrieved by the client that initiated the task; two processes cannot wait for the same result",
+     "note": "the second reader never gets a message"
+    },
+    {
+     "instances": "*_late",
+     "reason": "open",
+     "where": "finding retry-over-failure (a late RETRY replaces a final state; tracker es-ready-states)",
+     "note": "the late write is RETRY: a reader that reads after it waits for ever"
+    },
+    {
+     "instances": "*pubsub_cut",
+     "reason": "open",
+     "where": "finding pubsub-reconnect-gap (not in the tracker yet; the MGET before the SUBSCRIBE came with celery PR 5921, 2020; closest symptom celery issue 4039)",
+     "note": "the reader's pub/sub connection is lost; the reconnect reads the key (MGET), the final write and its message come next, and only then the new connection subscribes: the message reached nobody and get() waits for ever"
+    }
+   ]
+  },
+  {
+   "id": "reader.progress",
+   "spec": "reader.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "reader.stepOrQuiet",
+   "spec": "reader.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "reader.neverQuiet",
+   "spec": "reader.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "reader.neverAnswered",
+   "spec": "reader.qnt",
+   "definition": "neverAnswered",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A reader gets every answer of the group.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "reader.neverFailed",
+   "spec": "reader.qnt",
+   "definition": "neverFailed",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A task stores FAILURE.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

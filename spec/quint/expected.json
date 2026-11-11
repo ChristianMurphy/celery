@@ -848,6 +848,148 @@
    }
   }
  },
+ "reader.qnt": {
+  "ids_pubsub_cut": {
+   "D": 25,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15,
+    "quietDone": 17
+   }
+  },
+  "keepready_late": {
+   "D": 15,
+   "violated": {
+    "neverAnswered": 8,
+    "neverFailed": 3,
+    "neverQuiet": 11
+   }
+  },
+  "keepready_pubsub_late": {
+   "D": 23,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15
+   }
+  },
+  "poll_error": {
+   "D": 14,
+   "violated": {
+    "neverAnswered": 8,
+    "neverFailed": 3,
+    "neverQuiet": 7
+   }
+  },
+  "poll_expire": {
+   "D": 15,
+   "violated": {
+    "neverAnswered": 8,
+    "neverFailed": 3,
+    "neverQuiet": 10,
+    "quietDone": 10,
+    "restoreFinds": 4
+   }
+  },
+  "poll_late": {
+   "D": 15,
+   "violated": {
+    "neverAnswered": 8,
+    "neverFailed": 3,
+    "neverQuiet": 11,
+    "quietDone": 12,
+    "readersAgree": 8
+   }
+  },
+  "poll_none": {
+   "D": 14,
+   "violated": {
+    "neverAnswered": 8,
+    "neverFailed": 3,
+    "neverQuiet": 11
+   }
+  },
+  "pubsub_cut": {
+   "D": 25,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15,
+    "quietDone": 17
+   }
+  },
+  "pubsub_error": {
+   "D": 22,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 7
+   }
+  },
+  "pubsub_expire": {
+   "D": 23,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 12,
+    "quietDone": 16,
+    "restoreFinds": 4
+   }
+  },
+  "pubsub_late": {
+   "D": 23,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15,
+    "quietDone": 16,
+    "readersAgree": 10
+   }
+  },
+  "pubsub_none": {
+   "D": 22,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15
+   }
+  },
+  "rpc_late": {
+   "D": 12,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 11,
+    "quietDone": 11
+   }
+  },
+  "rpc_none": {
+   "D": 10,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 11,
+    "quietDone": 11
+   }
+  },
+  "subfirst_cut": {
+   "D": 25,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15
+   }
+  },
+  "subfirst_cut2": {
+   "D": 28,
+   "violated": {
+    "neverAnswered": 10,
+    "neverFailed": 3,
+    "neverQuiet": 15
+   }
+  }
+ },
  "redelivery.qnt": {
   "classic_confirm_loss": {
    "D": 6,
