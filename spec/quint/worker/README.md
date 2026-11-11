@@ -544,6 +544,20 @@ What the model says:
   dead letter exchange (`quorum_late_kill`; with one, `quorum_dlx_kill`
   passes).
 
+On the real code (celery 768e476, kombu 445027e, real prefork workers,
+nothing injected but the scaled timers unless named):
+[redis-visibility-loop](../findings/redis-visibility-loop/) (8 runs in 40 s
+with prefetch 1 or `worker_disable_prefetch`, 3 with prefetch 2, 1 with
+deduplication), [rabbitmq-consumer-timeout-loop](../findings/rabbitmq-consumer-timeout-loop/)
+(6 runs in 60 s with exits, 7 with `broker_channel_error_retry`, 1 with
+deduplication, 3 then dropped with SUCCESS on a quorum queue),
+[quorum-delivery-limit](../findings/quorum-delivery-limit/),
+[early-ack-amqp-cut](../findings/early-ack-amqp-cut/) (an injected cut: 3
+of 3 twice), [broker-loss-silent](../findings/broker-loss-silent/) (an
+injected restart: 3 of 3 lost, PENDING, nothing logged). The Redis
+prefetch-2 run took ceil(5 / 2) = 3 runs where the instance, with a run of
+3 units against 2, takes 2: the same bound.
+
 Why each violation is expected:
 
 <!-- generated: reasons redelivery.qnt -->
