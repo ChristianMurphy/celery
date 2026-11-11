@@ -13,6 +13,8 @@
 // what it wrote, and loses what it had only accepted), and the publisher's
 // data is dropped with the connection left open.
 //
+// Celery 768e476, kombu 445027e.
+//
 // Not modeled: consumers, mandatory and returned messages, a quorum queue's
 // replication (its window between accepting and writing is much smaller,
 // not zero), and flow control.
@@ -52,6 +54,7 @@ module publisher {
 
   pure val MSGS: Set[MsgId] = Set(M(1), M(2))
 
+  // ---- state ----
   var pub: MsgId -> Pub
   // basic.publish frames on their way to the broker.
   var frames: Set[MsgId]
@@ -61,6 +64,7 @@ module publisher {
   // basic.ack frames on their way to the publisher.
   var confirms: Set[MsgId]
   var brokerUp: bool
+  // ---- observations ----
   var sent: int      // frames the publisher wrote and read
   var used: Budget
   var lastAction: Action
@@ -76,7 +80,9 @@ module publisher {
     lastAction' = a, steps' = steps + 1, sent' = sent + n,
   }
 
+  // ---- actions ----
   // The publisher writes the frame. Without confirms that is all.
+  // @cite celery celery/app/amqp.py:661 "ret = producer.publish(body, **publish_kwargs)"
   action send(m: MsgId): bool = all {
     pub.get(m) == Unsent, brokerUp,
     frames' = frames.union(Set(m)),
@@ -85,6 +91,7 @@ module publisher {
     brokerUp' = brokerUp, used' = used, did(Send(m), 1),
   }
   // The queue accepts the message.
+  // @env RabbitMQ accepts a basic.publish into a durable queue
   action arrive(m: MsgId): bool = all {
     frames.contains(m), brokerUp,
     frames' = frames.exclude(Set(m)),
@@ -93,6 +100,7 @@ module publisher {
     used' = used, did(Arrive(m), 0),
   }
   // The queue writes it, and confirms it when the publisher asked.
+  // @env RabbitMQ confirms a persistent message once it is written
   action writeToDisk(m: MsgId): bool = all {
     memory.get(m) > 0, brokerUp,
     disk' = disk.setBy(m, n => n + memory.get(m)),
@@ -102,6 +110,9 @@ module publisher {
     pub' = pub, frames' = frames, brokerUp' = brokerUp, used' = used,
     did(WriteToDisk(m), 0),
   }
+  // The publisher reads the basic.ack (py-amqp 5.4.2
+  // basic_publish_confirm, channel.py:1814).
+  // @cite kombu kombu/transport/pyamqp.py:78-85 "Passing ``confirm_publish=True`` in ``transport_options`` enables publisher"
   action confirm(m: MsgId): bool = all {
     confirms.contains(m),
     confirms' = confirms.exclude(Set(m)),
@@ -115,6 +126,7 @@ module publisher {
     pub.get(m) == Waiting, not(frames.contains(m)), memory.get(m) == 0,
     not(confirms.contains(m)),
   }
+  // @cite kombu kombu/messaging.py:349-351 "_publish = self.connection.ensure(self, _publish, **retry_policy)"
   action resend(m: MsgId): bool = all {
     stalled(m), brokerUp,
     frames' = frames.union(Set(m)),
@@ -125,18 +137,21 @@ module publisher {
   // ---- faults ----
   // The broker is killed: what it had not written is gone, and so is
   // everything on the wire.
+  // @env SIGKILL of a RabbitMQ node
   action crash: bool = all {
     brokerUp, used.crashes < CFG.max.crashes,
     brokerUp' = false, memory' = MSGS.mapBy(_ => 0), frames' = Set(),
     confirms' = Set(), pub' = pub, disk' = disk,
     used' = { ...used, crashes: used.crashes + 1 }, did(Crash, 0),
   }
+  // @env the node starts again with what it wrote
   action brokerRestart: bool = all {
     not(brokerUp), brokerUp' = true,
     pub' = pub, frames' = frames, memory' = memory, disk' = disk,
     confirms' = confirms, used' = used, did(BrokerRestart, 0),
   }
   // The network drops the publisher's data in both directions.
+  // @env a partition between the publisher and RabbitMQ
   action dropData: bool = all {
     frames != Set() or confirms != Set(), used.drops < CFG.max.drops,
     frames' = Set(), confirms' = Set(),
@@ -144,6 +159,7 @@ module publisher {
     used' = { ...used, drops: used.drops + 1 }, did(DropData, 0),
   }
 
+  // ---- step ----
   action step: bool = any {
     {
       nondet m = MSGS.oneOf()
@@ -153,6 +169,7 @@ module publisher {
   }
 
   // ---- properties ----
+  // invariants
   // A message whose publish returned is on its way, accepted or written.
   val neverLost: bool = neverLostOf(obs)
   // The queue never has a message twice.
@@ -175,9 +192,12 @@ module publisher {
   // One frame per publish without confirms, two with.
   val normalCost: bool = (used == NONE and quiet) implies
     sent == MSGS.size() * (if (CFG.confirms == ConfirmsOn) 2 else 1)
-  // Witness (violated means reachable).
+  // witnesses (violated means reachable)
   val neverQuiet: bool = not(quiet)
 
+  // liveness, in three lemmas (see ../README.md). progress: finite by
+  // exhaustive search with the step counter in the state; quietDone above
+  // is lemma 3.
   val quiet: bool = and {
     brokerUp, frames == Set(), confirms == Set(),
     MSGS.forall(m => pub.get(m) != Unsent and memory.get(m) == 0

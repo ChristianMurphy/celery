@@ -144,7 +144,8 @@
    "types": "publishertypes",
    "metric": "sent",
    "pins": {
-    "celery": "768e476"
+    "celery": "768e476",
+    "kombu": "445027e"
    },
    "properties": [
     "neverLost",
@@ -163,7 +164,8 @@
    ],
    "passes_all": "on_none",
    "progress": "finite by exhaustive search with the step counter in the state",
-   "checklist": "enforced"
+   "checklist": "enforced",
+   "cite": "enforced"
   },
   "chain.qnt": {
    "family": "canvas",
