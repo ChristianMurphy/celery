@@ -78,5 +78,7 @@ Why each violation is expected:
 
 ## Findings
 
-See [../findings/](../findings/README.md); the kill is
-[beat-kill-double](../findings/beat-kill-double/) once confirmed.
+[beat-kill-double](../findings/beat-kill-double/) (duplicate): beat
+killed with SIGKILL between two syncs sends the last crontab occurrence
+again at its restart; 3 of 3 on the real code, 0 of 2 after SIGTERM, 0 of
+1 with `beat_sync_every = 1`.
