@@ -12,7 +12,8 @@ script can check it, on a comment line of its own:
 spec is pinned to in properties.json (``pins``). The quoted anchor must
 occur within the cited lines at that SHA, and somewhere in the same file on
 current main, so that a citation that moved is noticed and one whose code
-is gone fails.
+is gone fails. A citation of a commit that is not on main (a pull
+request's branch) is checked at that commit only.
 
 Every action of a spec whose checklist is enforced needs a structured
 citation in the comment block above it (or in its body). The prose
@@ -48,7 +49,7 @@ ACTION = re.compile(r'^\s*action\s+(\w+)')
 #: their own to cite.
 HELPERS = {'init', 'step', 'stutter', 'stepOrQuiet', 'did', 'keepBroker',
            'keepStarts', 'keepRuns', 'setJob', 'setConn', 'restoreAll',
-           'keepObs', 'setRun', 'dinit', 'dkeep', 'inner'}
+           'keepObs', 'setRun', 'dinit', 'dkeep', 'inner', 'keepRedis'}
 
 
 def repo(name: str) -> Path | None:
@@ -84,6 +85,15 @@ def main_ref(name: str) -> str:
     return os.environ.get(f'{name.upper()}_MAIN', 'HEAD')
 
 
+@functools.cache
+def merged(name: str, sha: str) -> bool:
+    """Whether commit ``sha`` is on main in repository ``name``."""
+    r = repo(name)
+    out = subprocess.run(['git', '-C', str(r), 'merge-base', '--is-ancestor',
+                          sha, main_ref(name)], capture_output=True)
+    return out.returncode == 0
+
+
 def structured(spec: str, text: str, pins: dict) -> tuple[list[str],
                                                           list[str], int]:
     errors, skipped, n = [], [], 0
@@ -113,6 +123,10 @@ def structured(spec: str, text: str, pins: dict) -> tuple[list[str],
         elif not any(anchor in l for l in lines[a - 1:b]):
             errors.append(f'{spec}:{i}: "{anchor}" is not in {path}:{a}-{b} '
                           f'at {rev}')
+        # A citation of an unmerged commit (a pull request's branch) is
+        # checked at that commit only: its code is not on main yet.
+        if sha and not merged(name, sha):
+            continue
         cur = show(name, main_ref(name), path)
         if cur is not None and not any(anchor in l for l in cur):
             errors.append(f'{spec}:{i}: "{anchor}" is gone from {path} on '

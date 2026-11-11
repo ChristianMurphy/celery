@@ -223,6 +223,7 @@ module redis_transport {
 
   // A publisher puts a message on the queue (_put :1974-2007); with the PR
   // it also pushes a wake token in the same pipeline.
+  // @cite kombu@c61b525 kombu/transport/redis.py:1974-1986 "def _put(self, queue, message, **kwargs):"
   action publish(m: MsgId): bool = all {
     unpublished.contains(m),
     unpublished' = unpublished.exclude(Set(m)),
@@ -234,6 +235,7 @@ module redis_transport {
 
   // A consumer with credit sends its pop (_brpop_start; QoS.can_consume).
   // The script's score is the time the command was built (:1668, 1645).
+  // @cite kombu@c61b525 kombu/transport/redis.py:1647-1650 "def _brpop_start(self, timeout=None):"
   action sendPop(c: ConsumerId): bool = all {
     alive(c), live(c).poll == Idle, credit(c), not(live(c).emptied),
     consumers' = consumers.set(c, Alive({ ...live(c),
@@ -249,6 +251,7 @@ module redis_transport {
   //         sent, and leaves a wake token if the queue is not empty
   //         (:270-304). `mismatch`: the tag the script read is not the one
   //         kombu reads from the message.
+  // @cite kombu@c61b525 kombu/transport/redis.py:223-305 "POP_UNACKED ="
   action serverPop(c: ConsumerId, m: MsgId, mismatch: bool): bool = {
     val tag = if (mismatch) ScriptTag else OwnTag
     val score = scoreOf(live(c).poll)
@@ -276,6 +279,7 @@ module redis_transport {
 
   // PR: the pop found every queue empty; the consumer waits on the wake
   // list next (_brpop_read :1700-1722). On main BRPOP itself blocks.
+  // @cite kombu@c61b525 kombu/transport/redis.py:1700-1702 "self._wait_for_wake = bool(int(empty))"
   action popEmpty(c: ConsumerId): bool = all {
     scripted(CFG.design), alive(c), isPopping(live(c).poll), queue == Set(),
     consumers' = consumers.set(c, Alive({ ...live(c), poll: Waiting })),
@@ -285,6 +289,7 @@ module redis_transport {
 
   // PR: the last pop said every queue was empty, so the consumer waits on
   // the wake list without popping first, whatever was published since.
+  // @cite kombu@c61b525 kombu/transport/redis.py:1653-1656 "command_args = ['BLPOP', *map(self._wake_key, queues),"
   action waitAfterEmpty(c: ConsumerId): bool = all {
     alive(c), live(c).poll == Idle, credit(c), live(c).emptied,
     consumers' = consumers.set(c, Alive({
@@ -294,6 +299,7 @@ module redis_transport {
   }
 
   // PR: BLPOP takes the token; the consumer sends its pop (:1713-1722).
+  // @cite kombu@c61b525 kombu/transport/redis.py:1713-1715 "self._wait_for_wake = not waited"
   action wakeUp(c: ConsumerId): bool = all {
     alive(c), live(c).poll == Waiting, wake, credit(c),
     wake' = false,
@@ -307,6 +313,7 @@ module redis_transport {
   // PR: the wait times out (brpop_timeout) and the consumer pops anyway.
   // Only with a message queued: a timeout over an empty queue leads back
   // to the same wait.
+  // @cite kombu@c61b525 kombu/transport/redis.py:1713-1715 "self._wait_for_wake = not waited"
   action waitTimeout(c: ConsumerId): bool = all {
     alive(c), live(c).poll == Waiting, queue != Set(), credit(c),
     consumers' = consumers.set(c, Alive({ ...live(c),
@@ -326,6 +333,9 @@ module redis_transport {
   //         has put the message back otherwise. Else deliver; a message
   //         recorded under another tag is recorded again under its own, in
   //         the transaction that drops the script's record.
+  // @cite kombu kombu/transport/virtual/base.py:197-204 "return not pcount or len(self._delivered) - len(self._dirty) < pcount"
+  // @cite kombu kombu/transport/redis.py:474-495 "def append(self, message, delivery_tag):"
+  // @cite kombu@c61b525 kombu/transport/redis.py:1724-1726 "def _put_back(self, queue, position, item, tag):"
   action receive(c: ConsumerId): bool = {
     val s = live(c)
     val p = replyOf(s.poll)
@@ -365,6 +375,7 @@ module redis_transport {
   }
 
   // QoS.ack: remove the record under the message's own tag (:636-638).
+  // @cite kombu@c61b525 kombu/transport/redis.py:636-638 "self._remove_from_indices(delivery_tag).execute()"
   action ack(c: ConsumerId, m: MsgId): bool = all {
     alive(c), live(c).held.contains(m),
     unacked' = unacked.filter(e => not(e.m == m and e.tag == OwnTag)),
@@ -378,6 +389,7 @@ module redis_transport {
 
   // ---- faults ----
   // The consumer is killed: nothing it held in memory survives.
+  // @env SIGKILL of the consumer
   action crash(c: ConsumerId): bool = all {
     alive(c), used.crashes < CFG.max.crashes,
     consumers' = consumers.set(c, Dead),
@@ -390,6 +402,7 @@ module redis_transport {
   // the visibility timeout goes back to the queue (restore_by_tag
   // :688-699), with a wake token on the PR. Free of charge when the
   // consumer that popped the message is dead; a fault when it is alive.
+  // @cite kombu@c61b525 kombu/transport/redis.py:660-699 "def restore_by_tag(self, tag, client=None, leftmost=False):"
   action restore(c: ConsumerId, e: Entry): bool = {
     val holder = consumers.get(e.by)
     val h = liveOf(holder)
@@ -428,6 +441,7 @@ module redis_transport {
   // A consumer that holds a message renews its tag. The record under that
   // tag is another consumer's, written after a restore: RenewBlind moves
   // its score all the same.
+  // @env design variant, not in kombu: the renewal proposed for kombu issue 337
   action renewOthers(c: ConsumerId, e: Entry): bool = all {
     CFG.renewal == RenewBlind, alive(c), live(c).held.contains(e.m),
     unacked.contains(e), e.by != c, e.tag == OwnTag, not(e.moved),
@@ -438,6 +452,7 @@ module redis_transport {
   }
 
   // The consumer's credit goes while a reply is on its way, and comes back.
+  // @env celery lowers the prefetch count when an ETA task finishes
   action loseCredit(c: ConsumerId): bool = all {
     alive(c), isReply(live(c).poll), live(c).prefetch == PREFETCH,
     used.creditLosses < CFG.max.creditLosses,
@@ -446,6 +461,7 @@ module redis_transport {
     keepRedis, unpublished' = unpublished, clock' = clock, keepObs,
     did(LoseCredit(c), 0),
   }
+  // @env and raises it again
   action regainCredit(c: ConsumerId): bool = all {
     alive(c), live(c).prefetch < PREFETCH,
     consumers' = consumers.set(c, Alive({ ...live(c), prefetch: PREFETCH })),
@@ -453,6 +469,7 @@ module redis_transport {
     used' = used, did(RegainCredit(c), 0),
   }
 
+  // ---- step ----
   // The choices are made next to the actions that use them: the simulator
   // and TLC try every combination of the choices in scope for every action.
   action step: bool = any {

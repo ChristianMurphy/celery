@@ -100,7 +100,8 @@
    ],
    "passes_all": "pr_credit_timeout",
    "progress": "finite by exhaustive search with the step counter in the state",
-   "checklist": "enforced"
+   "checklist": "enforced",
+   "cite": "enforced"
   },
   "worker.qnt": {
    "family": "worker",
