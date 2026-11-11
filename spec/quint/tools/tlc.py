@@ -11,7 +11,7 @@ so each property is checked by its own TLC run on the same file:
 * with the specs' ``stepOrQuiet`` as the step and deadlock checking on, a
   state without a successor is a run that stopped without being quiet.
 
-    python3 tlc.py chord.qnt redis_dup atMostOnce quietDone
+    python3 tools/tlc.py chord.qnt redis_dup atMostOnce quietDone
 """
 from __future__ import annotations
 
@@ -25,17 +25,57 @@ import tempfile
 import time
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-CACHE = HERE / '.cache'
+#: spec/quint: the families (result/, canvas/, transport/, worker/, ...),
+#: lib/, expected.json and the cache are found from here.
+ROOT = Path(__file__).resolve().parent.parent
+CACHE = ROOT / '.cache'
 JAR = Path.home() / '.quint/apalache-dist-0.62.4/apalache/lib/apalache.jar'
 # TLC keeps its queue and fingerprints in the metadir; keep that off the disk
 SCRATCH = '/dev/shm' if os.path.isdir('/dev/shm') else None
+#: Directories that hold no spec.
+NOT_FAMILIES = ('tools', 'adapter', 'findings', 'traces', 'histories')
+
+
+def spec_path(name: str | Path) -> Path:
+    """The path of a spec given by its file name (``worker.qnt``): specs are
+    named by their file name everywhere (expected.json, the catalog, the
+    mutants), and each lives in one family directory."""
+    name = Path(name)
+    if name.is_absolute():
+        return name
+    if (ROOT / name).exists():
+        return (ROOT / name).resolve()
+    found = [f for f in ROOT.glob(f'*/{name.name}')
+             if f.parent.name not in NOT_FAMILIES
+             and not f.parent.name.startswith(('.', '_'))]
+    if len(found) != 1:
+        raise FileNotFoundError(f'{name}: {len(found)} files of that name')
+    return found[0]
+
+
+def imported(spec: Path) -> list[Path]:
+    """The other files ``spec`` imports from, and theirs, in a fixed order."""
+    seen: dict[Path, None] = {}
+    todo = [spec]
+    while todo:
+        f = todo.pop()
+        for rel in re.findall(r' from "([^"]+)"', f.read_text()):
+            g = (f.parent / f'{rel}.qnt').resolve()
+            if g != spec and g not in seen and g.exists():
+                seen[g] = None
+                todo.append(g)
+    return sorted(seen)
 
 
 def _spec_hash(spec: Path) -> str:
+    """A hash of the spec, its instances and what they import: an edit to
+    another family leaves this one's compiled instances valid."""
     h = hashlib.sha1()
-    for f in sorted(spec.parent.glob('*.qnt')):
-        h.update(f.name.encode())
+    files = {spec, instances_file(spec)}
+    for f in list(files):
+        files.update(imported(f))
+    for f in sorted(files):
+        h.update(str(f.relative_to(ROOT)).encode())
         h.update(f.read_bytes())
     return h.hexdigest()[:16]
 
@@ -68,15 +108,24 @@ def instance_file(spec: str | Path, main: str) -> Path:
     quint flattens every module of every file it loads, which takes about a
     second per instance module, whichever one is the main module. With one
     instance in the file, a compile or a simulator start takes a fifth of
-    the time."""
-    spec = (HERE / spec).resolve()
+    the time. The file sits in the cache at the spec's own relative path,
+    next to copies of the files it imports, so relative imports hold."""
+    spec = spec_path(spec)
     key = hashlib.sha1(f'{_spec_hash(spec)}:{spec.name}:{main}'.encode()
                        ).hexdigest()[:16]
-    out = CACHE / key / spec.name
+    out = CACHE / key / spec.relative_to(ROOT)
     if not out.exists():
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(single_instance(
+        for dep in imported(spec):
+            if dep == instances_file(spec):
+                continue
+            copy = CACHE / key / dep.relative_to(ROOT)
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(dep, copy)
+        part = out.with_suffix('.part')
+        part.write_text(single_instance(
             spec.read_text(), instances_file(spec).read_text(), main))
+        part.rename(out)
     return out
 
 
@@ -99,7 +148,7 @@ def compile_tla(spec: str | Path, main: str, props: list[str],
         p = subprocess.run(
             ['quint', 'compile', '--target=tlaplus', f'--main={main}',
              str(single), f'--step={step}', f'--invariant={",".join(props)}'],
-            cwd=HERE, stdout=f, stderr=subprocess.PIPE, text=True)
+            cwd=ROOT, stdout=f, stderr=subprocess.PIPE, text=True)
     text = part.read_text()
     part.unlink()
     if p.returncode or 'q_step ==' not in text:

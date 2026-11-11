@@ -9,18 +9,18 @@ are checked against the specs.
 
 | File | What |
 |---|---|
-| `resultstate.qnt` | Result state of one task id; four stores (`rtw`, `mongo`, `sql`, `es`) |
-| `chord.qnt`, `chord_instances.qnt` | Chord completion; five protocols (Redis Lua, incr counting on main, two fixes for celery issue 11036, `chord_unlock`), the interrupted dispatch of celery issue 11039, 69 instances |
-| `redis_transport.qnt`, `redis_transport_instances.qnt` | kombu's Redis consume path: BRPOP then record (main) and the pop script of kombu PR 2831, two consumers, 15 instances |
-| `worker.qnt`, `worker_instances.qnt`, `gen_worker_instances.py` | Two workers from the broker to a finished task: the pool hand-off, ack modes, shutdown, reconnect, the visibility timeout, and eight design choices; 94 instances. See [WORKER.md](WORKER.md) |
-| `publisher.qnt`, `publisher_instances.qnt` | A RabbitMQ publisher with confirms off or on; 6 instances. See WORKER.md |
-| `design_tables.py` | The worker results as one table per design, from `expected.json` |
-| `scenarios.qnt` | The behaviors behind the findings, as `quint test` runs |
-| `check.py`, `expected.json` | The tiers; D and the expected violations of every instance |
-| `tlc.py` | Exhaustive search with TLC |
-| `type_errors.py` | Mistakes the types reject |
-| `mutate_spec.py` | Spec mutants: each must make a property fail |
-| `baseline/` | The result matrix before and after the retyping |
+| `result/resultstate.qnt` | Result state of one task id; four stores (`rtw`, `mongo`, `sql`, `es`) |
+| `canvas/chord.qnt`, `canvas/chord_instances.qnt` | Chord completion; five protocols (Redis Lua, incr counting on main, two fixes for celery issue 11036, `chord_unlock`), the interrupted dispatch of celery issue 11039, 69 instances |
+| `transport/redis_transport.qnt`, `transport/redis_transport_instances.qnt` | kombu's Redis consume path: BRPOP then record (main) and the pop script of kombu PR 2831, two consumers, 15 instances |
+| `worker/worker.qnt`, `worker/worker_instances.qnt`, `tools/gen_worker_instances.py` | Two workers from the broker to a finished task: the pool hand-off, ack modes, shutdown, reconnect, the visibility timeout, and eight design choices; 94 instances. See [worker/README.md](worker/README.md) |
+| `transport/publisher.qnt`, `transport/publisher_instances.qnt` | A RabbitMQ publisher with confirms off or on; 6 instances. See worker/README.md |
+| `tools/design_tables.py` | The worker results as one table per design, from `expected.json` |
+| `canvas/scenarios.qnt` | The behaviors behind the findings, as `quint test` runs |
+| `tools/check.py`, `expected.json` | The tiers; D and the expected violations of every instance |
+| `tools/tlc.py` | Exhaustive search with TLC |
+| `tools/type_errors.py` | Mistakes the types reject |
+| `tools/mutate_spec.py` | Spec mutants: each must make a property fail |
+| `tools/baseline/` | The result matrix before and after the retyping |
 | `adapter/replay_*.py` | Spec to code: replay ITF traces on Redis, MongoDB, PostgreSQL, Elasticsearch, memcached |
 | `adapter/record_*.py`, `adapter/check_histories.py`, `adapter/worker_app.py` | Code to spec: record histories (threads, a real worker), check them with `quint test` |
 | `adapter/confirm_*.py` | The four counterexamples about the fix branches, on the real code |
@@ -32,12 +32,12 @@ are checked against the specs.
 ```sh
 npm i -g @informalsystems/quint          # 0.33.1; Java 17+ from the full tier on
 cd spec/quint
-python3 check.py                         # fast tier
-python3 check.py --tier full             # exhaustive search, Apalache
-python3 check.py --tier long             # Apalache on the large instances too
-python3 check.py --only chord --instance once_dup --tier full
-quint test --main=onceReadOnce scenarios.qnt
-quint run --main=redis_dup chord_instances.qnt --invariant=atMostOnce
+python3 tools/check.py                         # fast tier
+python3 tools/check.py --tier full             # exhaustive search, Apalache
+python3 tools/check.py --tier long             # Apalache on the large instances too
+python3 tools/check.py --only chord --instance once_dup --tier full
+quint test --main=onceReadOnce canvas/scenarios.qnt
+quint run --main=redis_dup canvas/chord_instances.qnt --invariant=atMostOnce
 PYTHONPATH=$(git rev-parse --show-toplevel):$PWD ./run_all.sh full   # needs the services
 ```
 
@@ -89,7 +89,7 @@ Other rules the specs follow:
   all choices at the top of `step`, the simulator and TLC try every
   combination for every action (500 instead of 3 for most of them).
 
-`python3 type_errors.py --old` checks 15 mistakes: each is rejected now, and
+`python3 tools/type_errors.py --old` checks 15 mistakes: each is rejected now, and
 the 12 that can be written against the untyped specs at 355c8b7 typechecked
 there. Among them: a misspelled state (`"SUCESS"`), a claim token used as a
 header id, `deliver` with its arguments swapped, a `chord_unlock` run with a
@@ -100,11 +100,11 @@ untyped spec checked silently as its last branch, `"es"`.
 
 ### The retyping changed no result
 
-`baseline/` holds the matrix of the untyped specs at 355c8b7 and of the
+`tools/baseline/` holds the matrix of the untyped specs at 355c8b7 and of the
 retyped ones: 187 cells (29 instances, 6 or 7 properties), each checked by the
 simulator (2,000 samples of 40 steps, seed 17) and by an exhaustive search
-with TLC. `python3 baseline/compare.py baseline/untyped-355c8b7.json
-baseline/typed.json`:
+with TLC. `python3 tools/baseline/compare.py tools/baseline/untyped-355c8b7.json
+tools/baseline/typed.json`:
 
 * verdicts: 133 hold and 54 are violated, the same cells before and after, in
   both engines;
@@ -254,7 +254,7 @@ for kombu issue 337, as a blind `ZADD XX` or as compare and set), `CFG.putBack`
 `waitAfterEmpty`, which recorded command histories showed was missing. The
 worker side (prefetch above 1, the pool, shutdown, partitions, the classes of
 duplicates and the designs compared) is `worker.qnt`; both are described with
-their results in [WORKER.md](WORKER.md). Not modeled anywhere yet: several
+their results in [worker/README.md](worker/README.md). Not modeled anywhere yet: several
 queues and priorities.
 
 ## Mapping to the code
@@ -295,12 +295,12 @@ Each action in the `.qnt` files carries the same citation in a comment.
 
 ## Results
 
-`python3 check.py --tier full` on 4 shared cores, every cell as
+`python3 tools/check.py --tier full` on 4 shared cores, every cell as
 `expected.json` says: 32 minutes for the result, chord and first 15 transport
 instances (compiling 9 minutes, TLC 17, Apalache 7), and about 21 minutes for
 the 94 worker instances, 14 minutes for the 27 transport ones and under a
 minute for the publisher. The worker, publisher and renewal results are in
-[WORKER.md](WORKER.md). D is the longest run in steps, "states" the distinct
+[worker/README.md](worker/README.md). D is the longest run in steps, "states" the distinct
 reachable states, and a number after a property the states in a shortest
 counterexample. "Violated" lists properties that fail; "reachable" lists
 witnesses, where failing means the state can be reached. Every property not
@@ -481,7 +481,7 @@ without popping first.
 
 ### Fast tier
 
-`python3 check.py`: 90 s for 28 of the 200 instances, 300 samples each. In every simulated instance the longest sampled run is
+`python3 tools/check.py`: 90 s for 28 of the 200 instances, 300 samples each. In every simulated instance the longest sampled run is
 at most the proven D, and equal to it in most.
 
 ## Findings (spec vs. code)
@@ -671,7 +671,7 @@ Elasticsearch 8.15 and memcached 1.6:
 
 ## Mutations
 
-Spec (`mutate_spec.py`): 29 mutants, 27 caught and 2 equivalent, as
+Spec (`tools/mutate_spec.py`): 29 mutants, 27 caught and 2 equivalent, as
 expected. The 27: 3 result stores (mongo without `$ne`, sql without the
 locked re-read, es without the ready check); 5 for 768e476's chords (Redis
 without dedupe, the claim without NX, incr on `>=`, an unfailed retry

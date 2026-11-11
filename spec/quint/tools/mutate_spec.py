@@ -5,8 +5,8 @@ Each mutant is the spec with one rule changed back to what the code did
 before a fix (or a plausible slip). The property named must be violated on
 an instance where the unmutated spec satisfies it.
 
-    python3 mutate_spec.py
-    python3 mutate_spec.py transport      # only mutants that mention a word
+    python3 tools/mutate_spec.py
+    python3 tools/mutate_spec.py transport      # only mutants that mention a word
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import tlc
 
-HERE = Path(__file__).resolve().parent
+HERE = tlc.ROOT
 
 # (name, spec, instance, property, old, new)
 MUTANTS = [
@@ -123,8 +123,9 @@ MUTANTS = [
 ]
 
 
-def violated(spec_text: str, instance: str, prop: str, samples: int) -> bool:
-    with tempfile.NamedTemporaryFile('w', suffix='.qnt', dir=HERE,
+def violated(where: Path, spec_text: str, instance: str, prop: str,
+             samples: int) -> bool:
+    with tempfile.NamedTemporaryFile('w', suffix='.qnt', dir=where,
                                      prefix='.mutant_', delete=False) as f:
         f.write(spec_text)
         path = Path(f.name)
@@ -144,13 +145,14 @@ def main() -> None:
     chosen = [m for m in MUTANTS
               if all(word in m[0] + m[1] for word in sys.argv[1:])]
     for name, spec, inst, prop, old, new in chosen:
-        text = (HERE / spec).read_text()
-        instances = tlc.instances_file(HERE / spec).read_text()
+        path = tlc.spec_path(spec)
+        text = path.read_text()
+        instances = tlc.instances_file(path).read_text()
         assert text.count(old) == 1, f'{name}: pattern found {text.count(old)}x'
-        base = violated(tlc.single_instance(text, instances, inst), inst,
+        base = violated(path.parent, tlc.single_instance(text, instances, inst), inst,
                         prop, 3000)
-        mut = violated(tlc.single_instance(text.replace(old, new), instances,
-                                           inst), inst, prop, 3000)
+        mut = violated(path.parent, tlc.single_instance(
+            text.replace(old, new), instances, inst), inst, prop, 3000)
         ok = mut and not base
         if name.startswith('EQUIV'):
             ok = not ok

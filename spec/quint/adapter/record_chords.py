@@ -212,10 +212,10 @@ def main(argv=None) -> int:
     runs = '\n\n'.join(to_run(i, args.proto, ev)
                        for i, ev in enumerate(groups.values()))
     src = (f'module {mod} {{\n'
-           f'  import chordtypes.* from "../chord"\n'
+           f'  import chordtypes.* from "../canvas/chord"\n'
            f'  import chord(CFG = {{ ...lateAck({args.proto.capitalize()}), '
            f'max: {{ ...NO_FAULTS, dups: 20 }} }}).* '
-           f'from "../chord"\n\n{runs}\n}}\n')
+           f'from "../canvas/chord"\n\n{runs}\n}}\n')
     out = HERE / 'histories' / f'{mod}.qnt'
     out.write_text(src)
     dups = sum(1 for ev in groups.values() for e in ev if e['kind'] == 'deliver') - N * len(groups)

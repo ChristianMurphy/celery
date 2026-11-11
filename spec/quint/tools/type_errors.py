@@ -7,18 +7,21 @@ ids were ints (``old``); the cases for what was specified since have none. The n
 one is checked too, against the old specs from git: it must be accepted,
 which shows the mistake used to pass.
 
-    python3 type_errors.py
-    python3 type_errors.py --old
+    python3 tools/type_errors.py
+    python3 tools/type_errors.py --old
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+import tlc
+
+HERE = tlc.ROOT
 OLD_REV = '355c8b7'
 
 NEW_CHORD = '''module t {
@@ -172,7 +175,10 @@ def main() -> int:
     def check(case: tuple) -> tuple:
         what, new, old = case
         was_ok = typechecks(old_dir, old)[0] if old_dir and old else None
-        return what, *typechecks(HERE, new), was_ok
+        # next to the spec the snippet imports
+        family = tlc.spec_path(re.search(r'from "\./(\w+)"', new)[1]
+                               + '.qnt').parent
+        return what, *typechecks(family, new), was_ok
 
     with ThreadPoolExecutor(4) as ex:
         results = list(ex.map(check, CASES))

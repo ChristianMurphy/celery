@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Check every spec instance against every property, in three tiers.
 
-    python3 check.py                  # fast: typecheck, type errors, simulator
-    python3 check.py --all            # fast, on every instance
-    python3 check.py --tier full      # exhaustive search (TLC), Apalache
-    python3 check.py --tier long      # Apalache on the big instances too
-    python3 check.py --only chord --instance redis_dup --tier full
-    python3 check.py --tier full --update-expected   # rewrite expected.json
-    python3 check.py --cex            # write counterexamples as ITF traces
+    python3 tools/check.py                  # fast: typecheck, type errors, simulator
+    python3 tools/check.py --all            # fast, on every instance
+    python3 tools/check.py --tier full      # exhaustive search (TLC), Apalache
+    python3 tools/check.py --tier long      # Apalache on the big instances too
+    python3 tools/check.py --only chord --instance redis_dup --tier full
+    python3 tools/check.py --tier full --update-expected   # rewrite expected.json
+    python3 tools/check.py --cex            # write counterexamples as ITF traces
 
 fast   ``quint typecheck``; the mistakes in type_errors.py are rejected; one
        simulator run per instance: the properties expected to hold and
@@ -44,7 +44,7 @@ from pathlib import Path
 
 import tlc
 
-HERE = Path(__file__).resolve().parent
+HERE = tlc.ROOT
 EXPECTED = HERE / 'expected.json'
 #: Traces per instance read back to count actions and outcomes. With fewer
 #: than the samples, quint keeps the longest runs, and an action that ends a
@@ -74,7 +74,7 @@ class Spec:
 
 def instances(file: str) -> list[str]:
     """The instance modules of a spec file, in the order it lists them."""
-    text = tlc.instances_file(HERE / file).read_text()
+    text = tlc.instances_file(tlc.spec_path(file)).read_text()
     text = text.partition(tlc.INSTANCES)[2]
     return re.findall(r'^module (\w+) \{', text, re.M)
 
@@ -206,7 +206,7 @@ def simulate(spec: Spec, inst: str, exp: dict, samples: int,
 def declared_actions(spec: Spec) -> list[str]:
     """``Action`` and ``Action.Detail`` for every variant of the spec's
     Action type, read from its types module."""
-    text = (HERE / spec.file).read_text()
+    text = tlc.spec_path(spec.file).read_text()
     text = text[text.index(f'module {spec.types} {{'):]
     text = re.sub(r'//[^\n]*', '', text)
     sums = {m[1]: re.findall(r'\b([A-Z]\w*)\b', re.sub(r'\([^)]*\)', '', m[2]))
@@ -229,12 +229,12 @@ def fast(names: list[str], only: str | None, samples: int, seed: str,
     ok = True
     t0 = time.time()
     for name in names:
-        text = quint('typecheck', SPECS[name].file)
+        text = quint('typecheck', str(tlc.spec_path(SPECS[name].file)))
         if 'error' in text.lower():
             ok = False
             print(f'TYPECHECK FAILED {SPECS[name].file}\n{text}')
     # the type-error cases run beside the simulator
-    type_errors = subprocess.Popen([sys.executable, 'type_errors.py'],
+    type_errors = subprocess.Popen([sys.executable, str(HERE / 'tools' / 'type_errors.py')],
                                    cwd=HERE, stdout=subprocess.PIPE, text=True)
     exp = expected()
     for name in names:
@@ -335,7 +335,7 @@ def apalache(spec: Spec, inst: str, depth: int, exp: dict,
             text = quint('verify', f'--main={inst}',
                          str(tlc.instance_file(spec.file, inst)),
                          f'--invariant={invariant}',
-                         '--apalache-config=apalache.json',
+                         f'--apalache-config={HERE / "apalache.json"}',
                          f'--max-steps={steps}', timeout=timeout)
         except subprocess.TimeoutExpired:
             return 'timeout', round(time.time() - t0)

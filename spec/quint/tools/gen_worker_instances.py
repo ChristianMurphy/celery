@@ -102,5 +102,5 @@ for design, modes in MATRIX.items():
   }}).* from "./worker"
 }}
 ''')
-Path(__file__).with_name('worker_instances.qnt').write_text(''.join(out))
+(Path(__file__).resolve().parent.parent / 'worker' / 'worker_instances.qnt').write_text(''.join(out))
 print(sum(len(c) for m in MATRIX.values() for c in m.values()), 'instances')

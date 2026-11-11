@@ -3,14 +3,14 @@
 expected.json: a row per ack mode and fault class, a column per property,
 `ok` or the number of states in a shortest counterexample.
 
-    python3 design_tables.py            # every design
-    python3 design_tables.py best pr    # some
+    python3 tools/design_tables.py            # every design
+    python3 tools/design_tables.py best pr    # some
 """
 import json
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 PROPS = ['exactlyOnce', 'neverLost', 'quietDone', 'noAvoidableDup',
          'noUnavoidableDup', 'restoresOwnOnly', 'workerSurvives']
 

@@ -191,10 +191,10 @@ def check(design: str, path: Path) -> int:
     runs = '\n\n'.join(to_run(i, design, h) for i, h in enumerate(histories))
     mod = f'transport_{design}_histories'
     src = (f'module {mod} {{\n'
-           '  import transporttypes.* from "../redis_transport"\n'
+           '  import transporttypes.* from "../transport/redis_transport"\n'
            f'  import redis_transport(CFG = {{ design: {DESIGN[design]}, '
            'renewal: NoRenewal, putBack: ByScore, max: NO_FAULTS }).* '
-           f'from "../redis_transport"\n\n{runs}\n}}\n')
+           f'from "../transport/redis_transport"\n\n{runs}\n}}\n')
     qnt = path.parent / f'_{mod}.qnt'
     qnt.write_text(src)
     p = subprocess.run(['quint', 'test', f'--main={mod}', '--match=^t', str(qnt)],

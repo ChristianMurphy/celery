@@ -23,29 +23,29 @@ START=$SECONDS
 tier_done() { echo "== $1 tier done in $((SECONDS - START)) s"; }
 
 echo '== fast: typecheck, type errors, simulator, scenarios'
-python3 check.py --tier fast
+python3 tools/check.py --tier fast
 for m in redisLost kvDup unlockChild onceReadOnce interruptFix; do
-  quint test --main=$m scenarios.qnt
+  quint test --main=$m canvas/scenarios.qnt
 done
 tier_done fast
 [ "$TIER" = fast ] && exit 0
 
 echo '== the other scenarios'
 for m in onceReadAgain interruptMain interruptFirstFix interruptSecondFix interruptThirdFix; do
-  quint test --main=$m scenarios.qnt
+  quint test --main=$m canvas/scenarios.qnt
 done
 
 echo "== $TIER: exhaustive search (TLC), Apalache at the proven depth"
-python3 check.py --tier "$TIER"
+python3 tools/check.py --tier "$TIER"
 echo '== spec mutants'
-python3 mutate_spec.py
+python3 tools/mutate_spec.py
 
 $PY -c 'import celery; print("celery from", celery.__file__)'
 echo '== spec -> code: generate traces and replay them'
-python3 check.py --cex
+python3 tools/check.py --cex
 for m in rtw mongo sql es; do
   mkdir -p traces/$m
-  quint run --backend=typescript --main=$m resultstate.qnt --max-steps=14 \
+  quint run --backend=typescript --main=$m result/resultstate.qnt --max-steps=14 \
     --n-traces=40 --max-samples=40 --seed=7 --out-itf="traces/$m/random_{seq}.itf.json" >/dev/null
 done
 $PY -m adapter.replay_results --backend redis traces/rtw/*.json
@@ -56,14 +56,14 @@ for p in redis kv; do
   for f in none dup refuse wlost_late wlost_early child_late child_early child_reject lease; do
     m=${p}_$f; [ "$m" = kv_lease ] && continue
     mkdir -p traces/chord/$m
-    quint run --main=$m chord_instances.qnt --max-steps=40 --n-traces=20 --max-samples=20 \
+    quint run --main=$m canvas/chord_instances.qnt --max-steps=40 --n-traces=20 --max-samples=20 \
       --seed=11 --out-itf="traces/chord/$m/random_{seq}.itf.json" >/dev/null
     $PY -m adapter.replay_chord --instance $m traces/chord/$m/*.json $(ls traces/cex/$m.*.json 2>/dev/null)
   done
 done
 mkdir -p traces/scenarios
 for m in redisLost kvDup unlockChild; do
-  quint test --backend=typescript --main=$m scenarios.qnt --out-itf="traces/scenarios/${m}_{test}.itf.json" >/dev/null
+  quint test --backend=typescript --main=$m canvas/scenarios.qnt --out-itf="traces/scenarios/${m}_{test}.itf.json" >/dev/null
 done
 $PY -m adapter.replay_chord --instance redis_wlost_late traces/scenarios/redisLost_lost*.json
 $PY -m adapter.replay_chord --instance redis_child_late traces/scenarios/redisLost_child*.json

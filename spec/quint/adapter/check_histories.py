@@ -81,10 +81,10 @@ def main() -> int:
         mod = f'hist_{backend}' + (f'_as_{store}' if args.as_store else '')
         body = '\n\n'.join(to_run(i, h['events']) for i, h in enumerate(hists))
         src = (f'module {mod} {{\n'
-               f'  import resulttypes.* from "../resultstate"\n'
+               f'  import resulttypes.* from "../result/resultstate"\n'
                f'  import resultstate(STORE = {store.capitalize()}, '
                f'READY_STICKY = {STICKY.get(backend, "false")}).* '
-               f'from "../resultstate"\n\n'
+               f'from "../result/resultstate"\n\n'
                f'{body}\n}}\n')
         out = HERE / 'histories' / f'{mod}.qnt'
         out.write_text(src)

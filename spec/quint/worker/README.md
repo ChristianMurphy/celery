@@ -1,7 +1,7 @@
 # Workers, the publisher and the Redis transport's designs
 
-`worker.qnt`, `publisher.qnt` and the renewal and pop-token variants of
-`redis_transport.qnt`: is a task run exactly once without a fault, at least
+`worker.qnt`, `../transport/publisher.qnt` and the renewal and pop-token
+variants of `../transport/redis_transport.qnt`: is a task run exactly once without a fault, at least
 once with one, and which duplicates can a design remove, at what broker cost.
 Celery 768e476, kombu 445027e (main) and c61b525 (kombu PR 2831).
 
@@ -52,7 +52,7 @@ two branches; `keepwritten`, `renewall`, `renewidle`, `reneweta`, `resend`,
 `ackfull` (resend and `StillAcks`), `restoreall`, `restoreidle`, `token`,
 `tagrestore` and `ownrecord` each change one mechanism of `pr`; `best` is
 `DropUnwritten`, `RenewScheduled`, `Resent`, `StillAcks`, `CloseRestoresIdle`,
-`ReconnectRestoresIdle` and `ByPop` together. `gen_worker_instances.py`
+`ReconnectRestoresIdle` and `ByPop` together. `tools/gen_worker_instances.py`
 writes `worker_instances.qnt`.
 
 Properties:
@@ -92,11 +92,11 @@ timeout), and rate limits.
 
 ## Results
 
-`python3 check.py --tier full --only worker` (and `publisher`,
+`python3 tools/check.py --tier full --only worker` (and `publisher`,
 `transport`): every reachable state of every instance. A number is the
 states in a shortest counterexample; `ok` means the property holds in every
 reachable state. In every instance a run stops only in a quiet state.
-`python3 design_tables.py` prints these tables from `expected.json`.
+`python3 tools/design_tables.py` prints these tables from `expected.json`.
 
 `ackfull`
 
@@ -379,13 +379,13 @@ Every script names its instance and property and prints one line per case.
 
 | Script | Shows | On main | With the variant |
 |---|---|---|---|
-| `adapter/confirm_flush_ack_modes.py` | `flush()` between a job's write and its accept, early and late ack | the child runs the task, the message is never acked (both modes) | acked (both modes) |
-| `adapter/confirm_renewal_hung.py` | a consumer that never acks, visibility timeout 2 s | the other consumer gets both messages | renew-everything prototype: neither |
-| `adapter/confirm_ack_after_loss.py` | an ack that fails with its connection | delivered again when the channel closes | resend prototype: not delivered again |
-| `adapter/confirm_putback_renewal.py` | kombu PR 2831 with the renewal patch | control: the message is back on the queue | after a renewal: on no queue, in `unacked` |
-| `adapter/confirm_restore_by_tag.py` | a channel closes after the timeout redelivered its message | a third delivery while the second still runs (main and the PR) | no prototype |
-| `adapter/natural_restore_by_tag.sh` | the same with three Celery workers and no injected delay | SIGKILL: 12 of 12 run once; SIGTERM: 11 of 12 twice (PR branch: 12 of 12) | no prototype |
-| `adapter/record_transport.py` | recorded Redis command histories of two consumers, checked by `quint test` | 30 of 30 allowed (`BrpopThenRecord`) | 30 of 30 allowed (`PopScript`) |
+| `../adapter/confirm_flush_ack_modes.py` | `flush()` between a job's write and its accept, early and late ack | the child runs the task, the message is never acked (both modes) | acked (both modes) |
+| `../adapter/confirm_renewal_hung.py` | a consumer that never acks, visibility timeout 2 s | the other consumer gets both messages | renew-everything prototype: neither |
+| `../adapter/confirm_ack_after_loss.py` | an ack that fails with its connection | delivered again when the channel closes | resend prototype: not delivered again |
+| `../adapter/confirm_putback_renewal.py` | kombu PR 2831 with the renewal patch | control: the message is back on the queue | after a renewal: on no queue, in `unacked` |
+| `../adapter/confirm_restore_by_tag.py` | a channel closes after the timeout redelivered its message | a third delivery while the second still runs (main and the PR) | no prototype |
+| `../adapter/natural_restore_by_tag.sh` | the same with three Celery workers and no injected delay | SIGKILL: 12 of 12 run once; SIGTERM: 11 of 12 twice (PR branch: 12 of 12) | no prototype |
+| `../adapter/record_transport.py` | recorded Redis command histories of two consumers, checked by `quint test` | 30 of 30 allowed (`BrpopThenRecord`) | 30 of 30 allowed (`PopScript`) |
 
 The recorded histories go from the code to the spec: Redis `MONITOR` gives
 every command with the connection that sent it and the commands the pop
@@ -395,7 +395,7 @@ not have before (`waitAfterEmpty`).
 
 The ack through a collected channel needs a worker; those runs are in the
 reply drafted for celery issue 11054. Spec mutants: 14 for these three specs
-(`mutate_spec.py worker`, `publisher`, `transport`), all caught.
+(`tools/mutate_spec.py worker`, `publisher`, `transport`), all caught.
 
 ## Where this stopped
 
