@@ -24,3 +24,16 @@ typed.json`:
 The types found no bug in the specs. The time went up: TLC 1,080 s to 1,875 s
 summed over the cells, the simulator 1,095 s to 1,668 s, on a machine other
 jobs were using.
+
+## The chord layout
+
+`chord.qnt` was rearranged into one section per protocol (every protocol:
+delivery and the store; Redis; Kv; KvSkip and KvOnce; Unlock; every
+protocol: the publish and the finish), and each action got a checked
+`@cite`. Nothing else changed: the rearranging script checked that every
+old line is still there as often as before and that the only new lines are
+section headers and citations. TLC on all 69 instances before and after
+(`check.py --tier full --only chord --json`), `python3 compare.py
+chord-layout-before.json chord-layout-after.json`: 828 cells (603 hold,
+225 violated), 0 verdicts, 0 shortest counterexamples, 0 depths and 0
+counts of distinct states differ.

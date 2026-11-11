@@ -309,20 +309,11 @@ Code (`adapter/mutations.py`), traces that mismatched:
 
 ## Where this stopped
 
-* The transport spec is checked by the simulator and TLC only: no trace of it
-  was replayed on a real Redis, and no recorded history checked against it.
-  kombu PR 2831 has its own Hypothesis state machine against a real server.
-* `KvOnce`, `KvSkip` and the interrupt are replayed on the real code only
-  through the confirm scripts in `findings/` and the scenarios they
-  cover; `adapter/replay_chord.py` still replays `Redis` and `Kv` traces only.
-* The counter's loss is modeled as DynamoDB and Firestore behave (the next
-  incr starts from 0). memcached's `incr` on a missing key returns `None`,
-  and the comparison with the chord size then raises; that is not modeled.
-* A write whose reply was lost and that the client sent again (the done key
-  storing the run's own token) is not modeled.
-* Apalache was not run on the chord and transport instances (the long tier),
-  apart from one check on `kv_none`.
-* The transport spec has no closed-form progress measure. Its runs are finite
-  because the exhaustive search, with the step counter in the state, ends;
-  D is exact.
-* The chord_unlock protocol is not replayed against the database backend.
+* Replay: no trace of the transport spec was replayed on a real Redis (kombu
+  PR 2831 has its own Hypothesis state machine); `KvSkip`, `KvOnce` and the
+  interrupt reach the real code only through the confirm scripts in
+  `findings/`; `chord_unlock` is not replayed against the database backend.
+* Apalache runs on the result-state instances only (and once on `kv_none`).
+* The chord counter's loss is modeled as DynamoDB and Firestore behave;
+  memcached's `incr` on a missing key returns `None`, which is not modeled.
+* Each family's README says what its specs leave out.

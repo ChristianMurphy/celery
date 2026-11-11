@@ -65,7 +65,8 @@
    "passes_all": "redis_dup",
    "progress": "closed form",
    "checklist": "enforced",
-   "fast_samples": 120
+   "fast_samples": 120,
+   "cite": "enforced"
   },
   "redis_transport.qnt": {
    "family": "transport",

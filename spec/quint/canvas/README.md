@@ -3,6 +3,11 @@
 `chord.qnt`, `chord_instances.qnt` (69 instances), `scenarios.qnt` (the
 behaviors behind the findings, as `quint test` runs). Celery 768e476 and the
 fix branches for celery issues 11036 and 11039.
+The actions of `chord.qnt` are in one section per protocol (every protocol:
+delivery and the store; Redis; Kv; KvSkip and KvOnce; Unlock; every
+protocol: the publish and the finish), then the faults; each cites the code
+it models with a checked `@cite`. The rearrangement changed no result
+(`../tools/baseline/README.md`).
 
 `chain.qnt`, `chain_instances.qnt`: a chain with a link callback, on the
 abstract delivery environment of `../lib/delivery.qnt`. See

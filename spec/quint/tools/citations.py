@@ -50,7 +50,8 @@ ACTION = re.compile(r'^\s*action\s+(\w+)')
 HELPERS = {'init', 'step', 'stutter', 'stepOrQuiet', 'did', 'keepBroker',
            'keepStarts', 'keepRuns', 'setJob', 'setConn', 'restoreAll',
            'keepObs', 'setRun', 'dinit', 'dkeep', 'inner', 'keepRedis',
-           'keepClient'}
+           'keepClient', 'keepKv', 'keepDispatch', 'keepErrors',
+           'markError'}
 
 
 def repo(name: str) -> Path | None:

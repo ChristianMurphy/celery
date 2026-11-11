@@ -473,10 +473,11 @@ module chord {
     keepDispatch,
   }
 
-  // ---- delivery ------------------------------------------------------------
+  // ==== every protocol: delivery and the header task's store ==================
   // A worker takes a header message. Without acks_late it is acked before
   // the task runs (worker/request.py, Request.execute_using_pool acks
   // early unless acks_late).
+  // @cite celery celery/worker/request.py:528-533 "if not self.task.acks_late:"
   action deliver(w: ExecId, h: HeaderId): bool = all {
     isFree(execs.get(w)), queue.get(h) > 0,
     queue' = queue.set(h, queue.get(h) - 1),
@@ -488,19 +489,10 @@ module chord {
     did(Deliver({ w: w, h: h })),
   }
 
-  action deliverUnlock(w: ExecId): bool = all {
-    CFG.proto == Unlock, isFree(execs.get(w)), uq > 0,
-    uq' = uq - 1,
-    execs' = execs.set(w, UnlockTask({ acked: not(CFG.acksLate), pc: Polling })),
-    queue' = queue, nextTok' = nextTok, results' = results, keepRedis, keepKv,
-    keepObs, used' = used,
-    did(DeliverUnlock(w)),
-  }
-
-  // ---- header task stores its result ----------------------------------------
   // mark_as_done: store_result, then on_chord_part_return (base.py:290-296).
   // Stores keep the first SUCCESS (resultstate.qnt). The unlock protocol has
   // no part return (BaseBackend.on_chord_part_return is a no-op, base.py:1016).
+  // @cite celery celery/backends/base.py:290-296 "self.on_chord_part_return(request, state, result)"
   action store(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -518,7 +510,11 @@ module chord {
     }
   }
 
-  // ---- redis: CHORD_PART_RETURN_LUA (redis.py:96-146), one atomic step ----
+  // ==== Redis: the Lua scripts (redis.py:96-185, 934-1069) ====================
+  // CHORD_PART_RETURN_LUA (redis.py:96-146), one atomic step.
+  // @cite celery celery/backends/redis.py:104-107 "local done_marker = redis.call('GET', ckey)"
+  // @cite celery celery/backends/redis.py:111-119 "if redis.call('SISMEMBER', dkey, member) == 0 then"
+  // @cite celery celery/backends/redis.py:136-142 "if redis.call('SET', ckey, claim_token, 'NX', 'EX', claim_expires) then"
   action partReturn(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -559,6 +555,8 @@ module chord {
 
   // redis: read <gid>.j and unpack (redis.py:1007-1017). A FAILURE raises
   // ChordError: chord_error_from_stack, then DEL <gid>.s (redis.py:1052-1060).
+  // @cite celery celery/backends/redis.py:1007-1017 "resl = [unpack(tup, decode) for tup in resl]"
+  // @cite celery celery/backends/redis.py:1052-1060 "client.delete(skey)"
   action redisJoin(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -583,6 +581,7 @@ module chord {
   }
 
   // redis: CHORD_CLAIM_EXTEND_LUA (redis.py:171-185, called at 1021-1031)
+  // @cite celery celery/backends/redis.py:171-182 "CHORD_CLAIM_EXTEND_LUA"
   action extend(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -604,44 +603,8 @@ module chord {
     }
   }
 
-  // The run after its publish attempt.
-  pure def afterPublish(proto: Proto, e: Exec, how: PublishOutcome): Exec =
-    match e {
-      | Free => Free
-      | HeaderTask(r) => HeaderTask({
-          ...r, pc: if (proto == Redis) RedisPublished(how) else KvClean })
-      | UnlockTask(u) => UnlockTask({ ...u, pc: UnlockDone })
-    }
-
-  // Publish the body: app.amqp._retry_publish(callback.delay, ...)
-  //   redis  redis.py:1032-1040 (then cleanup in finally)
-  //   kv     base.py:1485-1492 (then deps.delete / delete counter in finally)
-  //   unlock builtins.py:124-129
-  // A refused publish calls chord_error_from_stack.
-  action publish(w: ExecId, ok: bool): bool = {
-    val e = execs.get(w)
-    val body = publishingOf(e)
-    all {
-      isPublishing(e),
-      ok or used.refusals < CFG.max.refusals,
-      if (ok) all {
-        dispatched' = dispatched + 1, bodyArgs' = body.args,
-        bodyArgsSize' = body.nargs,
-        dispatchAfterError' = (dispatchAfterError or chordError),
-        premature' = (premature or neverStored),
-        keepErrors, used' = used,
-      } else all {
-        markError, used' = { ...used, refusals: used.refusals + 1 },
-      },
-      execs' = execs.set(w, afterPublish(CFG.proto, e,
-                                         if (ok) Sent else Refused)),
-      did(Publish({ w: w, outcome: if (ok) Sent else Refused })),
-      queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
-      keepRedis, keepKv,
-    }
-  }
-
   // redis: CHORD_CLEANUP_LUA (redis.py:150-168, called at 1041-1051)
+  // @cite celery celery/backends/redis.py:150-167 "CHORD_CLEANUP_LUA"
   action cleanup(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -658,7 +621,8 @@ module chord {
     }
   }
 
-  // ---- kv: counter (base.py:1429-1503) ----
+  // ==== Kv: the counter (base.py:1429-1503); kvJoin and kvClean end KvSkip and KvOnce too ====
+  // @cite celery celery/backends/base.py:1446-1456 "val = self.incr(key)"
   action count(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -686,7 +650,52 @@ module chord {
     }
   }
 
-  // ---- KvSkip, KvOnce: the key of a header task that returned ----
+  // kv: deps.join_native(timeout=result_chord_join_timeout, propagate=True)
+  // (base.py:1467-1483). It waits for every header result; ok=false is the
+  // join timing out (or a FAILURE propagating).
+  // @cite celery celery/backends/base.py:1467-1483 "ret = j("
+  action kvJoin(w: ExecId, ok: bool): bool = {
+    val e = execs.get(w)
+    val r = headerOf(e)
+    all {
+      counts(CFG.proto), isHeader(e), r.pc == KvComplete,
+      if (ok and allReady and not(anyFailed)) all {
+        keepObs,
+        execs' = execs.set(w, HeaderTask({
+          ...r, pc: KvJoined({ args: HEADERS, nargs: N }) })),
+        did(Join({ w: w, h: r.h, outcome: JoinOk })),
+      } else all {
+        // join raises: a header FAILURE propagates, or a header result is
+        // still missing when result_chord_join_timeout runs out
+        anyFailed or (not(ok) and not(allReady)),
+        markError,
+        execs' = execs.set(w, HeaderTask({ ...r, pc: KvClean })),
+        did(Join({ w: w, h: r.h, outcome: JoinError })),
+      },
+      keepRedis, keepKv,
+      queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
+      used' = used,
+    }
+  }
+
+  // kv: finally: deps.delete(); self.delete(key) (base.py:1493-1495)
+  // @cite celery celery/backends/base.py:1493-1495 "deps.delete()"
+  action kvClean(w: ExecId): bool = {
+    val e = execs.get(w)
+    val r = headerOf(e)
+    all {
+      counts(CFG.proto), isHeader(e), r.pc == KvClean,
+      groupSaved' = false, counter' = 0,
+      partKeys' = partKeys, doneKey' = doneKey,
+      execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
+      did(Cleanup({ w: w, h: r.h, outcome: Cleaned })),
+      keepRedis, keepObs,
+      queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
+      used' = used,
+    }
+  }
+
+  // ==== KvSkip and KvOnce: the key of a header task that returned =============
   // KvSkip (09e5a59, base.py:1461-1488): add the key before the count; a
   //   run that finds it there returns without counting. With the group
   //   gone, only a part never recorded fails the chord.
@@ -695,6 +704,9 @@ module chord {
   //   otherwise claims it and fails it; a header with ignore_result fails
   //   the chord at once (_fail_chord_once :1260-1266); otherwise add the
   //   key (whether or not it is there) and go on to count.
+  // @cite celery@09e5a59 celery/backends/base.py:1471-1488 "if self._add_chord_part(part_key, uuid()) is False:"
+  // @cite celery@1fa71d4 celery/backends/base.py:1515-1530 "if not self._chord_part_returns(request):"
+  // @cite celery@1fa71d4 celery/backends/base.py:1266-1277 "def _chord_part_returns(self, request):"
   action returned(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -729,6 +741,8 @@ module chord {
   // val = self.incr(key)
   //   KvSkip (09e5a59 base.py:1490-1505): val == size -> join, as Kv.
   //   KvOnce (1fa71d4 base.py:1527-1540): val >= size -> check the results.
+  // @cite celery@09e5a59 celery/backends/base.py:1489-1505 "val = self.incr(key)"
+  // @cite celery@1fa71d4 celery/backends/base.py:1531-1540 "elif val >= size:"
   action countKey(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -753,6 +767,7 @@ module chord {
   // KvOnce: _complete_chord_once (1fa71d4 base.py:1289-1310), one action
   // per round trip.
   // 1. read the header results (_missing_results).
+  // @cite celery@1fa71d4 celery/backends/base.py:1289-1294 "missing = self._missing_results([r.id for r in deps.results])"
   action readResults(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -773,6 +788,7 @@ module chord {
   //    missing results again, because a header stores its result before
   //    its key and can do both between the two reads; cd8aa46
   //    (rereadMissing = false) failed the chord here.
+  // @cite celery@1fa71d4 celery/backends/base.py:1295-1297 "if missing and all(self._chord_keys_exist(["
   action checkKeys(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -798,6 +814,7 @@ module chord {
 
   // 3. the second read: a result still missing is lost, and the chord is
   //    failed by the one run that adds the done key (_fail_chord_once).
+  // @cite celery@1fa71d4 celery/backends/base.py:1300-1304 "missing = self._missing_results(missing)"
   action reread(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -822,6 +839,8 @@ module chord {
   // 4. _claim_chord: add the done key if absent (memcached add, DynamoDB
   //    PutItem attribute_not_exists, Firestore create; cache.py:255-261).
   //    The one run that adds it joins and publishes.
+  // @cite celery@1fa71d4 celery/backends/base.py:1305 "return not missing and self._claim_chord(request.group)"
+  // @cite celery@1fa71d4 celery/backends/cache.py:255-261 "if self.client.add(key, token, expires, noreply=False):"
   action claim(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -839,53 +858,23 @@ module chord {
     }
   }
 
-  // kv: deps.join_native(timeout=result_chord_join_timeout, propagate=True)
-  // (base.py:1467-1483). It waits for every header result; ok=false is the
-  // join timing out (or a FAILURE propagating).
-  action kvJoin(w: ExecId, ok: bool): bool = {
-    val e = execs.get(w)
-    val r = headerOf(e)
-    all {
-      counts(CFG.proto), isHeader(e), r.pc == KvComplete,
-      if (ok and allReady and not(anyFailed)) all {
-        keepObs,
-        execs' = execs.set(w, HeaderTask({
-          ...r, pc: KvJoined({ args: HEADERS, nargs: N }) })),
-        did(Join({ w: w, h: r.h, outcome: JoinOk })),
-      } else all {
-        // join raises: a header FAILURE propagates, or a header result is
-        // still missing when result_chord_join_timeout runs out
-        anyFailed or (not(ok) and not(allReady)),
-        markError,
-        execs' = execs.set(w, HeaderTask({ ...r, pc: KvClean })),
-        did(Join({ w: w, h: r.h, outcome: JoinError })),
-      },
-      keepRedis, keepKv,
-      queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
-      used' = used,
-    }
+  // ==== Unlock: chord_unlock (builtins.py:47-130) =============================
+  // A worker takes a chord_unlock message.
+  // @cite celery celery/app/builtins.py:48-53 "def unlock_chord(self, group_id, callback, interval=None,"
+  action deliverUnlock(w: ExecId): bool = all {
+    CFG.proto == Unlock, isFree(execs.get(w)), uq > 0,
+    uq' = uq - 1,
+    execs' = execs.set(w, UnlockTask({ acked: not(CFG.acksLate), pc: Polling })),
+    queue' = queue, nextTok' = nextTok, results' = results, keepRedis, keepKv,
+    keepObs, used' = used,
+    did(DeliverUnlock(w)),
   }
 
-  // kv: finally: deps.delete(); self.delete(key) (base.py:1493-1495)
-  action kvClean(w: ExecId): bool = {
-    val e = execs.get(w)
-    val r = headerOf(e)
-    all {
-      counts(CFG.proto), isHeader(e), r.pc == KvClean,
-      groupSaved' = false, counter' = 0,
-      partKeys' = partKeys, doneKey' = doneKey,
-      execs' = execs.set(w, HeaderTask({ ...r, pc: HeaderDone })),
-      did(Cleanup({ w: w, h: r.h, outcome: Cleaned })),
-      keepRedis, keepObs,
-      queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
-      used' = used,
-    }
-  }
-
-  // ---- unlock: chord_unlock (builtins.py:50-130) ----
   // ready -> join; not ready -> self.retry() publishes a new chord_unlock
   // and this one is acked (Retry). A refused retry publish raises Reject:
   // chord_error_from_stack (celery PR 10959, builtins.py:87-106).
+  // @cite celery celery/app/builtins.py:72-86 "ready = deps.ready()"
+  // @cite celery celery/app/builtins.py:108-122 "ret = j("
   action unlockPoll(w: ExecId, ok: bool): bool = {
     val e = execs.get(w)
     val u = unlockOf(e)
@@ -923,7 +912,49 @@ module chord {
     }
   }
 
+  // ==== every protocol: publish the body, finish the task =====================
+  // The run after its publish attempt.
+  pure def afterPublish(proto: Proto, e: Exec, how: PublishOutcome): Exec =
+    match e {
+      | Free => Free
+      | HeaderTask(r) => HeaderTask({
+          ...r, pc: if (proto == Redis) RedisPublished(how) else KvClean })
+      | UnlockTask(u) => UnlockTask({ ...u, pc: UnlockDone })
+    }
+
+  // Publish the body: app.amqp._retry_publish(callback.delay, ...)
+  //   redis  redis.py:1032-1040 (then cleanup in finally)
+  //   kv     base.py:1485-1492 (then deps.delete / delete counter in finally)
+  //   unlock builtins.py:124-129
+  // A refused publish calls chord_error_from_stack.
+  // @cite celery celery/backends/redis.py:1032-1040 "app.amqp._retry_publish(callback.delay, resl)"
+  // @cite celery celery/backends/base.py:1485-1492 "app.amqp._retry_publish(callback.delay, ret)"
+  // @cite celery celery/app/builtins.py:124-129 "app.amqp._retry_publish(callback.delay, ret)"
+  action publish(w: ExecId, ok: bool): bool = {
+    val e = execs.get(w)
+    val body = publishingOf(e)
+    all {
+      isPublishing(e),
+      ok or used.refusals < CFG.max.refusals,
+      if (ok) all {
+        dispatched' = dispatched + 1, bodyArgs' = body.args,
+        bodyArgsSize' = body.nargs,
+        dispatchAfterError' = (dispatchAfterError or chordError),
+        premature' = (premature or neverStored),
+        keepErrors, used' = used,
+      } else all {
+        markError, used' = { ...used, refusals: used.refusals + 1 },
+      },
+      execs' = execs.set(w, afterPublish(CFG.proto, e,
+                                         if (ok) Sent else Refused)),
+      did(Publish({ w: w, outcome: if (ok) Sent else Refused })),
+      queue' = queue, uq' = uq, results' = results, nextTok' = nextTok,
+      keepRedis, keepKv,
+    }
+  }
+
   // The task returns; the message is acked (acks_late) and the process is free.
+  // @cite celery celery/worker/request.py:626-631 "if self.task.acks_late:"
   action finish(w: ExecId): bool = all {
     isFinishing(execs.get(w)),
     execs' = execs.set(w, Free),
@@ -935,6 +966,7 @@ module chord {
   // ---- faults ----------------------------------------------------------------
   // The broker delivers a header message again (redelivery after a lost
   // connection, visibility timeout, or a duplicate publish).
+  // @env the broker delivers a message again
   action dup(h: HeaderId): bool = all {
     used.dups < CFG.max.dups,
     queue' = queue.set(h, queue.get(h) + 1),
@@ -964,6 +996,7 @@ module chord {
 
   // The whole worker is lost: nothing else runs; an unacked message goes
   // back to the queue (broker).
+  // @env SIGKILL of the whole worker
   action loseWorker(w: ExecId): bool = {
     val e = execs.get(w)
     all {
@@ -989,6 +1022,7 @@ module chord {
   //    (request.py:778-783, base.py:298-309).
   // chord_unlock runs with ignore_result, so the SUCCESS check is skipped
   // (request.py:850-851) and mark_as_failure has no chord to report to.
+  // @cite celery celery/worker/request.py:709-716 "is_worker_lost = isinstance(exc, WorkerLostError)"
   action loseChild(w: ExecId): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -1029,6 +1063,7 @@ module chord {
   //   ResultKey   the header result reads as PENDING again
   //   CounterKey  the next incr starts from 0 (DynamoDB ADD, Firestore
   //               Increment; memcached incr on a missing key returns None)
+  // @env a key expires or is evicted
   action evict(k: Key): bool = all {
     used.evictions < CFG.max.evictions, CFG.evictable.contains(k),
     match k {
@@ -1077,6 +1112,8 @@ module chord {
   //                         body a second time either
   // The reply of the claim script is not covered by either fix: the child
   // does not know yet that it holds the claim.
+  // @cite celery celery/backends/redis.py:1037-1047 "cleaned = self._chord_cleanup_script("
+  // @cite celery@ad00b4a celery/backends/redis.py:1081-1097 "if not sent:"
   action interrupt(w: ExecId, point: InterruptPoint, ran: bool): bool = {
     val e = execs.get(w)
     val r = headerOf(e)
@@ -1146,6 +1183,7 @@ module chord {
 
   // The claim key's TTL runs out (redis.py:963, 1018-1020). With leaseSafe
   // only once the holder is gone.
+  // @cite celery celery/backends/redis.py:962-963 "claim_expires = max(5, int(join_timeout * 2))"
   action claimExpires: bool = all {
     CFG.proto == Redis, isClaimed(ckey),
     not(CFG.leaseSafe) or not(claimHeld),
@@ -1157,6 +1195,7 @@ module chord {
   }
 
   // The "done" marker expires (done_expires, redis.py:966).
+  // @cite celery celery/backends/redis.py:966 "done_expires = int(max(claim_expires * 2, 300))"
   action doneExpires: bool = all {
     CFG.proto == Redis, ckey == Done,
     ckey' = NoClaim,
