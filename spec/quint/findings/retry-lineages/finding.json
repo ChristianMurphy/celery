@@ -1,0 +1,16 @@
+{
+ "id": "retry-lineages",
+ "title": "A worker lost between retry()'s publish and the ack starts a second lineage: with max_retries 1 the body runs 4 times",
+ "cells": [
+  "fail_node.runsBoundedAlways"
+ ],
+ "outcome": "duplicate",
+ "status": "documented",
+ "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): late ack reruns a task whose worker was killed; max_retries counts per message, not per task",
+ "thread": "none needed: at least once; a sentence for the idempotency Discussion",
+ "confirm": [
+  "confirm_retry_lineages.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, Redis broker (visibility_timeout 2 s) and backend, a prefork worker -c 1 killed with SIGKILL at the first mark_as_retry (injected), a supervisor restart: 3 of 3 runs the body ran 4 times (retries 0, 0, 1, 1), state FAILURE."
+}

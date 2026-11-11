@@ -183,8 +183,18 @@ MUTANTS = [
      "stored' = if (CFG.alwaysRetry or stored == Success or not(stores)) stored", "stored' = if (stored == Success or not(stores)) stored"),
     ('redelivery: deduplication that ignores a stored SUCCESS', 'redelivery.qnt', 'redis_dedup_kill', 'noRerunAfterDone',
      'val dedup = CFG.dedup and LATE and h.redelivered and stored == Success\n', 'val dedup = false\n'),
+    # retry.qnt: one mutant per property
+    ('retry: a retry that publishes the same attempt again', 'retry.qnt', 'retryfirst_none', 'runsBounded',
+     'Q::publish(M(job(w).att + 1)),', 'Q::publish(M(job(w).att)),'),
+    ('retry: a delivery counted twice', 'retry.qnt', 'retryfirst_fail', 'runsBoundedAlways',
+     "bodies' = bodies + 1,", "bodies' = bodies + 2,"),
+    ('retry: an ack that requeues', 'retry.qnt', 'retryfirst_none', 'noRetryAfterSuccess',
+     'Q::ack(M(job(w).att)),', 'Q::requeue(M(job(w).att)),'),
+    ('retry: max retries exceeded that stores nothing', 'retry.qnt', 'retryfirst_fail', 'neverLost',
+     "stored' = if (atMax) storing(Failure)", "stored' = if (atMax) stored"),
+    ('retry: a lost node\'s message is not requeued', 'retry.qnt', 'retryfirst_node', 'quietDone',
+     "Q::requeue(M(job(w).att)),\n    jobs' = jobs.set(w, Idle)", "Q::dkeep,\n    jobs' = jobs.set(w, Idle)"),
 ]
-
 
 
 def violated(where: Path, spec_text: str, instance: str, prop: str,

@@ -634,6 +634,84 @@ Why each violation is expected:
 | `quietDone` | redis_dedup_readerr (11) | open | finding dedup-read-error (not in the tracker yet; no upstream thread found). the backend is down for the FAILURE write too: nothing stored, the message acked, PENDING for ever |
 <!-- end generated -->
 
+## Retries
+
+`retry.qnt`, `retry_instances.qnt`: one `acks_late` task with
+`max_retries` 1 whose body returns or calls `self.retry(countdown=0)`, two
+workers, on the abstract delivery environment of `../lib/delivery.qnt`.
+`retry()` publishes the copy (task.py:958-959), then the tracer stores
+RETRY (trace.py:191-202) and the worker acks; at the limit FAILURE is
+stored; a failed publish is a `Reject(requeue=False)`, which stores
+FAILURE (request.py:681-690). Instances `<body>_<fault class>`: `ok` (the
+body may return), `fail` (it always retries); faults `node` (a worker
+killed), `dup` (a duplicate delivery), `refuse` (the copy's publish
+fails). `retryfirst` is a design: store RETRY before publishing the copy.
+
+<!-- generated: properties retry.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `runsBounded` | safety | While no fault was used, the body runs at most max_retries + 1 times. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Bounded existence (at most max_retries + 1 body runs), while no fault was used | docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is "the maximum number of attempted retries before giving up" |
+| `runsBoundedAlways` | safety | The body runs at most max_retries + 1 times, whatever happens. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Bounded existence (at most max_retries + 1 body runs), global | docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is "the maximum number of attempted retries before giving up" |
+| `noRetryAfterSuccess` | safety | No retry is published while the task's SUCCESS is stored. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a retry published while SUCCESS is stored), global | celery/backends/base.py:1361-1370 (768e476): a stored SUCCESS is final |
+| `neverLost` | safety | A retried task is held by the broker or a worker until a final state (SUCCESS or FAILURE) is stored; it is never left in RETRY with nothing to run it. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Universality (a retried task is held or final), global | docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is "the maximum number of attempted retries before giving up" |
+| `quietDone` | liveness | A quiet task has stored SUCCESS or FAILURE: get() returns. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Response (lemma 3 of 3: a quiet task has a final result) | docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is "the maximum number of attempted retries before giving up" |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+| `neverRetried` | witness | The body runs twice (a retry ran). Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+| `neverFailed` | witness | FAILURE is stored. Assumes: one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results retry.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| fail_node | 15 | runsBoundedAlways (7), neverLost (9), quietDone (9) | neverQuiet (9), neverRetried (5), neverFailed (6) |
+| fail_none | 8 | neverLost (9), quietDone (9) | neverQuiet (9), neverRetried (5), neverFailed (6) |
+| ok_dup | 16 | runsBoundedAlways (9), noRetryAfterSuccess (7), neverLost (9), quietDone (9) | neverQuiet (5), neverRetried (5), neverFailed (6) |
+| ok_node | 15 | runsBoundedAlways (7), noRetryAfterSuccess (7), neverLost (9), quietDone (9) | neverQuiet (5), neverRetried (5), neverFailed (6) |
+| ok_none | 8 | neverLost (9), quietDone (9) | neverQuiet (5), neverRetried (5), neverFailed (6) |
+| ok_refuse | 8 | neverLost (9), quietDone (9) | neverQuiet (5), neverRetried (5), neverFailed (4) |
+| retryfirst_fail | 8 | none | neverQuiet (9), neverRetried (6), neverFailed (7) |
+| retryfirst_node | 15 | runsBoundedAlways (8), noRetryAfterSuccess (8) | neverQuiet (5), neverRetried (5), neverFailed (7) |
+| retryfirst_none | 8 | none | neverQuiet (5), neverRetried (6), neverFailed (7) |
+<!-- end generated -->
+
+What the model says:
+
+* Without any fault the copy can run on another process and store its
+  final state before the original stores RETRY, and RETRY replaces it: the
+  task reads RETRY for ever (`ok_none`, `fail_none`, 9 states). The
+  key-value stores refuse to replace SUCCESS only (base.py:1369-1370).
+  On the real code it takes a slow RETRY write: 4 of 20 with a 0.2 s
+  delay, 0 of 2000 without one
+  ([retry-over-failure](../findings/retry-over-failure/)). Storing RETRY
+  first (`retryfirst_*`) passes every property.
+* A worker lost between the copy's publish and the ack, or a duplicate
+  delivery, starts a second lineage: `max_retries` counts per message, and
+  the body runs up to twice `max_retries + 1` times, a retry can be
+  published after SUCCESS is stored (`*_node`, `*_dup`; documented at
+  least once). On the real code: 4 runs with `max_retries` 1, 3 of 3
+  ([retry-lineages](../findings/retry-lineages/)).
+* A refused publish stores FAILURE: visible, not lost (`ok_refuse`).
+* Child recycling (`max_tasks_per_child`) and autoscale are not modeled:
+  the real runs in the exactly-once report (`worker_max_tasks_per_child=7`,
+  autoscale 6,1 with load waves) ran every task once.
+
+Why each violation is expected:
+
+<!-- generated: reasons retry.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `runsBoundedAlways` | fail_node (7), ok_node (7), retryfirst_node (8) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack a task that already started "will be retried in the event of a power failure or the worker instance being killed abruptly". a worker killed after retry() published the copy and before the ack: the original is redelivered and retries again, so two lineages run; with max_retries 1 the body runs 3 times |
+| `runsBoundedAlways` | ok_dup (9) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a message can be delivered again. the same, from a duplicate delivery |
+| `noRetryAfterSuccess` | ok_node (7), retryfirst_node (8) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack a task that already started "will be retried in the event of a power failure or the worker instance being killed abruptly". the other lineage succeeded first |
+| `noRetryAfterSuccess` | ok_dup (7) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a message can be delivered again. the other lineage succeeded first |
+| `neverLost` | ok_dup (9), ok_node (9), ok_none (9), ok_refuse (9) | open | finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681. no fault: the copy runs on another process and stores its final state before the original stores RETRY, which replaces it; the task reads RETRY for ever |
+| `neverLost` | fail_node (9), fail_none (9) | open | finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681. no fault: the copy fails at max_retries and stores FAILURE before the original's RETRY write, which replaces it |
+| `quietDone` | ok_dup (9), ok_node (9), ok_none (9), ok_refuse (9) | open | finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681 |
+| `quietDone` | fail_node (9), fail_none (9) | open | finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681 |
+<!-- end generated -->
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

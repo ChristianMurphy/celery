@@ -1,0 +1,19 @@
+{
+ "id": "retry-over-failure",
+ "title": "A retried task can read RETRY for ever: the copy stores its final state before the original stores RETRY, which replaces it",
+ "cells": [
+  "ok_none.neverLost",
+  "ok_none.quietDone",
+  "fail_none.neverLost",
+  "fail_none.quietDone"
+ ],
+ "outcome": "hang",
+ "status": "open",
+ "where": "tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681; this is a trigger without any fault",
+ "thread": "celery discussion 10681 (the reply there), or a new issue if the lead prefers",
+ "confirm": [
+  "confirm_retry_over_failure.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, Redis broker and backend, two prefork workers -c 4, a task that always calls self.retry(countdown=0, max_retries=1): natural, nothing injected: 0 of 2000 read RETRY at the end. With mark_as_retry delayed 0.2 s (a RedisBackend subclass; injected): 4 of 20 read RETRY for ever after their last attempt stored FAILURE. The model's design retryFirst (store RETRY before publishing the copy) passes every property."
+}

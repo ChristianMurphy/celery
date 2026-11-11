@@ -59,8 +59,7 @@
     "redis_wlost_late",
     "kv_dup",
     "unlock_child_reject",
-    "once_dup",
-    "mixed_dup"
+    "once_dup"
    ],
    "passes_all": "redis_dup",
    "progress": "closed form",
@@ -234,6 +233,34 @@
     "redis_late_long_w1"
    ],
    "passes_all": "redis_late_short",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "retry.qnt": {
+   "family": "worker",
+   "types": "retrytypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "runsBounded",
+    "runsBoundedAlways",
+    "noRetryAfterSuccess",
+    "neverLost",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverRetried",
+    "neverFailed"
+   ],
+   "apalache": [],
+   "fast": [
+    "retryfirst_none"
+   ],
+   "passes_all": "retryfirst_none",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -2308,6 +2335,208 @@
    "pattern": "Existence",
    "statement": "Deduplication skips a delivery.",
    "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "retry.runsBounded",
+   "spec": "retry.qnt",
+   "definition": "runsBounded",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most max_retries + 1 body runs), while no fault was used",
+   "statement": "While no fault was used, the body runs at most max_retries + 1 times.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is \"the maximum number of attempted retries before giving up\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRetried",
+   "mutant": "retry: a retry that publishes the same attempt again",
+   "violations": []
+  },
+  {
+   "id": "retry.runsBoundedAlways",
+   "spec": "retry.qnt",
+   "definition": "runsBoundedAlways",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most max_retries + 1 body runs), global",
+   "statement": "The body runs at most max_retries + 1 times, whatever happens.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is \"the maximum number of attempted retries before giving up\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRetried",
+   "mutant": "retry: a delivery counted twice",
+   "violations": [
+    {
+     "instances": "*_node",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack a task that already started \"will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "a worker killed after retry() published the copy and before the ack: the original is redelivered and retries again, so two lineages run; with max_retries 1 the body runs 3 times"
+    },
+    {
+     "instances": "*_dup",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a message can be delivered again",
+     "note": "the same, from a duplicate delivery"
+    }
+   ]
+  },
+  {
+   "id": "retry.noRetryAfterSuccess",
+   "spec": "retry.qnt",
+   "definition": "noRetryAfterSuccess",
+   "kind": "safety",
+   "pattern": "Absence (a retry published while SUCCESS is stored), global",
+   "statement": "No retry is published while the task's SUCCESS is stored.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "celery/backends/base.py:1361-1370 (768e476): a stored SUCCESS is final",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRetried",
+   "mutant": "retry: an ack that requeues",
+   "violations": [
+    {
+     "instances": "*_node",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): with late ack a task that already started \"will be retried in the event of a power failure or the worker instance being killed abruptly\"",
+     "note": "the other lineage succeeded first"
+    },
+    {
+     "instances": "*_dup",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a message can be delivered again",
+     "note": "the other lineage succeeded first"
+    }
+   ]
+  },
+  {
+   "id": "retry.neverLost",
+   "spec": "retry.qnt",
+   "definition": "neverLost",
+   "kind": "safety",
+   "pattern": "Universality (a retried task is held or final), global",
+   "statement": "A retried task is held by the broker or a worker until a final state (SUCCESS or FAILURE) is stored; it is never left in RETRY with nothing to run it.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is \"the maximum number of attempted retries before giving up\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "retry: max retries exceeded that stores nothing",
+   "violations": [
+    {
+     "instances": "ok_*",
+     "reason": "open",
+     "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
+     "note": "no fault: the copy runs on another process and stores its final state before the original stores RETRY, which replaces it; the task reads RETRY for ever"
+    },
+    {
+     "instances": "fail_*",
+     "reason": "open",
+     "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
+     "note": "no fault: the copy fails at max_retries and stores FAILURE before the original's RETRY write, which replaces it"
+    }
+   ]
+  },
+  {
+   "id": "retry.quietDone",
+   "spec": "retry.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: a quiet task has a final result)",
+   "statement": "A quiet task has stored SUCCESS or FAILURE: get() returns.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/tasks.rst (celery 768e476), Retrying: max_retries is \"the maximum number of attempted retries before giving up\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "retry: a lost node's message is not requeued",
+   "violations": [
+    {
+     "instances": "ok_*",
+     "reason": "open",
+     "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
+     "note": ""
+    },
+    {
+     "instances": "fail_*",
+     "reason": "open",
+     "where": "finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "retry.progress",
+   "spec": "retry.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "retry.stepOrQuiet",
+   "spec": "retry.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "retry.neverQuiet",
+   "spec": "retry.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "retry.neverRetried",
+   "spec": "retry.qnt",
+   "definition": "neverRetried",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The body runs twice (a retry ran).",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "retry.neverFailed",
+   "spec": "retry.qnt",
+   "definition": "neverFailed",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "FAILURE is stored.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

@@ -1362,6 +1362,99 @@
    }
   }
  },
+ "retry.qnt": {
+  "fail_node": {
+   "D": 15,
+   "violated": {
+    "neverFailed": 6,
+    "neverLost": 9,
+    "neverQuiet": 9,
+    "neverRetried": 5,
+    "quietDone": 9,
+    "runsBoundedAlways": 7
+   }
+  },
+  "fail_none": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 6,
+    "neverLost": 9,
+    "neverQuiet": 9,
+    "neverRetried": 5,
+    "quietDone": 9
+   }
+  },
+  "ok_dup": {
+   "D": 16,
+   "violated": {
+    "neverFailed": 6,
+    "neverLost": 9,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "noRetryAfterSuccess": 7,
+    "quietDone": 9,
+    "runsBoundedAlways": 9
+   }
+  },
+  "ok_node": {
+   "D": 15,
+   "violated": {
+    "neverFailed": 6,
+    "neverLost": 9,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "noRetryAfterSuccess": 7,
+    "quietDone": 9,
+    "runsBoundedAlways": 7
+   }
+  },
+  "ok_none": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 6,
+    "neverLost": 9,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "quietDone": 9
+   }
+  },
+  "ok_refuse": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 4,
+    "neverLost": 9,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "quietDone": 9
+   }
+  },
+  "retryfirst_fail": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 7,
+    "neverQuiet": 9,
+    "neverRetried": 6
+   }
+  },
+  "retryfirst_node": {
+   "D": 15,
+   "violated": {
+    "neverFailed": 7,
+    "neverQuiet": 5,
+    "neverRetried": 5,
+    "noRetryAfterSuccess": 8,
+    "runsBoundedAlways": 8
+   }
+  },
+  "retryfirst_none": {
+   "D": 8,
+   "violated": {
+    "neverFailed": 7,
+    "neverQuiet": 5,
+    "neverRetried": 6
+   }
+  }
+ },
  "worker.qnt": {
   "ackfull_early_cut": {
    "D": 21,
