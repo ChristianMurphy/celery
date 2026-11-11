@@ -732,6 +732,167 @@ Why each violation is expected:
 | `quietDone` | fail_node (9), fail_none (9) | open | finding retry-over-failure; the same class as tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681 |
 <!-- end generated -->
 
+## Revoke, expiry, shutdown and the pools
+
+`revoke.qnt`, `revoke_instances.qnt`: task 1 may be revoked (one
+`app.control.revoke()`, by id or by stamped header) and may carry
+`expires`; task 2, in some instances, is an ordinary task beside it. Two
+workers with one pool process each, on the abstract delivery environment
+of `../lib/delivery.qnt`. A request is reserved when the strategy received
+it (strategy.py:162 checks the revoked set and `expires`), handed to the
+pool when `execute_using_pool` checks them again (request.py:1003-1006),
+and running when a pool process accepted it; nothing checks them there. A
+discard stores REVOKED and acks (request.py:464-475). The revoke is a
+broadcast that reaches a worker only while its consumer is connected; the
+worker adds the id to its set and stores REVOKED unless the task is
+active there or already started (control.py:221-246); by stamped header
+it stores nothing. The set is written to the state db at exit only
+(components.py:216-218) and mingle copies it from the other workers at
+every consumer start (mingle.py:36-80). Faults and operator actions: a
+lost broker connection (`cut`; reserved requests dropped, runs go on,
+their messages go back), SIGKILL (`kill`), a warm, soft or cold shutdown
+(`halt`; the warm-shutdown flush is taken as fixed by celery PR 11076, so
+a job is either with a child or dropped), the broadcast sent twice
+(`ctldup`), and a backend error in a discard's REVOKED write
+(`backenderr`, the `backendErrors` class of `redelivery.qnt`). Designs:
+`checkaccept` (`on_accepted` reads the revoked set), `syncrevoke` (write
+the state db when a revoke arrives), `sticky` (a store that keeps every
+final state).
+
+<!-- generated: properties revoke.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `noRunAfterRevokeKnown` | safety | No run of task 1 starts in a worker whose revoked set holds its id. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a run of a revoked task starting in a worker that knows the revoke), global | docs/userguide/workers.rst (celery 768e476), revoke: "When a worker receives a revoke request it will skip executing the task" |
+| `noRunAfterExpiry` | safety | No run of task 1 starts after its expires time passed. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a run starting after expires), global | docs/userguide/calling.rst:363-364 (celery 768e476): "When a worker receives an expired task it will mark the task as REVOKED"; celery/app/task.py:603-604: "seconds in the future for the task should expire" |
+| `noRunMissingRevoke` | safety | Once the revoke was sent, no run of task 1 starts in a worker that neither knows the revoke nor still has the broadcast to read: no worker misses or forgets a revoke. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a run, after the revoke was sent, in a worker that neither knows it nor has it to read), global | docs/userguide/workers.rst (celery 768e476), revoke: "All worker nodes keeps a memory of revoked task ids"; Persistent revokes: workers synchronize revoked tasks at start up |
+| `revokeSurvivesRestart` | safety | With --statedb, a worker that knew the revoke when it stopped knows it after its restart. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a restart with --statedb that forgets a known revoke), global | docs/userguide/workers.rst (celery 768e476), Persistent revokes: "If you want to preserve this list between restarts you need to specify a file for these to be stored in by using the --statedb argument" |
+| `noParallelRuns` | safety | A lost connection never leaves two runs of one task at once in one worker. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (two runs of one task at once in one worker), global | celery/worker/consumer/consumer.py:489-499 (celery 768e476) and the CANCEL_TASKS_BY_DEFAULT warning: cancelling late-ack runs on connection loss is to become the default in Celery 6.0 |
+| `finalStable` | safety | A stored final state (SUCCESS, REVOKED) is never replaced by another state: stored states move one way. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a final state replaced), global | celery/states.py (celery 768e476): READY_STATES are final; celery/backends/base.py:1361-1370 keeps SUCCESS only |
+| `ctlOnce` | safety | Each worker applies the revoke command at most once. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Bounded existence (each worker applies the command at most once), global | the item: a control command over the pidbox is applied at most once per worker |
+| `noRerunAfterSuccess` | safety | No task starts while its SUCCESS is stored. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Absence (a run starting while SUCCESS is stored), global | docs/userguide/configuration.rst (celery 768e476), worker_deduplicate_successful_tasks: a task that succeeded is not to run again |
+| `outcomeVisible` | safety | A quiet system shows SUCCESS or REVOKED for every task: no task is left PENDING, STARTED or RETRY with nothing to finish it. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Universality (a quiet system shows a final state for every task), after quiet | docs/userguide/tasks.rst (celery 768e476), States: a task ends in a ready state |
+| `quietDone` | liveness | A quiet system has settled every message: nothing is held unacked for ever. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Response (lemma 3 of 3: a quiet system has settled every message) | the spec: lib/delivery.qnt |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+| `neverRan` | witness | Task 1 runs. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+| `neverRevokedStored` | witness | REVOKED is stored for task 1. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+| `neverRevokeApplied` | witness | Some worker applies the revoke. Assumes: task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results revoke.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| cancel_cut_s2 | 13 | noRerunAfterSuccess (10) | neverQuiet (7), neverRan (5) |
+| checkaccept_expire | 7 | none | neverQuiet (4), neverRan (5), neverRevokedStored (4) |
+| checkaccept_revoke | 11 | finalStable (9) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| early_halt | 11 | outcomeVisible (9) | neverQuiet (7), neverRan (5) |
+| expire_backenderr | 17 | noRunAfterExpiry (6), noRerunAfterSuccess (13) | neverQuiet (10), neverRan (5), neverRevokedStored (4) |
+| expire_backenderr_db | 14 | noRunAfterExpiry (6) | neverQuiet (10), neverRan (5), neverRevokedStored (4) |
+| expire_backenderr_retry | 13 | noRunAfterExpiry (6) | neverQuiet (10), neverRan (5), neverRevokedStored (4) |
+| expire_dup | 13 | noRunAfterExpiry (6), finalStable (9), noRerunAfterSuccess (10) | neverQuiet (4), neverRan (5), neverRevokedStored (4) |
+| late_ctldup | 16 | noRunAfterRevokeKnown (7), finalStable (9), ctlOnce (7) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| late_cut_s2 | 13 | noParallelRuns (10), noRerunAfterSuccess (10) | neverQuiet (7), neverRan (5) |
+| late_expire | 7 | noRunAfterExpiry (6) | neverQuiet (4), neverRan (5), neverRevokedStored (4) |
+| late_halt | 13 | none | neverQuiet (7), neverRan (5) |
+| late_revoke | 11 | noRunAfterRevokeKnown (7), finalStable (9) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| late_revoke_cut | 18 | noRunAfterRevokeKnown (7), noRunMissingRevoke (8), finalStable (9), noRerunAfterSuccess (10) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| late_revoke_cut_nomingle | 18 | noRunAfterRevokeKnown (7), noRunMissingRevoke (8), finalStable (9), noRerunAfterSuccess (10) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| late_revoke_started | 11 | noRunAfterRevokeKnown (7), finalStable (8) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| stamp_statedb_halt | 16 | noRunAfterRevokeKnown (7), noRunMissingRevoke (9), revokeSurvivesRestart (7) | neverQuiet (6), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| statedb_halt | 18 | noRunAfterRevokeKnown (7), noRunMissingRevoke (9), finalStable (9) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| statedb_kill | 17 | noRunAfterRevokeKnown (7), noRunMissingRevoke (8), revokeSurvivesRestart (6), finalStable (9), noRerunAfterSuccess (10) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| sticky_checkaccept_revoke | 11 | none | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| syncrevoke_statedb_kill | 17 | noRunAfterRevokeKnown (7), noRunMissingRevoke (8), finalStable (9), noRerunAfterSuccess (10) | neverQuiet (8), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+| threads_revoke | 17 | noRunAfterRevokeKnown (7), finalStable (9) | neverQuiet (14), neverRan (5), neverRevokedStored (5), neverRevokeApplied (4) |
+<!-- end generated -->
+
+What the model says, and what the real code did:
+
+* A revoke or an expiry that comes after the request was handed to the
+  pool does not stop it (`noRunAfterRevokeKnown`, `noRunAfterExpiry`, 6
+  and 7 states). With prefork the semaphore keeps that short, except after
+  a reconnect, which clears it while stale runs hold the processes. The
+  threads, gevent and eventlet pools have no semaphore, so every
+  prefetched request waits in the pool after its last check: on the real
+  code a revoked or expired task waiting behind another ran and stored
+  SUCCESS, threads 2 of 2 each, gevent 2 of 2; prefork and solo discarded
+  it ([revoke-queued-in-pool](../findings/revoke-queued-in-pool/)).
+  Checking in `on_accepted` (`checkaccept_*`) passes both properties.
+* A backend error in a discard's REVOKED write leaves before the ack. A
+  Redis backend on a Redis broker raises redis' ConnectionError, which the
+  consumer takes for a lost broker connection: it reconnects and puts
+  back every unacked message, so finished and running tasks run again
+  (`expire_backenderr.noRerunAfterSuccess`, 13 states); any other error
+  stops the worker. On the real code: injected 3 of 3 reruns, a real
+  backend outage 84 reconnects and a rerun in 1 of 2, a RuntimeError 2 of
+  2 exits; `result_backend_always_retry` removes it
+  ([revoke-backend-error](../findings/revoke-backend-error/); celery issue
+  6238 has the exit).
+* `--statedb` is written at exit only: after SIGKILL and a restart the
+  revoke is gone and the task runs (`statedb_kill.revokeSurvivesRestart`,
+  6 states; real code 2 of 2, SIGTERM 2 of 2 discards;
+  [revoke-statedb-kill](../findings/revoke-statedb-kill/)). Writing the db
+  when a revoke arrives (`syncrevoke_*`) passes it.
+* A worker that is reconnecting, restarting or not started when the
+  broadcast is sent never learns of it unless mingle finds a worker that
+  did (`noRunMissingRevoke`; celery issue 8888).
+* A cold shutdown cancels an early-ack run and stores RETRY; the message
+  was acked at the start, so the task reads RETRY for ever
+  (`early_halt.outcomeVisible`, 9 states; real code 2 of 2,
+  [cold-early-retry](../findings/cold-early-retry/)). A late-ack run's
+  message goes back and runs again (`late_halt` passes).
+* REVOKED is replaced: the revoke command stores it while another worker
+  runs the task without `task_track_started`, and the run stores SUCCESS
+  over it (documented in workers.rst), or with it STARTED over REVOKED in
+  the window between the command's read and write (`finalStable`). Every
+  store allows REVOKED over FAILURE and SUCCESS over REVOKED
+  (`../result/resultstate.qnt`, the `_rev` instances); a store that keeps
+  every final state (`sticky_checkaccept_revoke`) passes all properties.
+* A lost connection leaves two runs of one task in one worker with two
+  processes (`late_cut_s2.noParallelRuns`, documented in the warning that
+  `worker_cancel_long_running_tasks_on_connection_loss` becomes the default
+  in 6.0); with the setting it passes.
+* The broadcast is published with `retry=True` (kombu pidbox.py:307-330),
+  so a lost reply can send it twice (`late_ctldup.ctlOnce`); revoke,
+  rate_limit and shutdown are idempotent. A broadcast with `reply=True`
+  returns after its timeout whatever arrived (pidbox.py:370-400): the
+  caller always returns. Not run on the real code.
+
+Which worker properties carry over to the other pools (celery 768e476):
+
+| Pool | Hand-off to the pool | Revoke and expiry checked | Early ack | Two runs in one worker after a reconnect | Cold shutdown |
+|---|---|---|---|---|---|
+| prefork | when a process is free (semaphore, prefork.py:155, worker.py:288-289) | at receipt and at the hand-off; not after a reconnect clears the semaphore (consumer.py:585-586) | when the child accepts (request.py:524-533) | yes with -c 2 or more, unless the cancel setting is on | children terminated (request.cancel) |
+| threads | at once (no semaphore, base.py:68; thread.py:45-56) | at receipt only: a request waiting in the executor is not checked (confirmed) | when the thread starts it (accept_callback) | yes | no terminate_job (celery issue 10490; celery PR 10491, 11065 open) |
+| gevent, eventlet | at once (pool spawn, gevent.py:116-126, eventlet.py:123-135) | at receipt only (gevent confirmed; eventlet not installed here) | when the greenlet starts it | yes | greenlets killed (gevent.py _make_killable_target; celery PR 11065 open) |
+| solo | runs inside execute_using_pool (solo.py), the consumer blocked | right before the run (confirmed: discarded) | at the start | no: one run at a time | not read here |
+
+The model sees only the hand-off (`semaphore: false`, `threads_revoke`);
+the rest (state db, mingle, the discard's backend error, the stored
+states) is the same code in the main process for every pool.
+
+Why each violation is expected:
+
+<!-- generated: reasons revoke.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `noRunAfterRevokeKnown` | late_ctldup (7), late_revoke (7), late_revoke_cut (7), late_revoke_cut_nomingle (7), late_revoke_started (7), stamp_statedb_halt (7), statedb_halt (7), statedb_kill (7), syncrevoke_statedb_kill (7), threads_revoke (7) | open | finding revoke-queued-in-pool. the revoke arrives after execute_using_pool handed the job to the pool and before a process started it; nothing checks the revoked set there. Prefork: the hand-off, and after a reconnect the whole wait; threads and gevent: the whole wait in the pool |
+| `noRunAfterExpiry` | expire_backenderr (6), expire_backenderr_db (6), expire_backenderr_retry (6), expire_dup (6), late_expire (6) | open | finding revoke-queued-in-pool. expires passes after the hand-off to the pool; calling.rst:363-364 promises the check when the worker receives the task only |
+| `noRunMissingRevoke` | stamp_statedb_halt (9) | documented | docs/userguide/workers.rst (celery 768e476), revoke_by_stamped_headers: "The revoked headers mapping is not persistent across restarts" |
+| `noRunMissingRevoke` | late_revoke_cut (8), late_revoke_cut_nomingle (8), statedb_halt (9), statedb_kill (8), syncrevoke_statedb_kill (8) | open | celery issue 8888 (open): a revoke sent while a worker is offline is lost; the broadcast reaches only connected consumers (kombu pidbox.py:258-273, redis.py:1704-1716), and mingle copies it only from a worker that has it. a worker reconnecting, restarted, or killed when the broadcast was sent |
+| `revokeSurvivesRestart` | stamp_statedb_halt (7) | documented | docs/userguide/workers.rst (celery 768e476), revoke_by_stamped_headers: "The revoked headers mapping is not persistent across restarts" |
+| `revokeSurvivesRestart` | statedb_kill (6) | open | finding revoke-statedb-kill. the state db is written at exit only (components.py:216-218) |
+| `noParallelRuns` | late_cut_s2 (10) | documented | celery/worker/consumer/consumer.py CANCEL_TASKS_BY_DEFAULT (celery 768e476): late-ack tasks are redelivered on connection loss unless worker_cancel_long_running_tasks_on_connection_loss, the default from Celery 6.0. the run goes on and its redelivered copy starts beside it |
+| `finalStable` | checkaccept_revoke (9), expire_dup (9), late_ctldup (9), late_revoke (9), late_revoke_cut (9), late_revoke_cut_nomingle (9), late_revoke_started (8), statedb_halt (9), statedb_kill (9), syncrevoke_statedb_kill (9), threads_revoke (9) | documented | docs/userguide/workers.rst (celery 768e476), revoke: "a running task shows PENDING, so it's marked REVOKED and then stores its result when it's done". REVOKED stored by a worker that does not run the task, then the run stores STARTED or SUCCESS over it; every store allows it (resultstate.qnt rtw_rev, mongo_rev, sql_rev, es_rev) |
+| `ctlOnce` | late_ctldup (7) | by design | kombu pidbox.py:307-330 (kombu 445027e): the broadcast publishes with retry=True, so a lost reply can send it twice; revoke, rate_limit and shutdown are idempotent. not run on the real code |
+| `noRerunAfterSuccess` | expire_backenderr (13) | open | finding revoke-backend-error |
+| `noRerunAfterSuccess` | expire_dup (10) | documented | docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a message can be delivered again |
+| `noRerunAfterSuccess` | statedb_kill (10), syncrevoke_statedb_kill (10) | documented | docs/userguide/optimizing.rst:180-183 (celery 768e476): late ack reruns a task whose worker was killed |
+| `noRerunAfterSuccess` | cancel_cut_s2 (10), late_cut_s2 (10), late_revoke_cut (10), late_revoke_cut_nomingle (10) | documented | celery/worker/consumer/consumer.py CANCEL_TASKS_BY_DEFAULT (celery 768e476): late-ack tasks are redelivered on connection loss. a run finished and stored SUCCESS, its ack was not sent before the connection went |
+| `outcomeVisible` | early_halt (9) | open | finding cold-early-retry |
+<!-- end generated -->
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

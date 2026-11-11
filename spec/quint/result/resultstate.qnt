@@ -90,10 +90,22 @@ module resultstate {
 
   const STORE: Store
   const READY_STICKY: bool
+  // A run may also store REVOKED: a worker that discards the task
+  // (_announce_revoked, request.py:464-473) or the revoke command
+  // (control.py:236-244) calls mark_as_revoked, which goes through the
+  // same store_result (base.py:445-451). ../worker/revoke.qnt has when.
+  const REVOKES: bool
+  // Design: the write refuses to replace any ready state with another
+  // state (on Mongo a filter `status $nin READY_STATES`, one atomic
+  // operation). Not in celery.
+  const FINAL_STICKY: bool
 
   // What a duplicate run of a task writes: trace.py marks STARTED
   // (track_started), then RETRY, SUCCESS or FAILURE.
-  pure val WRITES: Set[Status] = Set(Started, Retry, Success, Failure)
+  // @cite celery celery/backends/base.py:445-451 "self.store_result(task_id, exc, state,"
+  pure val WRITES: Set[Status] =
+    if (REVOKES) Set(Started, Retry, Success, Failure, Revoked)
+    else Set(Started, Retry, Success, Failure)
 
   pure val RUNS: Set[RunId] = Set(R(1), R(2))
   pure val MAX_WRITES: int = 2
@@ -149,11 +161,12 @@ module resultstate {
 
   // What the write does to the store, given what the run read at begin.
   // Returns the new stored value and what the commit did.
-  pure def commitEffect(store: Store, sticky: bool, cur: Stored, read: Status,
-                        w: Meta): (Stored, Outcome) =
+  pure def commitEffect(store: Store, sticky: bool, finalSticky: bool,
+                        cur: Stored, read: Status, w: Meta): (Stored, Outcome) =
     val curStatus = statusOf(cur)
     // READY_STICKY as a store rule: elasticsearch.py:195-197
-    val stickyRefuses = sticky and isReady(curStatus) and isUnready(w.status)
+    val stickyRefuses = (sticky and isReady(curStatus) and isUnready(w.status))
+      or (finalSticky and isReady(curStatus) and curStatus != w.status)
     match store {
       | Rtw =>
         // if current_meta['status'] == SUCCESS: return        base.py:1369-1370
@@ -201,7 +214,7 @@ module resultstate {
   // @cite celery celery/backends/elasticsearch.py:135-142 "except elasticsearch.exceptions.ConflictError:"
   action commit(r: RunId): bool = {
     val b = begunOf(pc.get(r))
-    val eff = commitEffect(STORE, READY_STICKY, stored, b.read,
+    val eff = commitEffect(STORE, READY_STICKY, FINAL_STICKY, stored, b.read,
                            { status: b.writing, by: r })
     all {
       isBegun(pc.get(r)),
@@ -284,6 +297,14 @@ module resultstate {
     not(isCommit(lastAction) and isReady(statusOf(prev))
         and isUnready(statusOf(stored)))
 
+  // A ready state is never replaced by another state (except by forget):
+  // stored states move one way. Every store keeps SUCCESS only (and Es
+  // refuses ready -> unready): REVOKED replaces FAILURE, and SUCCESS
+  // replaces REVOKED or FAILURE, on all four.
+  val finalStable: bool =
+    not(isCommit(lastAction) and isReady(statusOf(prev))
+        and statusOf(stored) != statusOf(prev))
+
   // witnesses (violated means reachable)
   // Sanity: the spec can reach a stored SUCCESS
   val noSuccessEver: bool = statusOf(stored) != Success
@@ -320,17 +341,37 @@ module resultstate {
 // ---- instances: one per store --------------------------------------------
 module rtw {
   import resulttypes.*
-  import resultstate(STORE = Rtw, READY_STICKY = false).*
+  import resultstate(STORE = Rtw, READY_STICKY = false, REVOKES = false, FINAL_STICKY = false).*
 }
 module mongo {
   import resulttypes.*
-  import resultstate(STORE = Mongo, READY_STICKY = false).*
+  import resultstate(STORE = Mongo, READY_STICKY = false, REVOKES = false, FINAL_STICKY = false).*
 }
 module sql {
   import resulttypes.*
-  import resultstate(STORE = Sql, READY_STICKY = false).*
+  import resultstate(STORE = Sql, READY_STICKY = false, REVOKES = false, FINAL_STICKY = false).*
 }
 module es {
   import resulttypes.*
-  import resultstate(STORE = Es, READY_STICKY = true).*
+  import resultstate(STORE = Es, READY_STICKY = true, REVOKES = false, FINAL_STICKY = false).*
+}
+module rtw_rev {
+  import resulttypes.*
+  import resultstate(STORE = Rtw, READY_STICKY = false, REVOKES = true, FINAL_STICKY = false).*
+}
+module mongo_rev {
+  import resulttypes.*
+  import resultstate(STORE = Mongo, READY_STICKY = false, REVOKES = true, FINAL_STICKY = false).*
+}
+module sql_rev {
+  import resulttypes.*
+  import resultstate(STORE = Sql, READY_STICKY = false, REVOKES = true, FINAL_STICKY = false).*
+}
+module es_rev {
+  import resulttypes.*
+  import resultstate(STORE = Es, READY_STICKY = true, REVOKES = true, FINAL_STICKY = false).*
+}
+module mongofinal_rev {
+  import resulttypes.*
+  import resultstate(STORE = Mongo, READY_STICKY = false, REVOKES = true, FINAL_STICKY = true).*
 }

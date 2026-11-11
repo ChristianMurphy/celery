@@ -114,6 +114,14 @@ module delivery {
     copies' = copies.setBy(m, c => { ready: c.ready + 1, taken: c.taken - 1 }),
     sent' = sent, dused' = dused,
   }
+  // Several delivered copies go back at once: a connection or a worker is
+  // lost, a shutdown drops what it reserved.
+  action putBack(n: MsgId -> int): bool = all {
+    MSGS.forall(m => copies.get(m).taken >= n.get(m)),
+    copies' = MSGS.mapBy(m => { ready: copies.get(m).ready + n.get(m),
+                                taken: copies.get(m).taken - n.get(m) }),
+    sent' = sent, dused' = dused,
+  }
   // A message that was settled, or is held, is delivered once more.
   action duplicate(m: MsgId): bool = all {
     sent.contains(m), dused.dups < DMAX.dups,

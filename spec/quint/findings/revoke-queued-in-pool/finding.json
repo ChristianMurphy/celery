@@ -1,0 +1,17 @@
+{
+ "id": "revoke-queued-in-pool",
+ "title": "With the threads and gevent pools a revoke or an expiry does not stop a task that waits in the pool: it runs and its SUCCESS replaces REVOKED",
+ "cells": [
+  "late_revoke.noRunAfterRevokeKnown",
+  "late_expire.noRunAfterExpiry"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "no upstream thread found (searched revoke threads pool, revoke gevent, revoked task still executed, revoke prefetched task; closest celery issue 10490, about terminate and shutdown on the threads pool, and celery issue 4300, ETA); not in the tracker yet",
+ "thread": "none yet (a new issue candidate)",
+ "confirm": [
+  "confirm_revoke_queued_in_pool.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, one worker -c 1, acks_late, A runs 4 s and B waits behind it, revoke(B) 1 s later, nothing injected: threads 2 of 2 and gevent 2 of 2 ran B (\"Tasks flagged as revoked\" logged, B ended SUCCESS); prefork 2 of 2 and solo 2 of 2 discarded it (REVOKED). With expires=2 on B instead of a revoke: threads 2 of 2 ran B after it expired, prefork 2 of 2 discarded it. Only prefork has the semaphore (concurrency/base.py:68, prefork.py:155); the others get every prefetched request at once, after its last check. In the model (prefork) the window is the hand-off to the child, and after a reconnect, which clears the semaphore, the whole wait for a busy process; that prefork window is not reproduced on the real code. The design checkOnAccept (on_accepted reads the revoked set) passes noRunAfterRevokeKnown and noRunAfterExpiry."
+}

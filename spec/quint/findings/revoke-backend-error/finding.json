@@ -1,0 +1,16 @@
+{
+ "id": "revoke-backend-error",
+ "title": "A backend error while a worker discards an expired or revoked task: with Redis on both sides the worker reconnects in a loop and puts back every unacked message, so tasks that ran run again; with other backends the worker exits",
+ "cells": [
+  "expire_backenderr.noRerunAfterSuccess"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "celery issue 6238 (open since 2020: workers crash when storing the result of an expired task in MongoDB) covers the exit; the Redis reconnect loop and the reruns are not reported there; the same class as finding dedup-read-error (a backend error outside the task body); not in the tracker yet",
+ "thread": "a reply on celery issue 6238",
+ "confirm": [
+  "confirm_discard_backend_error.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend. inject (the REVOKED write raises redis ConnectionError for 3 s; injected), -c 1, acks_late, A 3 s, B expires=1.5 s, C behind: 3 of 3 A and C each ran twice after their SUCCESS was stored, B ended REVOKED, 13 to 19 reconnects, \"Frequent restarts detected\" logged without an exit. natural (the result backend's container stopped for 15 s; X 6 s on -c 2, B already expired when received; nothing else injected): 84 reconnects in each run, X ran twice in 1 of 2. naturalretry (result_backend_always_retry): no reconnect, X once, B REVOKED, 1 of 1. injectdb (a RuntimeError, as a database backend would raise): \"Unrecoverable error\", the worker exits, again after the supervisor's restart, B PENDING, 2 of 2."
+}

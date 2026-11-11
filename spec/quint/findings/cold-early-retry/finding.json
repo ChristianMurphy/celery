@@ -1,0 +1,16 @@
+{
+ "id": "cold-early-retry",
+ "title": "A cold shutdown cancels an early-ack task and stores RETRY: its message was acked at the start, so nothing runs it again and the task reads RETRY for ever",
+ "cells": [
+  "early_halt.outcomeVisible"
+ ],
+ "outcome": "hang",
+ "status": "open",
+ "where": "early ack loses a task the worker does not finish (documented, tasks.rst acks_late); the RETRY state that says it will run again is not (consumer.py:907-929 emits RETRY for non-acks_late tasks, request.py:446-457); no upstream thread found (searched cold shutdown early ack RETRY, cancelled by Celery); not in the tracker yet",
+ "thread": "none yet; a question for the lead (docs, or store FAILURE instead)",
+ "confirm": [
+  "../revoke-statedb-kill/confirm_statedb_kill.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, case cold of that script: a prefork worker -c 1 with acks_late off, a 6 s task, SIGQUIT 1.5 s in (an operator's cold shutdown), the worker started again and watched 12 s: 2 of 2 the body ran once, the state stayed RETRY, nothing queued."
+}

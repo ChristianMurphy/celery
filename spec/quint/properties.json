@@ -10,6 +10,7 @@
    "properties": [
     "successStable",
     "readySticky",
+    "finalStable",
     "progress"
    ],
    "witnesses": [
@@ -23,9 +24,9 @@
    ],
    "fast": [
     "rtw",
-    "es"
+    "mongofinal_rev"
    ],
-   "passes_all": "es",
+   "passes_all": "mongofinal_rev",
    "progress": "closed form",
    "checklist": "enforced",
    "cite": "enforced"
@@ -129,7 +130,6 @@
    "fast": [
     "main_late_partition",
     "pr_late_shutdown",
-    "pr_late_eta",
     "pr_late_cut",
     "renewall_late_hang",
     "best_late_crash"
@@ -265,6 +265,41 @@
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
+  },
+  "revoke.qnt": {
+   "family": "worker",
+   "types": "revoketypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "noRunAfterRevokeKnown",
+    "noRunAfterExpiry",
+    "noRunMissingRevoke",
+    "revokeSurvivesRestart",
+    "noParallelRuns",
+    "finalStable",
+    "ctlOnce",
+    "noRerunAfterSuccess",
+    "outcomeVisible",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverRan",
+    "neverRevokedStored",
+    "neverRevokeApplied"
+   ],
+   "apalache": [],
+   "fast": [
+    "checkaccept_expire"
+   ],
+   "passes_all": "checkaccept_expire",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
   }
  },
  "properties": [
@@ -283,7 +318,7 @@
    "mutant": "mongo filter without $ne SUCCESS",
    "violations": [
     {
-     "instances": "rtw",
+     "instances": "rtw*",
      "reason": "open",
      "where": "tracker structural-first-success (reply on celery discussion 10681)",
      "note": "read-then-write stores: the read and the write are two round trips"
@@ -305,22 +340,44 @@
    "mutant": "es without the ready check",
    "violations": [
     {
-     "instances": "rtw",
+     "instances": "rtw*",
      "reason": "open",
      "where": "tracker es-ready-states (merged into the reply on celery discussion 10681)",
      "note": "a late RETRY replaces a final FAILURE"
     },
     {
-     "instances": "mongo",
+     "instances": "mongo*",
      "reason": "open",
      "where": "tracker es-ready-states (merged into the reply on celery discussion 10681)",
      "note": ""
     },
     {
-     "instances": "sql",
+     "instances": "sql*",
      "reason": "open",
      "where": "tracker es-ready-states (merged into the reply on celery discussion 10681)",
      "note": ""
+    }
+   ]
+  },
+  {
+   "id": "resultstate.finalStable",
+   "spec": "resultstate.qnt",
+   "definition": "finalStable",
+   "kind": "safety",
+   "pattern": "Absence (a ready state replaced by another state), after a ready state until forget()",
+   "statement": "A ready state (SUCCESS, FAILURE, REVOKED) is never replaced by another state, except by forget(): stored states move one way.",
+   "assumptions": "two duplicate runs of one task id; the _rev instances also write REVOKED (mark_as_revoked)",
+   "source": "celery/states.py (celery 768e476): READY_STATES are final; the item: one order of stored states including REVOKED",
+   "instances": "all",
+   "evidence": "",
+   "witness": "noSuccessEver",
+   "mutant": "results: a store that keeps every ready state, broken",
+   "violations": [
+    {
+     "instances": "*",
+     "reason": "documented",
+     "where": "docs/userguide/workers.rst (celery 768e476), revoke: a task marked REVOKED \"then stores its result when it's done\"; base.py:1361-1370 keeps SUCCESS only",
+     "note": "a duplicate run or a late write replaces FAILURE or REVOKED with another ready state on every store; only SUCCESS is kept (and lost on rtw, successStable)"
     }
    ]
   },
@@ -2608,6 +2665,339 @@
      "note": "a backend error at the STARTED write (the body never runs) or the SUCCESS write (it ran): internal error, FAILURE if the backend takes that write, the message acked either way; result_backend_always_retry gets past a transient error (redis_retry_backenderr passes)"
     }
    ]
+  },
+  {
+   "id": "revoke.noRunAfterRevokeKnown",
+   "spec": "revoke.qnt",
+   "definition": "noRunAfterRevokeKnown",
+   "kind": "safety",
+   "pattern": "Absence (a run of a revoked task starting in a worker that knows the revoke), global",
+   "statement": "No run of task 1 starts in a worker whose revoked set holds its id.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/workers.rst (celery 768e476), revoke: \"When a worker receives a revoke request it will skip executing the task\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRan",
+   "mutant": "revoke: on_accepted check missing in the design",
+   "violations": [
+    {
+     "instances": "*",
+     "reason": "open",
+     "where": "finding revoke-queued-in-pool",
+     "note": "the revoke arrives after execute_using_pool handed the job to the pool and before a process started it; nothing checks the revoked set there. Prefork: the hand-off, and after a reconnect the whole wait; threads and gevent: the whole wait in the pool"
+    }
+   ]
+  },
+  {
+   "id": "revoke.noRunAfterExpiry",
+   "spec": "revoke.qnt",
+   "definition": "noRunAfterExpiry",
+   "kind": "safety",
+   "pattern": "Absence (a run starting after expires), global",
+   "statement": "No run of task 1 starts after its expires time passed.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/calling.rst:363-364 (celery 768e476): \"When a worker receives an expired task it will mark the task as REVOKED\"; celery/app/task.py:603-604: \"seconds in the future for the task should expire\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRan",
+   "mutant": "revoke: a check that ignores expires",
+   "violations": [
+    {
+     "instances": "*",
+     "reason": "open",
+     "where": "finding revoke-queued-in-pool",
+     "note": "expires passes after the hand-off to the pool; calling.rst:363-364 promises the check when the worker receives the task only"
+    }
+   ]
+  },
+  {
+   "id": "revoke.noRunMissingRevoke",
+   "spec": "revoke.qnt",
+   "definition": "noRunMissingRevoke",
+   "kind": "safety",
+   "pattern": "Absence (a run, after the revoke was sent, in a worker that neither knows it nor has it to read), global",
+   "statement": "Once the revoke was sent, no run of task 1 starts in a worker that neither knows the revoke nor still has the broadcast to read: no worker misses or forgets a revoke.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/workers.rst (celery 768e476), revoke: \"All worker nodes keeps a memory of revoked task ids\"; Persistent revokes: workers synchronize revoked tasks at start up",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRevokeApplied",
+   "mutant": "revoke: a broadcast that skips worker 2",
+   "violations": [
+    {
+     "instances": "stamp_*",
+     "reason": "documented",
+     "where": "docs/userguide/workers.rst (celery 768e476), revoke_by_stamped_headers: \"The revoked headers mapping is not persistent across restarts\"",
+     "note": ""
+    },
+    {
+     "instances": "*",
+     "reason": "open",
+     "where": "celery issue 8888 (open): a revoke sent while a worker is offline is lost; the broadcast reaches only connected consumers (kombu pidbox.py:258-273, redis.py:1704-1716), and mingle copies it only from a worker that has it",
+     "note": "a worker reconnecting, restarted, or killed when the broadcast was sent"
+    }
+   ]
+  },
+  {
+   "id": "revoke.revokeSurvivesRestart",
+   "spec": "revoke.qnt",
+   "definition": "revokeSurvivesRestart",
+   "kind": "safety",
+   "pattern": "Absence (a restart with --statedb that forgets a known revoke), global",
+   "statement": "With --statedb, a worker that knew the revoke when it stopped knows it after its restart.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/workers.rst (celery 768e476), Persistent revokes: \"If you want to preserve this list between restarts you need to specify a file for these to be stored in by using the --statedb argument\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRevokeApplied",
+   "mutant": "revoke: an exit that does not save the state db",
+   "violations": [
+    {
+     "instances": "stamp_*",
+     "reason": "documented",
+     "where": "docs/userguide/workers.rst (celery 768e476), revoke_by_stamped_headers: \"The revoked headers mapping is not persistent across restarts\"",
+     "note": ""
+    },
+    {
+     "instances": "statedb_kill",
+     "reason": "open",
+     "where": "finding revoke-statedb-kill",
+     "note": "the state db is written at exit only (components.py:216-218)"
+    }
+   ]
+  },
+  {
+   "id": "revoke.noParallelRuns",
+   "spec": "revoke.qnt",
+   "definition": "noParallelRuns",
+   "kind": "safety",
+   "pattern": "Absence (two runs of one task at once in one worker), global",
+   "statement": "A lost connection never leaves two runs of one task at once in one worker.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "celery/worker/consumer/consumer.py:489-499 (celery 768e476) and the CANCEL_TASKS_BY_DEFAULT warning: cancelling late-ack runs on connection loss is to become the default in Celery 6.0",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRan",
+   "mutant": "revoke: a connection loss that does not cancel",
+   "violations": [
+    {
+     "instances": "late_cut_*",
+     "reason": "documented",
+     "where": "celery/worker/consumer/consumer.py CANCEL_TASKS_BY_DEFAULT (celery 768e476): late-ack tasks are redelivered on connection loss unless worker_cancel_long_running_tasks_on_connection_loss, the default from Celery 6.0",
+     "note": "the run goes on and its redelivered copy starts beside it"
+    }
+   ]
+  },
+  {
+   "id": "revoke.finalStable",
+   "spec": "revoke.qnt",
+   "definition": "finalStable",
+   "kind": "safety",
+   "pattern": "Absence (a final state replaced), global",
+   "statement": "A stored final state (SUCCESS, REVOKED) is never replaced by another state: stored states move one way.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "celery/states.py (celery 768e476): READY_STATES are final; celery/backends/base.py:1361-1370 keeps SUCCESS only",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRevokedStored",
+   "mutant": "revoke: a store that replaces a final state",
+   "violations": [
+    {
+     "instances": "*",
+     "reason": "documented",
+     "where": "docs/userguide/workers.rst (celery 768e476), revoke: \"a running task shows PENDING, so it's marked REVOKED and then stores its result when it's done\"",
+     "note": "REVOKED stored by a worker that does not run the task, then the run stores STARTED or SUCCESS over it; every store allows it (resultstate.qnt rtw_rev, mongo_rev, sql_rev, es_rev)"
+    }
+   ]
+  },
+  {
+   "id": "revoke.ctlOnce",
+   "spec": "revoke.qnt",
+   "definition": "ctlOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (each worker applies the command at most once), global",
+   "statement": "Each worker applies the revoke command at most once.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "the item: a control command over the pidbox is applied at most once per worker",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRevokeApplied",
+   "mutant": "revoke: a command that stays in the inbox",
+   "violations": [
+    {
+     "instances": "*",
+     "reason": "by design",
+     "where": "kombu pidbox.py:307-330 (kombu 445027e): the broadcast publishes with retry=True, so a lost reply can send it twice; revoke, rate_limit and shutdown are idempotent",
+     "note": "not run on the real code"
+    }
+   ]
+  },
+  {
+   "id": "revoke.noRerunAfterSuccess",
+   "spec": "revoke.qnt",
+   "definition": "noRerunAfterSuccess",
+   "kind": "safety",
+   "pattern": "Absence (a run starting while SUCCESS is stored), global",
+   "statement": "No task starts while its SUCCESS is stored.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/configuration.rst (celery 768e476), worker_deduplicate_successful_tasks: a task that succeeded is not to run again",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRan",
+   "mutant": "revoke: an ack that requeues",
+   "violations": [
+    {
+     "instances": "expire_backenderr",
+     "reason": "open",
+     "where": "finding revoke-backend-error",
+     "note": ""
+    },
+    {
+     "instances": "*_dup",
+     "reason": "documented",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:315-316 (celery 768e476): a message can be delivered again",
+     "note": ""
+    },
+    {
+     "instances": "*_kill",
+     "reason": "documented",
+     "where": "docs/userguide/optimizing.rst:180-183 (celery 768e476): late ack reruns a task whose worker was killed",
+     "note": ""
+    },
+    {
+     "instances": "*",
+     "reason": "documented",
+     "where": "celery/worker/consumer/consumer.py CANCEL_TASKS_BY_DEFAULT (celery 768e476): late-ack tasks are redelivered on connection loss",
+     "note": "a run finished and stored SUCCESS, its ack was not sent before the connection went"
+    }
+   ]
+  },
+  {
+   "id": "revoke.outcomeVisible",
+   "spec": "revoke.qnt",
+   "definition": "outcomeVisible",
+   "kind": "safety",
+   "pattern": "Universality (a quiet system shows a final state for every task), after quiet",
+   "statement": "A quiet system shows SUCCESS or REVOKED for every task: no task is left PENDING, STARTED or RETRY with nothing to finish it.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "docs/userguide/tasks.rst (celery 768e476), States: a task ends in a ready state",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "revoke: a cold shutdown that does not put back a late-ack run",
+   "violations": [
+    {
+     "instances": "early_halt",
+     "reason": "open",
+     "where": "finding cold-early-retry",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "revoke.quietDone",
+   "spec": "revoke.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: a quiet system has settled every message)",
+   "statement": "A quiet system has settled every message: nothing is held unacked for ever.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "the spec: lib/delivery.qnt",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "revoke: an ack that settles nothing",
+   "violations": []
+  },
+  {
+   "id": "revoke.progress",
+   "spec": "revoke.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "revoke.stepOrQuiet",
+   "spec": "revoke.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "revoke.neverQuiet",
+   "spec": "revoke.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "revoke.neverRan",
+   "spec": "revoke.qnt",
+   "definition": "neverRan",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Task 1 runs.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "revoke.neverRevokedStored",
+   "spec": "revoke.qnt",
+   "definition": "neverRevokedStored",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "REVOKED is stored for task 1.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "revoke.neverRevokeApplied",
+   "spec": "revoke.qnt",
+   "definition": "neverRevokeApplied",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some worker applies the revoke.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
   }
  ]
 }

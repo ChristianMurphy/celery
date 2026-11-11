@@ -1359,19 +1359,52 @@
   "es": {
    "D": 11,
    "violated": {
+    "finalStable": 5,
+    "noSuccessEver": 3
+   }
+  },
+  "es_rev": {
+   "D": 11,
+   "violated": {
+    "finalStable": 5,
     "noSuccessEver": 3
    }
   },
   "mongo": {
    "D": 11,
    "violated": {
+    "finalStable": 5,
     "noSuccessEver": 3,
     "readySticky": 5
+   }
+  },
+  "mongo_rev": {
+   "D": 11,
+   "violated": {
+    "finalStable": 5,
+    "noSuccessEver": 3,
+    "readySticky": 5
+   }
+  },
+  "mongofinal_rev": {
+   "D": 11,
+   "violated": {
+    "noSuccessEver": 3
    }
   },
   "rtw": {
    "D": 11,
    "violated": {
+    "finalStable": 5,
+    "noSuccessEver": 3,
+    "readySticky": 5,
+    "successStable": 6
+   }
+  },
+  "rtw_rev": {
+   "D": 11,
+   "violated": {
+    "finalStable": 5,
     "noSuccessEver": 3,
     "readySticky": 5,
     "successStable": 6
@@ -1380,6 +1413,15 @@
   "sql": {
    "D": 11,
    "violated": {
+    "finalStable": 5,
+    "noSuccessEver": 3,
+    "readySticky": 5
+   }
+  },
+  "sql_rev": {
+   "D": 11,
+   "violated": {
+    "finalStable": 5,
     "noSuccessEver": 3,
     "readySticky": 5
    }
@@ -1475,6 +1517,237 @@
     "neverFailed": 7,
     "neverQuiet": 5,
     "neverRetried": 6
+   }
+  }
+ },
+ "revoke.qnt": {
+  "cancel_cut_s2": {
+   "D": 13,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRan": 5,
+    "noRerunAfterSuccess": 10
+   }
+  },
+  "checkaccept_expire": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 4,
+    "neverRan": 5,
+    "neverRevokedStored": 4
+   }
+  },
+  "checkaccept_revoke": {
+   "D": 11,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5
+   }
+  },
+  "early_halt": {
+   "D": 11,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRan": 5,
+    "outcomeVisible": 9
+   }
+  },
+  "expire_backenderr": {
+   "D": 17,
+   "violated": {
+    "neverQuiet": 10,
+    "neverRan": 5,
+    "neverRevokedStored": 4,
+    "noRerunAfterSuccess": 13,
+    "noRunAfterExpiry": 6
+   }
+  },
+  "expire_backenderr_db": {
+   "D": 14,
+   "violated": {
+    "neverQuiet": 10,
+    "neverRan": 5,
+    "neverRevokedStored": 4,
+    "noRunAfterExpiry": 6
+   }
+  },
+  "expire_backenderr_retry": {
+   "D": 13,
+   "violated": {
+    "neverQuiet": 10,
+    "neverRan": 5,
+    "neverRevokedStored": 4,
+    "noRunAfterExpiry": 6
+   }
+  },
+  "expire_dup": {
+   "D": 13,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 4,
+    "neverRan": 5,
+    "neverRevokedStored": 4,
+    "noRerunAfterSuccess": 10,
+    "noRunAfterExpiry": 6
+   }
+  },
+  "late_ctldup": {
+   "D": 16,
+   "violated": {
+    "ctlOnce": 7,
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRunAfterRevokeKnown": 7
+   }
+  },
+  "late_cut_s2": {
+   "D": 13,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRan": 5,
+    "noParallelRuns": 10,
+    "noRerunAfterSuccess": 10
+   }
+  },
+  "late_expire": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 4,
+    "neverRan": 5,
+    "neverRevokedStored": 4,
+    "noRunAfterExpiry": 6
+   }
+  },
+  "late_halt": {
+   "D": 13,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRan": 5
+   }
+  },
+  "late_revoke": {
+   "D": 11,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRunAfterRevokeKnown": 7
+   }
+  },
+  "late_revoke_cut": {
+   "D": 18,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRerunAfterSuccess": 10,
+    "noRunAfterRevokeKnown": 7,
+    "noRunMissingRevoke": 8
+   }
+  },
+  "late_revoke_cut_nomingle": {
+   "D": 18,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRerunAfterSuccess": 10,
+    "noRunAfterRevokeKnown": 7,
+    "noRunMissingRevoke": 8
+   }
+  },
+  "late_revoke_started": {
+   "D": 11,
+   "violated": {
+    "finalStable": 8,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRunAfterRevokeKnown": 7
+   }
+  },
+  "stamp_statedb_halt": {
+   "D": 16,
+   "violated": {
+    "neverQuiet": 6,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRunAfterRevokeKnown": 7,
+    "noRunMissingRevoke": 9,
+    "revokeSurvivesRestart": 7
+   }
+  },
+  "statedb_halt": {
+   "D": 18,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRunAfterRevokeKnown": 7,
+    "noRunMissingRevoke": 9
+   }
+  },
+  "statedb_kill": {
+   "D": 17,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRerunAfterSuccess": 10,
+    "noRunAfterRevokeKnown": 7,
+    "noRunMissingRevoke": 8,
+    "revokeSurvivesRestart": 6
+   }
+  },
+  "sticky_checkaccept_revoke": {
+   "D": 11,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5
+   }
+  },
+  "syncrevoke_statedb_kill": {
+   "D": 17,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 8,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRerunAfterSuccess": 10,
+    "noRunAfterRevokeKnown": 7,
+    "noRunMissingRevoke": 8
+   }
+  },
+  "threads_revoke": {
+   "D": 17,
+   "violated": {
+    "finalStable": 9,
+    "neverQuiet": 14,
+    "neverRan": 5,
+    "neverRevokeApplied": 4,
+    "neverRevokedStored": 5,
+    "noRunAfterRevokeKnown": 7
    }
   }
  },

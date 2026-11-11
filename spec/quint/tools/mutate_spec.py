@@ -19,7 +19,7 @@ import tlc
 
 HERE = tlc.ROOT
 
-# (name, spec, instance, property, old, new)
+# (name, spec, instance, property, old, new[, samples])
 MUTANTS = [
     ('mongo filter without $ne SUCCESS', 'resultstate.qnt', 'mongo', 'successStable',
      'if (curStatus == Success) (cur, Skipped)\n        else if (stickyRefuses) (cur, Skipped)\n        else (Present(w), Written)\n      | Sql =>',
@@ -27,6 +27,8 @@ MUTANTS = [
     ('sql without the locked re-read', 'resultstate.qnt', 'sql', 'successStable',
      'else if (curStatus == Success) (cur, Skipped) // :186-190',
      'else if (read == Success) (cur, Skipped) // :186-190'),
+    ('results: a store that keeps every ready state, broken', 'resultstate.qnt', 'mongofinal_rev', 'finalStable',
+     '      or (finalSticky and isReady(curStatus) and curStatus != w.status)', '      or false'),
     ('es without the ready check', 'resultstate.qnt', 'es', 'readySticky',
      'else if (isReady(curStatus) and isUnready(w.status))\n          (cur, Skipped)',
      'else if (false)\n          (cur, Skipped)'),
@@ -196,6 +198,28 @@ MUTANTS = [
      "stored' = if (atMax) storing(Failure)", "stored' = if (atMax) stored"),
     ('retry: a lost node\'s message is not requeued', 'retry.qnt', 'retryfirst_node', 'quietDone',
      "Q::requeue(M(job(w).att)),\n    jobs' = jobs.set(w, Idle)", "Q::dkeep,\n    jobs' = jobs.set(w, Idle)"),
+    # revoke.qnt: one mutant per property
+    ('revoke: on_accepted check missing in the design', 'revoke.qnt', 'checkaccept_revoke', 'noRunAfterRevokeKnown',
+     'not(CFG.checkOnAccept and discards(w, r.m)),', 'true,'),
+    ('revoke: a check that ignores expires', 'revoke.qnt', 'checkaccept_expire', 'noRunAfterExpiry',
+     'm == M(1) and ((CFG.expires and expired) or lv(w).revoked)', 'm == M(1) and lv(w).revoked'),
+    ('revoke: a broadcast that skips worker 2', 'revoke.qnt', 'late_revoke', 'noRunMissingRevoke',
+     "    CFG.revoke, not(revokeSent), applied.contains(M(1)),\n    revokeSent' = true, applied' = applied, expired' = expired,\n    workers' = WORKERS.mapBy(w => match workers.get(w) {\n      | Down => Down\n      | Up(l) => Up({ ...l, inbox: l.inbox or\n",
+     "    CFG.revoke, not(revokeSent), applied.contains(M(1)),\n    revokeSent' = true, applied' = applied, expired' = expired,\n    workers' = WORKERS.mapBy(w => match workers.get(w) {\n      | Down => Down\n      | Up(l) => Up({ ...l, inbox: l.inbox or w == W(2) and\n"),
+    ('revoke: an exit that does not save the state db', 'revoke.qnt', 'statedb_halt', 'revokeSurvivesRestart',
+     "saved.set(w, l.revoked) else saved,", "saved else saved,"),
+    ('revoke: a connection loss that does not cancel', 'revoke.qnt', 'cancel_cut_s2', 'noParallelRuns',
+     '.filter(r => not(cancel and late and r.stage == Running))', '.filter(r => true)', 30000),
+    ('revoke: a store that replaces a final state', 'revoke.qnt', 'sticky_checkaccept_revoke', 'finalStable',
+     'if (cur == Success or (CFG.finalSticky and final(cur))) cur else r', 'if (cur == Success) cur else r'),
+    ('revoke: a command that stays in the inbox', 'revoke.qnt', 'late_revoke', 'ctlOnce',
+     "workers' = setLive(w, { ...l, inbox: false, revoked: true,", "workers' = setLive(w, { ...l, revoked: true,"),
+    ('revoke: an ack that requeues', 'revoke.qnt', 'late_halt', 'noRerunAfterSuccess',
+     "  action settle(r: Req): bool = if (r.stale) Q::dkeep else Q::ack(r.m)", "  action settle(r: Req): bool = if (r.stale) Q::dkeep else Q::requeue(r.m)"),
+    ('revoke: a cold shutdown that does not put back a late-ack run', 'revoke.qnt', 'late_halt', 'outcomeVisible',
+     "    val back = if (LATE) cancelled.filter(r => not(r.stale)) else Set()", "    val back = if (LATE) Set() else Set()"),
+    ('revoke: an ack that settles nothing', 'revoke.qnt', 'late_revoke', 'quietDone',
+     "  action settle(r: Req): bool = if (r.stale) Q::dkeep else Q::ack(r.m)", "  action settle(r: Req): bool = Q::dkeep"),
 ]
 
 
@@ -220,15 +244,18 @@ def main() -> None:
     caught = 0
     chosen = [m for m in MUTANTS
               if all(word in m[0] + m[1] for word in sys.argv[1:])]
-    for name, spec, inst, prop, old, new in chosen:
+    for name, spec, inst, prop, old, new, *more in chosen:
+        # a seventh field: simulator samples, for a violation that needs
+        # a rare interleaving
+        samples = more[0] if more else 3000
         path = tlc.spec_path(spec)
         text = path.read_text()
         instances = tlc.instances_file(path).read_text()
         assert text.count(old) == 1, f'{name}: pattern found {text.count(old)}x'
         base = violated(path.parent, tlc.single_instance(text, instances, inst), inst,
-                        prop, 3000)
+                        prop, samples)
         mut = violated(path.parent, tlc.single_instance(
-            text.replace(old, new), instances, inst), inst, prop, 3000)
+            text.replace(old, new), instances, inst), inst, prop, samples)
         ok = mut and not base
         if name.startswith('EQUIV'):
             ok = not ok

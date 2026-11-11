@@ -1,0 +1,16 @@
+{
+ "id": "revoke-statedb-kill",
+ "title": "--statedb is written at exit only: a worker killed with SIGKILL forgets the revokes it received, and after its restart the revoked task runs",
+ "cells": [
+  "statedb_kill.revokeSurvivesRestart"
+ ],
+ "outcome": "duplicate",
+ "status": "open",
+ "where": "workers.rst, Persistent revokes, promises the list survives restarts and does not say it is written at exit only; related celery issue 8888 (revokes lost while workers are offline) and celery issue 4886 (a feature request to keep statedb in the result backend); no thread on the kill; not in the tracker yet",
+ "thread": "a reply on celery issue 8888, or a docs sentence (the lead decides)",
+ "confirm": [
+  "confirm_statedb_kill.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, a prefork worker -c 1 with --statedb, acks_late, visibility_timeout 2 s: A runs 5 s, B reserved behind it, revoke(B) logged \"Tasks flagged as revoked\", then the worker's process group gets SIGKILL (the fault; injected) and the worker starts again with the same state db: 2 of 2 B ran and ended SUCCESS over the REVOKED the control had stored (A ran twice, as late ack promises). With SIGTERM instead (a warm shutdown, atexit writes the db): 2 of 2 B discarded, REVOKED. The design syncOnRevoke (write the db when a revoke arrives) passes revokeSurvivesRestart."
+}
