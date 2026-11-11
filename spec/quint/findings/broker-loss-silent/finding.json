@@ -1,0 +1,17 @@
+{
+ "id": "broker-loss-silent",
+ "title": "A Redis broker that loses a write it acknowledged loses the task silently: it never runs and stays PENDING",
+ "cells": [
+  "redis_late_loss.noSilentLoss",
+  "redis_late_loss.quietDone"
+ ],
+ "outcome": "silent loss",
+ "status": "documented",
+ "where": "docs/getting-started/backends-and-brokers/redis.rst:268-273 (celery 768e476): RDB snapshots lose tasks published since the last one, AOF everysec up to a second",
+ "thread": "none needed: documented",
+ "confirm": [
+  "confirm_broker_loss.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, Redis 7.4 broker with --save \"\" --appendonly no restarted (docker restart, injected) after apply_async() returned with the task queued, then a real worker: 3 of 3 runs the task never ran, state PENDING, nothing about it in the worker log. The classic-queue case (an unconfirmed publish lost by a kill) is the exactly-once report's measurement (3,659 of 5,100 lost without confirms, 0 with) and the Discussion draft on the confirm_publish default."
+}
