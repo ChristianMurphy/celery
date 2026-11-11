@@ -1,0 +1,17 @@
+{
+ "id": "redis-visibility-loop",
+ "title": "Redis: an acks_late task longer than the visibility timeout reruns for ever with one process and prefetch 1, or with worker_disable_prefetch",
+ "cells": [
+  "redis_late_long_w1.noLoop",
+  "redis_nopf_long_w1p2.noLoop"
+ ],
+ "outcome": "duplicate",
+ "status": "documented: redis.rst:318-320 says \"again, and again in a loop\" for ETA, countdown and retry tasks; not in the tracker yet",
+ "where": "celery issue 5935 (a 2023 comment there says \"redelivered again and again in a loop\"; nobody names the condition); kombu issue 337 (the renewal reply drafted, tracker reply-kombu-337-renew-scope)",
+ "thread": "celery issue 5935, or the renewal reply on kombu issue 337 (the lead decides)",
+ "confirm": [
+  "confirm_redis_visibility_loop.py"
+ ],
+ "scenarios": "",
+ "observed": "768e476 with kombu 445027e, a real prefork worker -c 1 on Redis 7, visibility_timeout 2 s, sweep every second, a 5 s acks_late task, nothing injected, 40 s watched: prefetch multiplier 1: 8 runs, one every 5 s, still queued at the end; worker_disable_prefetch (multiplier 4): 8 runs, the same; multiplier 2: 3 runs (ceil(5 / 2)), then done; multiplier 1 with worker_deduplicate_successful_tasks: 1 run and 1 skip; a 1 s task: 1 run."
+}

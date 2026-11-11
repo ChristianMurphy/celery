@@ -1849,7 +1849,7 @@
     {
      "instances": "redis_*",
      "reason": "documented",
-     "where": "docs/getting-started/backends-and-brokers/redis.rst:318-320 (celery 768e476): \"if that happens it will be executed again, and again in a loop\" (said of ETA, countdown and retry tasks)",
+     "where": "docs/getting-started/backends-and-brokers/redis.rst:318-320 (celery 768e476): \"if that happens it will be executed again, and again in a loop\" (said of ETA, countdown and retry tasks); finding redis-visibility-loop (confirmed: 8 runs in 40 s with prefetch 1, 3 with prefetch 2); celery issue 5935",
      "note": "a long acks_late task loops too when no consumer has credit for the restored copy before the first run acks: one process with prefetch 1 (the setting optimizing.rst recommends with acks_late), or worker_disable_prefetch; the first run's ack then finds no record of the copy, the copy's own record times out again. With credit elsewhere the first run's ack removes the copy's record (same tag) and the task runs at most ceil(run / timeout) times"
     },
     {
