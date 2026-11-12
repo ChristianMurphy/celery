@@ -1145,6 +1145,72 @@ Why each violation is expected:
 | `rejectDeadLetters` | early_rejectdrop (5), late_rejectdrop (4) | documented | docs/userguide/tasks.rst:1533-1535 (celery 768e476): some brokers implement dead lettering; kombu's Redis transport has none, a reject without requeue removes the message. FAILURE is stored |
 <!-- end generated -->
 
+## countdown and expires across two clocks
+
+`eta.qnt`, `eta_instances.qnt`: one task called at true time 0 with a
+countdown, an expires or both. The client turns them into absolute times
+with its own clock (amqp.py:386-400); the worker compares them with its
+own, at receipt and when the ETA is due (strategy.py:160-209,
+request.py:415-421). The clocks may differ by 2; the message reaches the
+worker after up to 2. Instances `<what is set>_<clocks>[_relative]`;
+`relative` sends durations counted from the worker's receive time (a
+comparison, not Celery's protocol).
+
+<!-- generated: properties eta.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `notEarly` | safety | A task with countdown C starts no earlier than C after the call. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Absence (a start before the countdown), global | docs/userguide/calling.rst:257-268 and 278-280 (celery 768e476): the ETA is the earliest time the task runs; apply_async(countdown=3) then get() takes at least 3 seconds |
+| `notDiscardedEarly` | safety | A task with expires X is discarded (REVOKED) only once X has passed since the call. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Absence (a discard before expires), global | docs/userguide/calling.rst:348-361 (celery 768e476): expires=60 expires after one minute from now |
+| `noRunAfterExpiry` | safety | A task with expires X does not start after X has passed since the call. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Absence (a start after expires), global | docs/userguide/calling.rst:348-366 (celery 768e476): a worker that receives an expired task marks it REVOKED |
+| `quietDone` | liveness | At the end the task ran or was discarded. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Response (lemma 3 of 3: at the end the task ran or was discarded) | docs/userguide/calling.rst (celery 768e476) |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Existence | sanity |
+| `neverRan` | witness | The task runs. Assumes: one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison). | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results eta.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| cd_same | 7 | none | neverQuiet (8), neverRan (5) |
+| cd_wahead | 7 | notEarly (3) | neverQuiet (8), neverRan (3) |
+| cd_wbehind | 7 | none | neverQuiet (8), neverRan (7) |
+| cdexp_same | 7 | none | neverQuiet (8), neverRan (4) |
+| cdexp_wahead_relative | 7 | none | neverQuiet (8), neverRan (4) |
+| cdpastexp_same | 7 | none | neverQuiet (8) |
+| exp_same | 7 | none | neverQuiet (7), neverRan (3) |
+| exp_same_relative | 7 | noRunAfterExpiry (5) | neverQuiet (8), neverRan (3) |
+| exp_wahead | 6 | notDiscardedEarly (2) | neverQuiet (7) |
+| exp_wahead_relative | 7 | noRunAfterExpiry (5) | neverQuiet (8), neverRan (3) |
+| exp_wbehind | 7 | noRunAfterExpiry (5) | neverQuiet (8), neverRan (3) |
+<!-- end generated -->
+
+What the model says, and what the real code did (9c2f238, kombu 445027e,
+`../findings/clock-skew-eta/confirm_clock_skew.py`, the client's app.now
+offset by 10 s to stand for a client host whose clock is off):
+
+* A worker clock ahead of the client's starts a countdown early
+  (`cd_wahead.notEarly`) and discards a task with expires before it
+  expired, as REVOKED, without a run (`exp_wahead.notDiscardedEarly`); a
+  worker clock behind runs a task after its expiry
+  (`exp_wbehind.noRunAfterExpiry`). See
+  [clock-skew-eta](../findings/clock-skew-eta/) for the runs.
+* Durations counted from the worker's receive time remove the skew and
+  count the queue wait out of the expiry: a message that waited runs after
+  X (`*_relative.noRunAfterExpiry`). Neither design satisfies all three
+  without synchronized clocks.
+
+Why each violation is expected:
+
+<!-- generated: reasons eta.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `notEarly` | cd_wahead (3) | open | finding clock-skew-eta (no upstream thread found; calling.rst does not say the clocks must agree). the ETA is the client's now plus the countdown, compared with the worker's clock, which is ahead |
+| `notDiscardedEarly` | exp_wahead (2) | open | finding clock-skew-eta. the worker's clock is past the client's expires at receipt: REVOKED, never run |
+| `noRunAfterExpiry` | exp_wbehind (5) | open | finding clock-skew-eta. the worker's clock is behind: it runs the task after its expiry |
+| `noRunAfterExpiry` | exp_same_relative (5), exp_wahead_relative (5) | by design | the relative design counts the expiry from the worker's receive time, so a message that waited in the queue runs after X; not Celery's protocol |
+<!-- end generated -->
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

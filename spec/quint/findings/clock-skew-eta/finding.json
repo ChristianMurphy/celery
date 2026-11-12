@@ -1,0 +1,18 @@
+{
+ "id": "clock-skew-eta",
+ "title": "countdown and expires are absolute times on the client's clock and are compared with the worker's: a worker clock ahead starts a countdown early and discards a task as REVOKED before it expired; one behind runs a task after its expiry",
+ "cells": [
+  "cd_wahead.notEarly",
+  "exp_wahead.notDiscardedEarly",
+  "exp_wbehind.noRunAfterExpiry"
+ ],
+ "outcome": "visible failure",
+ "status": "open",
+ "where": "amqp.py:386-400 (celery 768e476, the same at 9c2f238): countdown and a numeric expires become the client's app.now() plus the seconds; request.py:415-421 and strategy.py:160-209 compare them with the worker's datetime.now(). calling.rst:257-287 and 348-366 promise the countdown as the earliest start and expires as a time from now, and say nothing about the clocks; Celery warns about clock drift only through worker heartbeats (open celery issue 1980). No upstream thread found (searched clock skew countdown, clock skew expires, countdown clock, expires clock difference worker, time drift eta, clock out of sync expires revoked); not in the tracker yet",
+ "thread": "none yet (a docs sentence, or a new issue; the lead decides)",
+ "confirm": [
+  "confirm_clock_skew.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, one prefork worker -c 1 with the real clock; injected: the client's app.now returns the real time plus an offset (a client host whose clock is off). cd_wahead (client 10 s behind, countdown=5): 2 of 2 the task started 0.0 s after the call. exp_wahead (client 10 s behind, expires=5): 2 of 2 REVOKED at receipt, never run. exp_wbehind (client 10 s ahead, expires=2, behind a 5 s task): 2 of 2 started 5.0 s after the call, SUCCESS. Controls without an offset: countdown=5 started 5.0 s after the call (2 of 2); expires=2 behind the 5 s task REVOKED (2 of 2). Natural rate: every call from a client whose clock differs from the worker's by more than the countdown, or than the margin left before the expiry; no timing race. The model's relative design removes the skew and counts the queue wait out of the expiry instead (exp_same_relative violates noRunAfterExpiry)."
+}

@@ -1124,6 +1124,88 @@
    }
   }
  },
+ "eta.qnt": {
+  "cd_same": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 5
+   }
+  },
+  "cd_wahead": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 3,
+    "notEarly": 3
+   }
+  },
+  "cd_wbehind": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 7
+   }
+  },
+  "cdexp_same": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 4
+   }
+  },
+  "cdexp_wahead_relative": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 4
+   }
+  },
+  "cdpastexp_same": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8
+   }
+  },
+  "exp_same": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRan": 3
+   }
+  },
+  "exp_same_relative": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 3,
+    "noRunAfterExpiry": 5
+   }
+  },
+  "exp_wahead": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7,
+    "notDiscardedEarly": 2
+   }
+  },
+  "exp_wahead_relative": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 3,
+    "noRunAfterExpiry": 5
+   }
+  },
+  "exp_wbehind": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 8,
+    "neverRan": 3,
+    "noRunAfterExpiry": 5
+   }
+  }
+ },
  "handlers.qnt": {
   "any_default": {
    "D": 4,

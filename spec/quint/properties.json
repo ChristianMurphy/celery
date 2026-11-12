@@ -155,7 +155,6 @@
    ],
    "apalache": [],
    "fast": [
-    "off_crash",
     "on_none"
    ],
    "passes_all": "on_none",
@@ -424,6 +423,32 @@
     "late_rejectrequeue"
    ],
    "passes_all": "late_rejectrequeue",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "eta.qnt": {
+   "family": "worker",
+   "types": "etatypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "notEarly",
+    "notDiscardedEarly",
+    "noRunAfterExpiry",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverRan"
+   ],
+   "apalache": [],
+   "fast": [
+    "cdexp_same"
+   ],
+   "passes_all": "cdexp_same",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -3954,6 +3979,153 @@
    "pattern": "Existence",
    "statement": "The task runs twice.",
    "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eta.notEarly",
+   "spec": "eta.qnt",
+   "definition": "notEarly",
+   "kind": "safety",
+   "pattern": "Absence (a start before the countdown), global",
+   "statement": "A task with countdown C starts no earlier than C after the call.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "docs/userguide/calling.rst:257-268 and 278-280 (celery 768e476): the ETA is the earliest time the task runs; apply_async(countdown=3) then get() takes at least 3 seconds",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRan",
+   "mutant": "eta: an ETA one second short",
+   "violations": [
+    {
+     "instances": "cd_wahead",
+     "reason": "open",
+     "where": "finding clock-skew-eta (no upstream thread found; calling.rst does not say the clocks must agree)",
+     "note": "the ETA is the client's now plus the countdown, compared with the worker's clock, which is ahead"
+    }
+   ]
+  },
+  {
+   "id": "eta.notDiscardedEarly",
+   "spec": "eta.qnt",
+   "definition": "notDiscardedEarly",
+   "kind": "safety",
+   "pattern": "Absence (a discard before expires), global",
+   "statement": "A task with expires X is discarded (REVOKED) only once X has passed since the call.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "docs/userguide/calling.rst:348-361 (celery 768e476): expires=60 expires after one minute from now",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "eta: an expiry check one second early",
+   "violations": [
+    {
+     "instances": "exp_wahead",
+     "reason": "open",
+     "where": "finding clock-skew-eta",
+     "note": "the worker's clock is past the client's expires at receipt: REVOKED, never run"
+    }
+   ]
+  },
+  {
+   "id": "eta.noRunAfterExpiry",
+   "spec": "eta.qnt",
+   "definition": "noRunAfterExpiry",
+   "kind": "safety",
+   "pattern": "Absence (a start after expires), global",
+   "statement": "A task with expires X does not start after X has passed since the call.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "docs/userguide/calling.rst:348-366 (celery 768e476): a worker that receives an expired task marks it REVOKED",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRan",
+   "mutant": "eta: a due request that does not check expires",
+   "violations": [
+    {
+     "instances": "exp_wbehind",
+     "reason": "open",
+     "where": "finding clock-skew-eta",
+     "note": "the worker's clock is behind: it runs the task after its expiry"
+    },
+    {
+     "instances": "*_relative",
+     "reason": "by design",
+     "where": "the relative design counts the expiry from the worker's receive time, so a message that waited in the queue runs after X; not Celery's protocol",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "eta.quietDone",
+   "spec": "eta.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the task ran or was discarded)",
+   "statement": "At the end the task ran or was discarded.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "docs/userguide/calling.rst (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "eta: an ETA past the end of the run",
+   "violations": []
+  },
+  {
+   "id": "eta.progress",
+   "spec": "eta.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eta.stepOrQuiet",
+   "spec": "eta.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eta.neverQuiet",
+   "spec": "eta.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eta.neverRan",
+   "spec": "eta.qnt",
+   "definition": "neverRan",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The task runs.",
+   "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

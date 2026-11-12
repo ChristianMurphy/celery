@@ -269,6 +269,15 @@ MUTANTS = [
      "else if (drop and CFG.broker == RabbitDlx) DeadLettered", "else if (drop and CFG.broker == Redis) DeadLettered"),
     ('ackmatrix: a second run that requeues again', 'ackmatrix.qnt', 'late_rejectrequeue', 'quietDone',
      "val e = if (runs == 1) CFG.ending else Returns", "val e = if (runs == 1) CFG.ending else RejectRequeue"),
+    # eta.qnt: one mutant per property
+    ('eta: an ETA one second short', 'eta.qnt', 'cd_same', 'notEarly',
+     "| Absolute => CFG.clientOff + CFG.countdown", "| Absolute => CFG.clientOff + CFG.countdown - 1"),
+    ('eta: an expiry check one second early', 'eta.qnt', 'exp_same', 'notDiscardedEarly',
+     "val expired = workerNow > r.expires", "val expired = workerNow >= r.expires - 1"),
+    ('eta: a due request that does not check expires', 'eta.qnt', 'cdpastexp_same', 'noRunAfterExpiry',
+     "    val expired = workerNow > curExpires", "    val expired = false"),
+    ('eta: an ETA past the end of the run', 'eta.qnt', 'cd_same', 'quietDone',
+     "| Absolute => CFG.clientOff + CFG.countdown", "| Absolute => CFG.clientOff + CFG.countdown + T"),
 ]
 
 
