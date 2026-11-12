@@ -338,8 +338,7 @@
    ],
    "apalache": [],
    "fast": [
-    "sync1_cron_kill",
-    "cron_pause"
+    "sync1_cron_kill"
    ],
    "passes_all": "sync1_cron_kill",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -709,6 +708,31 @@
     "bucket_raise_move"
    ],
    "passes_all": "bucket_raise_move",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "pidbox.qnt": {
+   "family": "transport",
+   "types": "pidboxtypes",
+   "metric": "",
+   "pins": {
+    "celery": "9c2f238",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "noLostReply",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverStale"
+   ],
+   "apalache": [],
+   "fast": [
+    "fresh_limit"
+   ],
+   "passes_all": "fresh_limit",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -5842,6 +5866,103 @@
    "pattern": "Existence",
    "statement": "A revoked request waits in a token bucket.",
    "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "pidbox.noLostReply",
+   "spec": "pidbox.qnt",
+   "definition": "noLostReply",
+   "kind": "safety",
+   "pattern": "Universality (a call returns the reply its worker gave while it waited), global",
+   "statement": "A call whose worker answered while the call was waiting returns that reply.",
+   "assumptions": "one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none",
+   "source": "celery/app/control.py:755-775 (celery 9c2f238): reply: wait for and return the reply; timeout: timeout in seconds to wait for the reply; limit: limit number of replies",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverStale",
+   "mutant": "pidbox: a drain that never matches its own ticket",
+   "violations": [
+    {
+     "instances": "reused_limit",
+     "reason": "open",
+     "where": "finding control-late-reply-limit (not in the tracker yet; closest celery issue 6778, open, No nodes replied within time constraint intermittently, no cause found there)",
+     "note": "a late reply of the first call lands in the second call's queue of the same name and uses its one drain (pidbox.py:387-411); the call returns no reply, and its own reply is deleted with the queue"
+    }
+   ]
+  },
+  {
+   "id": "pidbox.quietDone",
+   "spec": "pidbox.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end both calls returned)",
+   "statement": "At the end both calls returned.",
+   "assumptions": "one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none",
+   "source": "celery/app/control.py:755-775 (celery 9c2f238): a broadcast with reply=True returns within its timeout",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "pidbox: a timeout that does not end the second call",
+   "violations": []
+  },
+  {
+   "id": "pidbox.progress",
+   "spec": "pidbox.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "pidbox.stepOrQuiet",
+   "spec": "pidbox.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "pidbox.neverQuiet",
+   "spec": "pidbox.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "pidbox.neverStale",
+   "spec": "pidbox.qnt",
+   "definition": "neverStale",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A call drains another call's reply.",
+   "assumptions": "one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

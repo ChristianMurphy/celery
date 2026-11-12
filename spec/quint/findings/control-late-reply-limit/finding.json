@@ -1,0 +1,16 @@
+{
+ "id": "control-late-reply-limit",
+ "title": "A late reply to a remote control broadcast is taken by a later broadcast from the same process that reuses the reply queue name, and counts toward that call's limit: with a destination (ping, inspect, revoke with reply=True) the later call returns no reply although its worker answered",
+ "cells": [
+  "reused_limit.noLostReply"
+ ],
+ "outcome": "visible failure",
+ "status": "open",
+ "where": "kombu pidbox.py (445027e): control.broadcast binds a copy of the Mailbox per call (pidbox.py:217-220), whose reply queue is named after oid_from(copy), a uuid3 of node, pid, thread and id() of the copy (pidbox.py:250-262, common.py:42-58); copies freed between calls reuse addresses, so later calls reuse the name. _collect runs `limit` drains (limit = number of destinations, pidbox.py:351-353, 405-411); a drained reply with another ticket goes to `unclaimed` (pidbox.py:387-401) but still uses one drain. A reply that arrives after its call timed out lands in the next call's queue of the same name, so a call with destination=[w] returns [] at once, and its own reply is deleted with the queue (virtual/base.py:561-562). The stale replies also stay in mailbox.unclaimed for ever (one per late reply). celery control.py:755-775 documents timeout and limit, not this. Searched celery and kombu (issues and pull requests): pidbox unclaimed, control reply late previous, inspect ping no reply intermittent destination, broadcast reply limit wrong reply, reply queue oid, pidbox reply ticket, oid_from id reuse, _collect limit. Closest: celery issue 6778 (open, \"No nodes replied within time constraint\" intermittently, no cause found), celery issue 6009 (closed, a memory leak in the inspect API; may be the unclaimed growth). Not in the tracker.",
+ "thread": "none yet (a kombu issue: count only this ticket's replies toward limit, or give each call a unique reply queue name; the lead decides)",
+ "confirm": [
+  "confirm_late_reply.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, Python 3.14 (.venv314), one worker; each run 10 pairs of calls 1 s apart. Redis 7 broker (6391 db 12): late (injected: a control command that takes 1.5 s, timeout 1, then ping(destination=[worker])) 24 of 30 second calls returned [] after 0.5 s (4, 10, 10 per run; 3 of 3 runs); solo (nothing injected: a solo worker busy with a 1.5 s task misses a ping, then ping again at once) 28 of 30 (8, 10, 10); control nodest (the same without a destination, no limit) 0 of 30; control gap (1.5 s between the calls) 0 of 30. RabbitMQ 3 (5682): late 1 of 30, solo 2 of 30. Celery 5.5.3 with kombu 5.5.4 on Python 3.12, Redis: late 1 of 30 and 0 of 10, solo 0 of 10 (old: _collect is the same code; the names are reused less often there). Natural rate: on Redis with Python 3.14 nearly every call with a destination made within a timeout after a call whose reply came late (a busy solo or threads worker, a slow inspect); RabbitMQ about 1 in 15, where the late reply and the pong often arrive in one drain. In the model the design ticketedLimit (only this ticket counts toward limit) passes, and a fresh name per call passes."
+}

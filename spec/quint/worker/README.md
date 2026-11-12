@@ -1527,10 +1527,14 @@ injected), beside each instance's case:
 
 ## inspect and control against what a worker holds
 
-`inspect.qnt`, `inspect_instances.qnt` (6 instances; celery 9c2f238): one
+`inspect.qnt`, `inspect_instances.qnt` (9 instances; celery 9c2f238): one
 worker with one process; three tasks received at once, plain, with a
 countdown, or with a rate limit; control.rate_limit raises the rate once
-in the `raise` instances. Designs: `bucketVisible` and `moveOnRaise`.
+in the `raise` instances; control.revoke of task 2 once in the `revoke`
+instances. Designs: `bucketVisible`, `moveOnRaise` and `dropRevoked`.
+query_task reads the same set of requests as inspect (state.requests), so
+`inspectSeesAll` covers it: since celery PR 10535 it finds eta requests,
+not the bucket's (findings/rate-limit-bucket-hidden).
 
 <!-- generated: properties inspect.qnt -->
 | Property | Kind | Statement | Pattern | Source |

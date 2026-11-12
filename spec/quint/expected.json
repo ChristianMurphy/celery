@@ -1748,6 +1748,36 @@
    }
   }
  },
+ "pidbox.qnt": {
+  "fresh_limit": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7
+   }
+  },
+  "reused_limit": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7,
+    "neverStale": 6,
+    "noLostReply": 7
+   }
+  },
+  "reused_limit_ticketed": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 7,
+    "neverStale": 6
+   }
+  },
+  "reused_nolimit": {
+   "D": 7,
+   "violated": {
+    "neverQuiet": 7,
+    "neverStale": 6
+   }
+  }
+ },
  "priorities.qnt": {
   "rabbit_nomax_p1": {
    "D": 9,

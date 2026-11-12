@@ -282,6 +282,43 @@ py-amqp 5.4.2, RabbitMQ 3.13 and Redis 7):
   because the client does not declare a cached queue again
   (`rabbit_deleted`, 1 of 1 on the real code). On Redis nothing is lost.
 
+## Remote control replies
+
+`pidbox.qnt`, `pidbox_instances.qnt` (4 instances; celery 9c2f238, kombu
+445027e): one client sends two broadcasts with reply=True to one worker,
+one after the other; the worker answers in order at any time, so a reply
+can come after its call timed out. The two calls use different reply
+queue names (`fresh`) or the same one (`reused`: the name comes from id()
+of a short-lived Mailbox copy and repeats), with a destination (limit 1)
+or without. Design `ticketedLimit`: only this call's replies count toward
+limit. Finding control-late-reply-limit.
+
+<!-- generated: properties pidbox.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `noLostReply` | safety | A call whose worker answered while the call was waiting returns that reply. Assumes: one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none. | Universality (a call returns the reply its worker gave while it waited), global | celery/app/control.py:755-775 (celery 9c2f238): reply: wait for and return the reply; timeout: timeout in seconds to wait for the reply; limit: limit number of replies |
+| `quietDone` | liveness | At the end both calls returned. Assumes: one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none. | Response (lemma 3 of 3: at the end both calls returned) | celery/app/control.py:755-775 (celery 9c2f238): a broadcast with reply=True returns within its timeout |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none. | Existence | sanity |
+| `neverStale` | witness | A call drains another call's reply. Assumes: one client sends two broadcasts with reply=True to one worker, one after the other; the worker answers in order, at any time (a reply after its call returned is late); each call's reply queue is deleted when it returns; the two calls use different or the same reply queue name; limit 1 (a destination) or none. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results pidbox.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| fresh_limit | 6 | none | neverQuiet (7) |
+| reused_limit | 6 | noLostReply (7) | neverQuiet (7), neverStale (6) |
+| reused_limit_ticketed | 7 | none | neverQuiet (7), neverStale (6) |
+| reused_nolimit | 7 | none | neverQuiet (7), neverStale (6) |
+<!-- end generated -->
+
+<!-- generated: reasons pidbox.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `noLostReply` | reused_limit (7) | open | finding control-late-reply-limit (not in the tracker yet; closest celery issue 6778, open, No nodes replied within time constraint intermittently, no cause found there). a late reply of the first call lands in the second call's queue of the same name and uses its one drain (pidbox.py:387-411); the call returns no reply, and its own reply is deleted with the queue |
+<!-- end generated -->
+
 ## Content: serializers, compression and accept lists
 
 `content.qnt`, `content_instances.qnt` (6 instances; celery 9c2f238, kombu

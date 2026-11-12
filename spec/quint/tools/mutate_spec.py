@@ -363,6 +363,11 @@ MUTANTS = [
      "    nextRelease' = if (where.get(i) == InBucket) t + R else nextRelease,", "    nextRelease' = if (where.get(i) == InBucket) t + 20 else nextRelease,"),
     ('inspect: a revoke that leaves the request in the bucket under dropRevoked', 'inspect.qnt', 'bucket_revoke_drop', 'revokeFreesBucket',
      "    where' = if (CFG.dropRevoked and where.get(REV) == InBucket)", "    where' = if (false and where.get(REV) == InBucket)"),
+    # pidbox.qnt: one mutant per property
+    ('pidbox: a drain that never matches its own ticket', 'pidbox.qnt', 'fresh_limit', 'noLostReply',
+     "      outcome' = if (h == c) outcome.set(c, Own)", "      outcome' = if (false) outcome.set(c, Own)"),
+    ('pidbox: a timeout that does not end the second call', 'pidbox.qnt', 'fresh_limit', 'quietDone',
+     "    outcome' = outcome.set(c, NoReply),\n    open' = open.exclude(Set(qname(c))),", "    outcome' = outcome,\n    open' = open.exclude(Set(qname(c))),"),
     # nested.qnt: one mutant per property
     ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
      "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),
