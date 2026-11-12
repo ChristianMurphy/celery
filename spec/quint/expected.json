@@ -239,6 +239,7 @@
    "violated": {
     "neverQuiet": 10,
     "neverSentTwice": 6,
+    "noBurst": 7,
     "noMissedRun": 8
    }
   },
@@ -247,6 +248,7 @@
    "violated": {
     "neverQuiet": 10,
     "neverSentTwice": 8,
+    "noBurst": 11,
     "noDoubleSend": 11
    }
   },
@@ -255,6 +257,13 @@
    "violated": {
     "neverQuiet": 10,
     "neverSentTwice": 8
+   }
+  },
+  "cron_pause": {
+   "D": 14,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 6
    }
   },
   "cron_stop": {
@@ -278,6 +287,7 @@
    "violated": {
     "neverQuiet": 10,
     "neverSentTwice": 7,
+    "noBurst": 7,
     "noDoubleSend": 7
    }
   },
@@ -286,6 +296,7 @@
    "violated": {
     "neverQuiet": 10,
     "neverSentTwice": 8,
+    "noBurst": 11,
     "noDoubleSend": 11
    }
   },
@@ -294,6 +305,13 @@
    "violated": {
     "neverQuiet": 10,
     "neverSentTwice": 8
+   }
+  },
+  "interval_pause": {
+   "D": 14,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 7
    }
   },
   "sync1_cron_kill": {
@@ -311,6 +329,22 @@
    }
   },
   "two_cron_none": {
+   "D": 19,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 7,
+    "noDoubleSend": 7
+   }
+  },
+  "two_cron_shared": {
+   "D": 19,
+   "violated": {
+    "neverQuiet": 10,
+    "neverSentTwice": 7,
+    "noDoubleSend": 7
+   }
+  },
+  "two_interval_shared": {
    "D": 19,
    "violated": {
     "neverQuiet": 10,

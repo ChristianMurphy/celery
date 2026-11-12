@@ -329,6 +329,7 @@
    "properties": [
     "noDoubleSend",
     "noMissedRun",
+    "noBurst",
     "quietDone"
    ],
    "witnesses": [
@@ -337,7 +338,8 @@
    ],
    "apalache": [],
    "fast": [
-    "sync1_cron_kill"
+    "sync1_cron_kill",
+    "cron_pause"
    ],
    "passes_all": "sync1_cron_kill",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -3541,7 +3543,7 @@
    "kind": "safety",
    "pattern": "Absence (a run sent twice, or an interval run sent early), global",
    "statement": "No crontab occurrence is sent twice, and no interval run is sent less than run_every after the one before.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "docs/userguide/periodic-tasks.rst:19-21 (celery 768e476): one scheduler, \"otherwise you'd end up with duplicate tasks\"",
    "instances": "all",
    "evidence": "",
@@ -3575,7 +3577,7 @@
    "kind": "safety",
    "pattern": "Absence (a run late or skipped while a scheduler runs), global",
    "statement": "While a scheduler runs, a run is sent at least every run_every of true time, and no crontab occurrence is skipped.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "docs/userguide/periodic-tasks.rst (celery 768e476), Entries: a task is sent at the interval or crontab given",
    "instances": "all",
    "evidence": "",
@@ -3597,13 +3599,41 @@
    ]
   },
   {
+   "id": "beat.noBurst",
+   "spec": "beat.qnt",
+   "definition": "noBurst",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one send per scheduler at a time), global",
+   "statement": "A scheduler sends the entry at most once at any one time: after a pause, a restart or a clock jump the runs it missed are sent once, not one by one.",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
+   "source": "docs/userguide/configuration.rst:4714-4718 (celery 768e476): only the most recent missed run time is considered; past due cron jobs run immediately",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverSentTwice",
+   "mutant": "beat: a send that does not move last_run_at",
+   "violations": [
+    {
+     "instances": "*_kill",
+     "reason": "open",
+     "where": "finding beat-kill-double (a docs change on branch docs/beat-sync-after-kill)",
+     "note": "the restarted scheduler reads the older last_run_at and sends at once what it sent just before the kill"
+    },
+    {
+     "instances": "*_fwd",
+     "reason": "open",
+     "where": "open celery issue 6742 (System datetime change effects, beat service stops activities): beat reads the wall clock (schedules.py:151-157, 686-722)",
+     "note": "the clock steps forward right after a send: the entry is due again at the same true time"
+    }
+   ]
+  },
+  {
    "id": "beat.quietDone",
    "spec": "beat.qnt",
    "definition": "quietDone",
    "kind": "liveness",
    "pattern": "Response (lemma 3 of 3: at the end a running scheduler has sent within run_every)",
    "statement": "At the end of the run a running scheduler has sent within the last run_every.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "docs/userguide/periodic-tasks.rst (celery 768e476)",
    "instances": "all",
    "evidence": "",
@@ -3625,7 +3655,7 @@
    "kind": "liveness",
    "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
    "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "the search: D per instance in expected.json",
    "instances": "all",
    "evidence": "",
@@ -3640,7 +3670,7 @@
    "kind": "liveness",
    "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
    "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "the search",
    "instances": "all",
    "evidence": "",
@@ -3655,7 +3685,7 @@
    "kind": "witness",
    "pattern": "Existence",
    "statement": "Some run ends.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",
@@ -3670,7 +3700,7 @@
    "kind": "witness",
    "pattern": "Existence",
    "statement": "The entry is sent twice.",
-   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file or both on one file); a scheduler wakes when its entry is due; faults per instance: a kill, a clean stop, a clock jump of 3, a pause of 3 (SIGSTOP or a sleep)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

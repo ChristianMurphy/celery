@@ -1,6 +1,7 @@
 // -*- mode: Bluespec; -*-
 // celery beat: is each scheduled run sent once, and none missed, across a
-// restart, a killed scheduler, a clock jump and a second scheduler?
+// restart, a killed scheduler, a clock jump, a second scheduler (on its
+// own schedule file or on the same one) and a long pause?
 //
 // Celery 768e476. One periodic entry, either an interval (run every R) or a
 // crontab (at every wall-clock multiple of R). Scheduler.tick
@@ -21,9 +22,22 @@
 // a due entry: the scheduler wakes when its entry is due (tick returns the
 // delay, at most beat_max_loop_interval). The run ends at tt = T.
 //
-// Not modeled: beat_cron_starting_deadline, timezones and DST, several
-// entries, the publish failing (apply_entry logs it and the run is
-// skipped), a schedule edited at run time, the broker.
+// A pause (SIGSTOP, a laptop's sleep) stops the process while time
+// passes; on resume the entry is due and tick sends it once, whatever the
+// number of runs missed (only the most recent missed crontab run is
+// considered, configuration.rst:4714-4718). Two schedulers on
+// one file each keep last_run_at in memory and write it to the same
+// shelve; nothing locks the file (a probe on 9c2f238 with Python 3.14 and
+// on 5.5.3 with 3.12: both sent every run, no error).
+//
+// Not modeled: beat_cron_starting_deadline, several entries, the publish
+// failing (apply_entry logs it and the run is skipped), the broker.
+// Probed on the real Scheduler with an injected clock and left out: a
+// timezone change resets the file (beat.py:606-611), so a run missed while
+// beat was down is not sent at the restart; an entry edited between a stop
+// and a start keeps its last_run_at (beat.py:155-165, 519-532), so a
+// crontab moved to a later minute sends once at the restart; DST (open
+// celery issue 10107: an hourly crontab skips the repeated hour).
 module beattypes {
   type BeatId = { b: int }
   pure def Bt(i: int): BeatId = { b: i }
@@ -42,6 +56,7 @@ module beattypes {
 
   type Action =
     | Init
+    | Pause(BeatId)
     | Start(BeatId)
     | Tick({ b: BeatId, wall: int, synced: bool })
     | Advance
@@ -49,13 +64,15 @@ module beattypes {
     | Stop(BeatId)
     | ClockJump(Jump)
 
-  type Budget = { kills: int, stops: int, jumps: int }
-  pure val NONE: Budget = { kills: 0, stops: 0, jumps: 0 }
+  type Budget = { kills: int, stops: int, jumps: int, pauses: int }
+  pure val NONE: Budget = { kills: 0, stops: 0, jumps: 0, pauses: 0 }
 
   type Config = {
     kind: Kind,
-    // two schedulers for the same schedule (each with its own file)
+    // two schedulers for the same schedule
     beats: int,
+    // both use the same schedule file (default: each its own)
+    sharedFile: bool,
     // beat_sync_every = 1: sync after every send (default 0: by time)
     syncEachSend: bool,
     // the clock jumps by this much (a step of NTP, a manual change)
@@ -63,7 +80,8 @@ module beattypes {
     max: Budget,
   }
   pure def config(k: Kind): Config =
-    { kind: k, beats: 1, syncEachSend: false, jump: Backward, max: NONE }
+    { kind: k, beats: 1, sharedFile: false, syncEachSend: false,
+      jump: Backward, max: NONE }
 }
 
 module beat {
@@ -75,6 +93,7 @@ module beat {
   pure val S: int = 5      // sync_every
   pure val J: int = 3      // the size of a clock jump
   pure val T: int = 9      // the end of the run
+  pure val P: int = 3      // the length of a pause
   pure val BEATS: Set[BeatId] = 1.to(CFG.beats).map(i => Bt(i))
 
   // ---- state ----
@@ -82,6 +101,7 @@ module beat {
   var wall: int
   var procs: BeatId -> Proc
   var saved: BeatId -> int        // last_run_at in the file; -1: no file
+                                  // (indexed by fileOf)
   // ---- observations ----
   var sends: int
   var lastSendTT: int             // true time of the last send, -1 none
@@ -91,6 +111,8 @@ module beat {
                                   // within R (a scheduler ran throughout); -1
   var double: bool                // a run sent twice, or an interval run early
   var missed: bool                // a run not sent in time, or skipped
+  var lastBy: BeatId -> int       // true time of each scheduler's last send
+  var burst: bool                 // a scheduler sent twice at one time
   var used: Budget
   var lastAction: Action
   var steps: int
@@ -99,16 +121,20 @@ module beat {
     tt' = 0, wall' = 0, procs' = BEATS.mapBy(_ => Down),
     saved' = BEATS.mapBy(_ => -1),
     sends' = 0, lastSendTT' = -1, lastOcc' = -1, occs' = Set(), watch' = -1,
-    double' = false, missed' = false, used' = NONE, lastAction' = Init,
+    double' = false, missed' = false, lastBy' = BEATS.mapBy(_ => -1),
+    burst' = false, used' = NONE, lastAction' = Init,
     steps' = 0,
   }
   action did(a: Action): bool = all { lastAction' = a, steps' = steps + 1 }
   action keepObs: bool = all {
     sends' = sends, lastSendTT' = lastSendTT, lastOcc' = lastOcc,
-    occs' = occs, double' = double, missed' = missed,
+    occs' = occs, double' = double, missed' = missed, lastBy' = lastBy,
+    burst' = burst,
   }
   def anyUp: bool = BEATS.exists(b => isUp(procs.get(b)))
   def others(b: BeatId): bool = BEATS.exists(c => c != b and isUp(procs.get(c)))
+  // The schedule file a scheduler opens.
+  pure def fileOf(b: BeatId): BeatId = if (CFG.sharedFile) Bt(1) else b
 
   // The crontab's first occurrence after x (a multiple of R).
   pure def nextOcc(x: int): int = (x / R + 1) * R
@@ -128,7 +154,8 @@ module beat {
   action start(b: BeatId): bool = all {
     not(isUp(procs.get(b))), tt < T,
     procs' = procs.set(b, Up({
-      last: if (saved.get(b) < 0) wall else saved.get(b), lastSync: -1 })),
+      last: if (saved.get(fileOf(b)) < 0) wall else saved.get(fileOf(b)),
+      lastSync: -1 })),
     watch' = if (anyUp) watch else tt,
     tt' = tt, wall' = wall, saved' = saved, keepObs, used' = used,
     did(Start(b)),
@@ -148,7 +175,7 @@ module beat {
       due(b),
       procs' = procs.set(b, Up({ last: wall,
                                   lastSync: if (sync) tt else u.lastSync })),
-      saved' = if (sync) saved.set(b, wall) else saved,
+      saved' = if (sync) saved.set(fileOf(b), wall) else saved,
       sends' = sends + 1, lastSendTT' = tt, lastOcc' = occ,
       occs' = occs.union(Set(occ)),
       double' = (double or match CFG.kind {
@@ -158,6 +185,7 @@ module beat {
       missed' = (missed or (CFG.kind == Cron and watch >= 0 and lastOcc >= 0
                             and occ > lastOcc + 1)),
       watch' = tt,
+      lastBy' = lastBy.set(b, tt), burst' = (burst or lastBy.get(b) == tt),
       tt' = tt, wall' = wall, used' = used,
       did(Tick({ b: b, wall: wall, synced: sync })),
     }
@@ -170,7 +198,8 @@ module beat {
     missed' = (missed or (watch >= 0 and tt + 1 - watch > R)),
     procs' = procs, saved' = saved, watch' = watch,
     sends' = sends, lastSendTT' = lastSendTT, lastOcc' = lastOcc,
-    occs' = occs, double' = double, used' = used,
+    occs' = occs, double' = double, used' = used, lastBy' = lastBy,
+    burst' = burst,
     did(Advance),
   }
 
@@ -184,7 +213,7 @@ module beat {
     lastOcc' = if (others(b)) lastOcc else -1,
     tt' = tt, wall' = wall,
     sends' = sends, lastSendTT' = lastSendTT, occs' = occs, double' = double,
-    missed' = missed,
+    missed' = missed, lastBy' = lastBy, burst' = burst,
     used' = { ...used, kills: used.kills + 1 }, did(Kill(b)),
   }
   // A clean stop: close() syncs (beat.py:669-683, 478-500).
@@ -192,13 +221,26 @@ module beat {
   action stop(b: BeatId): bool = all {
     isUp(procs.get(b)), used.stops < CFG.max.stops,
     procs' = procs.set(b, Down),
-    saved' = saved.set(b, procOf(procs.get(b)).last),
+    saved' = saved.set(fileOf(b), procOf(procs.get(b)).last),
     watch' = if (others(b)) watch else -1,
     lastOcc' = if (others(b)) lastOcc else -1,
     tt' = tt, wall' = wall,
     sends' = sends, lastSendTT' = lastSendTT, occs' = occs, double' = double,
-    missed' = missed,
+    missed' = missed, lastBy' = lastBy, burst' = burst,
     used' = { ...used, stops: used.stops + 1 }, did(Stop(b)),
+  }
+  // SIGSTOP, a laptop's sleep: the process does not run for P while time
+  // passes. While it is stopped no scheduler runs, so nothing counts as
+  // missed (as after a kill); on resume tick finds the entry due.
+  // @env the scheduler's process is stopped and resumed
+  action pause(b: BeatId): bool = all {
+    isUp(procs.get(b)), not(others(b)), used.pauses < CFG.max.pauses,
+    tt + P <= T,
+    tt' = tt + P, wall' = wall + P, watch' = -1, lastOcc' = -1,
+    procs' = procs, saved' = saved,
+    sends' = sends, lastSendTT' = lastSendTT, occs' = occs, double' = double,
+    missed' = missed, lastBy' = lastBy, burst' = burst,
+    used' = { ...used, pauses: used.pauses + 1 }, did(Pause(b)),
   }
   // The machine's clock is stepped (beat reads it through app.now()).
   // @env the wall clock jumps
@@ -213,7 +255,8 @@ module beat {
   // ---- step ----
   action step: bool = any {
     advance, clockJump,
-    { nondet b = BEATS.oneOf() any { start(b), tick(b), kill(b), stop(b) } },
+    { nondet b = BEATS.oneOf()
+      any { start(b), tick(b), kill(b), stop(b), pause(b) } },
   }
 
   // ---- properties ----------------------------------------------------------
@@ -224,6 +267,10 @@ module beat {
   // While a scheduler runs, a run is sent at least every run_every, and no
   // crontab occurrence is skipped.
   val noMissedRun: bool = not(missed)
+  // A scheduler sends a run at most once at a time: after a pause, a
+  // restart or a clock jump the missed runs are sent once, not one by one
+  // (reserve moves last_run_at to now, beat.py:424-426).
+  val noBurst: bool = not(burst)
 
   // liveness, in three lemmas (see ../README.md). progress: finite by
   // exhaustive search with the step counter in the state (tt is bounded by

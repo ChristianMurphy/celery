@@ -316,6 +316,9 @@ MUTANTS = [
      "    queued' = (queued or unacked), unacked' = false, running' = running, runs' = runs,\n    done' = done, lossesLeft' = lossesLeft, procs' = procs, did(PoolRestart),"),
     ('lifecycle: a finish that does not ack', 'lifecycle.qnt', 'nocancel_loss', 'quietDone',
      "    unacked' = (unacked and running - 1 > 0), queued' = queued, runs' = runs,", "    unacked' = unacked, queued' = queued, runs' = runs,"),
+    # beat.qnt: noBurst
+    ('beat: a send that does not move last_run_at', 'beat.qnt', 'cron_pause', 'noBurst',
+     "      procs' = procs.set(b, Up({ last: wall,", "      procs' = procs.set(b, Up({ last: u.last,"),
     # nested.qnt: one mutant per property
     ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
      "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),

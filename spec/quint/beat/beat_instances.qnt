@@ -2,7 +2,9 @@
 // Instances of beat.qnt: <schedule>_<fault class>. `interval`: run every R;
 // `cron`: a crontab at every multiple of R. Faults: `kill` (SIGKILL, no
 // sync), `stop` (a clean stop), `back` and `fwd` (the clock jumps), `two`
-// (a second scheduler). `sync1`: beat_sync_every = 1.
+// (a second scheduler), `shared` (a second scheduler on the same schedule
+// file), `pause` (SIGSTOP or a sleep longer than run_every).
+// `sync1`: beat_sync_every = 1.
 //
 // ---- instances: a schedule and a fault class --------------------------------
 module interval_none {
@@ -52,4 +54,20 @@ module cron_fwd {
 module two_cron_none {
   import beattypes.* from "./beat"
   import beat(CFG = { ...config(Cron), beats: 2 }).* from "./beat"
+}
+module two_cron_shared {
+  import beattypes.* from "./beat"
+  import beat(CFG = { ...config(Cron), beats: 2, sharedFile: true }).* from "./beat"
+}
+module two_interval_shared {
+  import beattypes.* from "./beat"
+  import beat(CFG = { ...config(Interval), beats: 2, sharedFile: true }).* from "./beat"
+}
+module interval_pause {
+  import beattypes.* from "./beat"
+  import beat(CFG = { ...config(Interval), max: { ...NONE, pauses: 1 } }).* from "./beat"
+}
+module cron_pause {
+  import beattypes.* from "./beat"
+  import beat(CFG = { ...config(Cron), max: { ...NONE, pauses: 1 } }).* from "./beat"
 }

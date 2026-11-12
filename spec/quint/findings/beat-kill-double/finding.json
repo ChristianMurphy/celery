@@ -3,7 +3,9 @@
  "title": "celery beat killed between two syncs of its schedule file sends again, at its restart, what it sent since the last sync: a crontab occurrence runs twice",
  "cells": [
   "cron_kill.noDoubleSend",
-  "interval_kill.noDoubleSend"
+  "interval_kill.noDoubleSend",
+  "cron_kill.noBurst",
+  "interval_kill.noBurst"
  ],
  "outcome": "duplicate",
  "status": "open",
