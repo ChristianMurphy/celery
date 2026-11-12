@@ -1590,6 +1590,23 @@
     "neverWaited": 2
    }
   },
+  "bucket_revoke": {
+   "D": 21,
+   "violated": {
+    "inspectSeesAll": 2,
+    "neverQuiet": 19,
+    "neverRevokedWaits": 3,
+    "neverWaited": 2,
+    "revokeFreesBucket": 8
+   }
+  },
+  "bucket_revoke_drop": {
+   "D": 21,
+   "violated": {
+    "neverQuiet": 19,
+    "neverWaited": 2
+   }
+  },
   "bucket_visible": {
    "D": 20,
    "violated": {
@@ -1601,6 +1618,12 @@
    "D": 20,
    "violated": {
     "neverQuiet": 21
+   }
+  },
+  "eta_revoke": {
+   "D": 21,
+   "violated": {
+    "neverQuiet": 19
    }
   },
   "pool": {

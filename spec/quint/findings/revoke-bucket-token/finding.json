@@ -1,0 +1,16 @@
+{
+ "id": "revoke-bucket-token",
+ "title": "A revoked task that waits in the worker's rate-limit token bucket stays there, unacked, until its token comes, and uses that token: every task behind it waits one more interval; terminate=True replies \"tasks unknown\"",
+ "cells": [
+  "bucket_revoke.revokeFreesBucket"
+ ],
+ "outcome": "delay",
+ "status": "open",
+ "where": "control.py:221-260 (celery 9c2f238): _revoke adds the id to the revoked set and, since the request is not in state.requests (a bucket request is registered only by task_reserved at release, consumer.py:346-348), stores REVOKED with the app's backend and answers terminate=True with \"terminate: tasks unknown\". The request stays in the bucket; _schedule_bucket_request (consumer.py:350-372) takes a token for it with can_consume before execute_using_pool sees it is revoked (request.py:348, 477), acks it and skips it. So the message stays unacked until its turn and the next task waits one more rate interval. workers.rst:563-596 says the worker skips a revoked task; tasks.rst says rate_limit is the number of tasks of this type that can be run in a time frame. Searched (issues and pull requests): revoke rate_limit, revoked rate limit token, rate limit revoked tasks delay, query_task rate limit, terminate tasks unknown; closest celery issue 7900 (open feature request: tasks that skip themselves should not count against the rate limit), which is about the task body, not a worker-level revoke. Not in the tracker.",
+ "thread": "none yet (a comment on celery issue 7900, or a docs sentence in workers.rst's revoke section; the lead decides)",
+ "confirm": [
+  "confirm_revoke_bucket.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 on 6391 (dbs 12 to 14), one prefork worker -c 1, prefetch multiplier 4, acks_late; nothing injected. bucket (four tasks at 6/m, the second revoked with terminate=True 2 s after the send): 3 of 3 runs REVOKED stored at once, reply \"terminate: tasks unknown\", 3 messages unacked, query_task found nothing, and b2 ran at 20.0 s and b3 at 30.0 s (10 s and 20 s if the revoked task took no token). Control pool (a 6 s task and three quick ones, the first quick one revoked at 2 s): 3 of 3 query_task found it, the reply named it, the other two ran at 6.0 s. Control eta (countdown=10, revoked at 2 s): 3 of 3 query_task found it (celery PR 10535) and the reply named it. Celery 5.5.3 (kombu 5.5.4): bucket 1 of 1 the same (b2 at 15.4 s, b3 at 25.4 s; old); eta 1 of 1 query_task found nothing and the state stayed PENDING until the eta (the PR 10535 and revoke-marks-backend changes are newer). Natural rate: every revoke of a task that waits in a bucket; no timing involved. The design dropRevoked (a revoke takes the request out of the bucket and acks it) passes in the model."
+}

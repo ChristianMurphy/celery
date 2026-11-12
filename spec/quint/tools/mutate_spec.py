@@ -361,6 +361,8 @@ MUTANTS = [
      "    where' = if (CFG.moveOnRaise)", "    where' = if (false)"),
     ('inspect: a bucket that never releases its second request', 'inspect.qnt', 'bucket', 'quietDone',
      "    nextRelease' = if (where.get(i) == InBucket) t + R else nextRelease,", "    nextRelease' = if (where.get(i) == InBucket) t + 20 else nextRelease,"),
+    ('inspect: a revoke that leaves the request in the bucket under dropRevoked', 'inspect.qnt', 'bucket_revoke_drop', 'revokeFreesBucket',
+     "    where' = if (CFG.dropRevoked and where.get(REV) == InBucket)", "    where' = if (false and where.get(REV) == InBucket)"),
     # nested.qnt: one mutant per property
     ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
      "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),

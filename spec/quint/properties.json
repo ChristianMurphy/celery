@@ -696,11 +696,13 @@
    "properties": [
     "inspectSeesAll",
     "newRateApplies",
+    "revokeFreesBucket",
     "quietDone"
    ],
    "witnesses": [
     "neverQuiet",
-    "neverWaited"
+    "neverWaited",
+    "neverRevokedWaits"
    ],
    "apalache": [],
    "fast": [
@@ -5686,7 +5688,7 @@
    "kind": "safety",
    "pattern": "Universality (a received, unfinished task is listed by inspect), global",
    "statement": "inspect active, reserved and scheduled list every task the worker has received and not finished.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "docs/userguide/workers.rst:1181-1185 (celery 9c2f238): reserved tasks are tasks that have been received, but are still waiting to be executed",
    "instances": "all",
    "evidence": "",
@@ -5704,6 +5706,12 @@
      "reason": "open",
      "where": "finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found)",
      "note": ""
+    },
+    {
+     "instances": "bucket_revoke",
+     "reason": "open",
+     "where": "finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found)",
+     "note": ""
     }
    ]
   },
@@ -5714,7 +5722,7 @@
    "kind": "safety",
    "pattern": "Absence (a request waits for the old rate after a change), after the change",
    "statement": "After control.rate_limit raises the rate, no request waits in the bucket for the old rate.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "docs/userguide/workers.rst:846-868 (celery 9c2f238): changing rate limits at run time",
    "instances": "all",
    "evidence": "",
@@ -5730,13 +5738,35 @@
    ]
   },
   {
+   "id": "inspect.revokeFreesBucket",
+   "spec": "inspect.qnt",
+   "definition": "revokeFreesBucket",
+   "kind": "safety",
+   "pattern": "Absence (a revoked request waits in the bucket), after the revoke",
+   "statement": "Once time has passed after control.revoke, the revoked request no longer waits in the token bucket, holding its message and using a later token.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
+   "source": "docs/userguide/workers.rst:563-596 (celery 9c2f238): a worker that receives a revoke request skips executing the task; docs/userguide/tasks.rst rate_limit: the number of tasks of this type that can be run in a time frame",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRevokedWaits",
+   "mutant": "inspect: a revoke that leaves the request in the bucket under dropRevoked",
+   "violations": [
+    {
+     "instances": "bucket_revoke",
+     "reason": "open",
+     "where": "finding revoke-bucket-token (not in the tracker yet; closest celery issue 7900, a feature request for skipped tasks that do not count against the rate limit)",
+     "note": "a revoked request stays in the bucket until its token comes (consumer.py:350-358), then is skipped and acked (request.py:477); the tasks behind it wait one more interval"
+    }
+   ]
+  },
+  {
    "id": "inspect.quietDone",
    "spec": "inspect.qnt",
    "definition": "quietDone",
    "kind": "liveness",
    "pattern": "Response (lemma 3 of 3: at the end every task ran)",
-   "statement": "At the end every task ran.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "statement": "At the end every task ran, or was skipped because it was revoked.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "docs/userguide/workers.rst:846-868 (celery 9c2f238): a rate limit delays tasks, it does not drop them",
    "instances": "all",
    "evidence": "",
@@ -5751,7 +5781,7 @@
    "kind": "liveness",
    "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
    "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "the search: D per instance in expected.json",
    "instances": "all",
    "evidence": "",
@@ -5766,7 +5796,7 @@
    "kind": "liveness",
    "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
    "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "the search",
    "instances": "all",
    "evidence": "",
@@ -5781,7 +5811,7 @@
    "kind": "witness",
    "pattern": "Existence",
    "statement": "Some run ends.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "sanity",
    "instances": "all",
    "evidence": "",
@@ -5796,7 +5826,22 @@
    "kind": "witness",
    "pattern": "Existence",
    "statement": "A task waits in a token bucket.",
-   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "inspect.neverRevokedWaits",
+   "spec": "inspect.qnt",
+   "definition": "neverRevokedWaits",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A revoked request waits in a token bucket.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; task 2 revoked once at any time in the revoke instances; a discrete clock that ends at 8",
    "source": "sanity",
    "instances": "all",
    "evidence": "",
