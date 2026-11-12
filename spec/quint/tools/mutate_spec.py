@@ -294,6 +294,13 @@ MUTANTS = [
      "    else all { stored' = stored, groupSaved' = false },", "    else all { stored' = Absent, groupSaved' = true },"),
     ('housekeeping: a return stored as RETRY', 'housekeeping.qnt', 'plain_returns', 'quietDone',
      "             else if (CFG.ending == Raises) Failure else Success", "             else if (CFG.ending == Raises) Failure else Retry"),
+    # events.qnt: one mutant per property
+    ('events: a raise that sends task-failed twice', 'events.qnt', 'ev_raises', 'oneFinalEvent',
+     "      secondDue' = CFG.ending == HardLimit, did(End({ events: r._3 })),", "      secondDue' = (CFG.ending == HardLimit or CFG.ending == Raises), did(End({ events: r._3 })),"),
+    ('events: a return shown as failed', 'events.qnt', 'ev_returns', 'monitorAgrees',
+     "      | Returns => (St(Success), MSucceeded, 1)", "      | Returns => (St(Success), MFailed, 1)"),
+    ('events: a return that sends no event', 'events.qnt', 'ev_returns', 'quietDone',
+     "      | Returns => (St(Success), MSucceeded, 1)", "      | Returns => (St(Success), MStarted, 0)"),
 ]
 
 

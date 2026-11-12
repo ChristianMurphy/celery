@@ -127,7 +127,6 @@
    "apalache": [],
    "fast": [
     "main_late_partition",
-    "pr_late_shutdown",
     "best_late_crash"
    ],
    "passes_all": "best_late_crash",
@@ -499,6 +498,31 @@
     "plain_retry"
    ],
    "passes_all": "plain_retry",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "events.qnt": {
+   "family": "worker",
+   "types": "eventtypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "oneFinalEvent",
+    "monitorAgrees",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverFailedEvent"
+   ],
+   "apalache": [],
+   "fast": [
+    "ev_returns"
+   ],
+   "passes_all": "ev_returns",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -4497,6 +4521,132 @@
    "pattern": "Existence",
    "statement": "RETRY is stored.",
    "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "events.oneFinalEvent",
+   "spec": "events.qnt",
+   "definition": "oneFinalEvent",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one final event per run), global",
+   "statement": "A run sends at most one final event (task-succeeded or task-failed).",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "docs/userguide/monitoring.rst:741-748 (celery 768e476): task-failed is sent if the execution of the task failed",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailedEvent",
+   "mutant": "events: a raise that sends task-failed twice",
+   "violations": [
+    {
+     "instances": "ev_hardlimit",
+     "reason": "open",
+     "where": "finding hard-limit-twice (the error callback and the timeout callback each send task-failed)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "events.monitorAgrees",
+   "spec": "events.qnt",
+   "definition": "monitorAgrees",
+   "kind": "safety",
+   "pattern": "Absence (a monitor state that differs from the stored one), after the run",
+   "statement": "Once the run ended, the monitor shows the state the backend stores.",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "docs/userguide/monitoring.rst:612-613 (celery 768e476): events.State is an in-memory representation of tasks and workers updated as events come in",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "events: a return shown as failed",
+   "violations": [
+    {
+     "instances": "ev_updatethenignore",
+     "reason": "open",
+     "where": "finding ignore-started-forever",
+     "note": "the documented manual result: SUCCESS stored, the monitor shows STARTED for ever"
+    }
+   ]
+  },
+  {
+   "id": "events.quietDone",
+   "spec": "events.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the monitor does not show the task as received or started)",
+   "statement": "At the end the monitor no longer shows the task as received or started.",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "docs/userguide/monitoring.rst:719-748 (celery 768e476): task-started is sent before the task executes, then task-succeeded or task-failed",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "events: a return that sends no event",
+   "violations": [
+    {
+     "instances": "ev_*ignore*",
+     "reason": "open",
+     "where": "finding ignore-started-forever",
+     "note": "Ignore sends no event: task-started is the last"
+    }
+   ]
+  },
+  {
+   "id": "events.progress",
+   "spec": "events.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "events.stepOrQuiet",
+   "spec": "events.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "events.neverQuiet",
+   "spec": "events.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "events.neverFailedEvent",
+   "spec": "events.qnt",
+   "definition": "neverFailedEvent",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The monitor shows FAILURE.",
+   "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

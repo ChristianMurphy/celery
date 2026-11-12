@@ -1211,6 +1211,69 @@ Why each violation is expected:
 | `noRunAfterExpiry` | exp_same_relative (5), exp_wahead_relative (5) | by design | the relative design counts the expiry from the worker's receive time, so a message that waited in the queue runs after X; not Celery's protocol |
 <!-- end generated -->
 
+## Task events against stored states
+
+`events.qnt`, `events_instances.qnt` (8 instances, one per ending; celery
+768e476, the same at 9c2f238): one task on a worker started with -E and a
+monitor that applies every task event in order, as events.State (and so
+Flower) does. The endings are those of `handlers.qnt`, plus Ignore,
+update_state(SUCCESS) then Ignore, and a task name the worker lacks.
+
+<!-- generated: properties events.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `oneFinalEvent` | safety | A run sends at most one final event (task-succeeded or task-failed). Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Bounded existence (at most one final event per run), global | docs/userguide/monitoring.rst:741-748 (celery 768e476): task-failed is sent if the execution of the task failed |
+| `monitorAgrees` | safety | Once the run ended, the monitor shows the state the backend stores. Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Absence (a monitor state that differs from the stored one), after the run | docs/userguide/monitoring.rst:612-613 (celery 768e476): events.State is an in-memory representation of tasks and workers updated as events come in |
+| `quietDone` | liveness | At the end the monitor no longer shows the task as received or started. Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Response (lemma 3 of 3: at the end the monitor does not show the task as received or started) | docs/userguide/monitoring.rst:719-748 (celery 768e476): task-started is sent before the task executes, then task-succeeded or task-failed |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Existence | sanity |
+| `neverFailedEvent` | witness | The monitor shows FAILURE. Assumes: one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks). | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results events.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| ev_hardlimit | 4 | oneFinalEvent (5) | neverQuiet (5), neverFailedEvent (4) |
+| ev_ignores | 3 | quietDone (4) | neverQuiet (4) |
+| ev_lost | 3 | none | neverQuiet (4), neverFailedEvent (4) |
+| ev_raises | 3 | none | neverQuiet (4), neverFailedEvent (4) |
+| ev_rejectdrop | 3 | none | neverQuiet (4), neverFailedEvent (4) |
+| ev_returns | 3 | none | neverQuiet (4) |
+| ev_unknown | 1 | none | neverQuiet (2), neverFailedEvent (2) |
+| ev_updatethenignore | 3 | monitorAgrees (4), quietDone (4) | neverQuiet (4) |
+<!-- end generated -->
+
+<!-- generated: reasons events.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `oneFinalEvent` | ev_hardlimit (5) | open | finding hard-limit-twice (the error callback and the timeout callback each send task-failed) |
+| `monitorAgrees` | ev_updatethenignore (4) | open | finding ignore-started-forever. the documented manual result: SUCCESS stored, the monitor shows STARTED for ever |
+| `quietDone` | ev_ignores (4), ev_updatethenignore (4) | open | finding ignore-started-forever. Ignore sends no event: task-started is the last |
+<!-- end generated -->
+
+What the model says, and what the real code did (9c2f238, kombu 445027e,
+Redis 7, `../findings/ignore-started-forever/confirm_ignore_events.py`,
+nothing injected):
+
+* Ignore sends no event after task-started: the monitor shows the task
+  STARTED for ever (`ev_ignores.quietDone`), also when the task stored
+  SUCCESS by hand first, as tasks.rst shows (`ev_updatethenignore`): 3 of
+  3 each; Celery 5.5.3 and 5.4.0 the same. See
+  [ignore-started-forever](../findings/ignore-started-forever/).
+* A hard time limit sends task-failed twice (`ev_hardlimit.oneFinalEvent`,
+  3 of 3 on 9c2f238; once on 5.5.3 and 5.4.0): part of
+  [hard-limit-twice](../findings/hard-limit-twice/).
+* Returns, raises, a lost pool process, Reject without requeue (task-failed
+  then task-rejected) and an unknown task name (task-failed without
+  task-received) agree on both sides; so do a revoke of a running task and
+  an expired task (REVOKED and task-revoked), which the model leaves out
+  (scratchpad probe, 1 of 1 each).
+* Not checked: worker heartbeats and "offline" during a long task. With
+  the solo pool a 3 s task delayed heartbeats to one every 3 s with
+  --heartbeat-interval 2 and events.State kept the worker alive (1 of 1);
+  longer tasks were not tried.
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

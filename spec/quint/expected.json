@@ -1206,6 +1206,65 @@
    }
   }
  },
+ "events.qnt": {
+  "ev_hardlimit": {
+   "D": 4,
+   "violated": {
+    "neverFailedEvent": 4,
+    "neverQuiet": 5,
+    "oneFinalEvent": 5
+   }
+  },
+  "ev_ignores": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "ev_lost": {
+   "D": 3,
+   "violated": {
+    "neverFailedEvent": 4,
+    "neverQuiet": 4
+   }
+  },
+  "ev_raises": {
+   "D": 3,
+   "violated": {
+    "neverFailedEvent": 4,
+    "neverQuiet": 4
+   }
+  },
+  "ev_rejectdrop": {
+   "D": 3,
+   "violated": {
+    "neverFailedEvent": 4,
+    "neverQuiet": 4
+   }
+  },
+  "ev_returns": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "ev_unknown": {
+   "D": 1,
+   "violated": {
+    "neverFailedEvent": 2,
+    "neverQuiet": 2
+   }
+  },
+  "ev_updatethenignore": {
+   "D": 3,
+   "violated": {
+    "monitorAgrees": 4,
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  }
+ },
  "handlers.qnt": {
   "any_default": {
    "D": 4,
