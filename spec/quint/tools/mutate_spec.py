@@ -285,6 +285,15 @@ MUTANTS = [
      "      else if (CFG.confirm) (Raised({ own: true }), Refused, false)", "      else if (CFG.confirm) (Returned, Dropped, true)"),
     ('routing: a worker that does not run m2', 'routing.qnt', 'redis_consumed', 'quietDone',
      "      pub' = pub.set(2, Returned), msg' = msg.set(2, Queued({ consumed: true })),", "      pub' = pub.set(2, Returned), msg' = msg.set(2, Queued({ consumed: false })),"),
+    # housekeeping.qnt: one mutant per property
+    ('housekeeping: a retried run whose SUCCESS is not stored', 'housekeeping.qnt', 'plain_retry', 'finalNotUnready',
+     "    val doStore = if (st == Success) storeSuccess else storeErrors", "    val doStore = if (st == Success) false else storeErrors"),
+    ('housekeeping: an ignored result whose SUCCESS is stored', 'housekeeping.qnt', 'forget_running_ignore', 'forgetSticks',
+     "  val storeSuccess: bool = not(CFG.ignoreResult)", "  val storeSuccess: bool = true"),
+    ('housekeeping: a delete that forgets the tasks', 'housekeeping.qnt', 'group_delete', 'restoredReady',
+     "    else all { stored' = stored, groupSaved' = false },", "    else all { stored' = Absent, groupSaved' = true },"),
+    ('housekeeping: a return stored as RETRY', 'housekeeping.qnt', 'plain_returns', 'quietDone',
+     "             else if (CFG.ending == Raises) Failure else Success", "             else if (CFG.ending == Raises) Failure else Retry"),
 ]
 
 

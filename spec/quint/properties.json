@@ -224,8 +224,7 @@
    ],
    "apalache": [],
    "fast": [
-    "redis_late_short",
-    "redis_late_long_w1"
+    "redis_late_short"
    ],
    "passes_all": "redis_late_short",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -474,6 +473,32 @@
     "redis_consumed"
    ],
    "passes_all": "redis_consumed",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "housekeeping.qnt": {
+   "family": "result",
+   "types": "housetypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "finalNotUnready",
+    "forgetSticks",
+    "restoredReady",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverStoredRetry"
+   ],
+   "apalache": [],
+   "fast": [
+    "plain_retry"
+   ],
+   "passes_all": "plain_retry",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -4331,6 +4356,147 @@
    "pattern": "Existence",
    "statement": "Some publish raises.",
    "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "housekeeping.finalNotUnready",
+   "spec": "housekeeping.qnt",
+   "definition": "finalNotUnready",
+   "kind": "safety",
+   "pattern": "Absence (RETRY stored after the task finished), after the last run",
+   "statement": "Once the task finished, what is stored is a final state or nothing, never RETRY.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "docs/userguide/tasks.rst:1162-1165 and configuration.rst:536-550 (celery 768e476): with ignore_result the return value is not stored; store_errors_even_if_ignored stores the errors as well",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverStoredRetry",
+   "mutant": "housekeeping: a retried run whose SUCCESS is not stored",
+   "violations": [
+    {
+     "instances": "ignore_storeerr_retry",
+     "reason": "open",
+     "where": "finding ignored-retry-stays-retry (closest celery issue 11008, closed by celery PR 11009, which keeps RETRY stored under store_errors_even_if_ignored for a retry after a lost worker)",
+     "note": "RETRY is stored as an error, the successful retry stores nothing: RETRY for ever"
+    }
+   ]
+  },
+  {
+   "id": "housekeeping.forgetSticks",
+   "spec": "housekeeping.qnt",
+   "definition": "forgetSticks",
+   "kind": "safety",
+   "pattern": "Absence (a state stored after forget), after forget",
+   "statement": "A forgotten result stays forgotten.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "celery/result.py:136-143 (celery 768e476): AsyncResult.forget, \"Forget the result of this task and its parents\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "housekeeping: an ignored result whose SUCCESS is stored",
+   "violations": [
+    {
+     "instances": "forget_running",
+     "reason": "by design",
+     "where": "celery/result.py:136-143 and backends/base.py:883-885 (celery 768e476): forget deletes what is stored now and records nothing, so a task still running stores its final state afterwards (3 of 3 on 9c2f238, findings/ignored-retry-stays-retry/confirm_ignored_retry.py forget)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "housekeeping.restoredReady",
+   "spec": "housekeeping.qnt",
+   "definition": "restoredReady",
+   "kind": "safety",
+   "pattern": "Absence (a restored group that is not ready after its tasks finished), global",
+   "statement": "A group restored after its tasks finished is ready: every task has a final state stored.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "celery/result.py:979-987 and 1036-1042 (celery 768e476): save a group result for later retrieval with restore",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "housekeeping: a delete that forgets the tasks",
+   "violations": [
+    {
+     "instances": "group_forget",
+     "reason": "documented",
+     "where": "celery/result.py:712-715 (celery 768e476): GroupResult.forget forgets all the tasks, not the saved group; restore then returns a group whose tasks read PENDING, so ready() is false and get() waits (3 of 3 on 9c2f238, findings/ignored-retry-stays-retry/confirm_ignored_retry.py groupforget)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "housekeeping.quietDone",
+   "spec": "housekeeping.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end a kept result reads its final state)",
+   "statement": "At the end a task whose result is kept, and that no client removed, reads SUCCESS or FAILURE.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "docs/userguide/tasks.rst (celery 768e476), Result backends",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "housekeeping: a return stored as RETRY",
+   "violations": []
+  },
+  {
+   "id": "housekeeping.progress",
+   "spec": "housekeeping.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "housekeeping.stepOrQuiet",
+   "spec": "housekeeping.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "housekeeping.neverQuiet",
+   "spec": "housekeeping.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "housekeeping.neverStoredRetry",
+   "spec": "housekeeping.qnt",
+   "definition": "neverStoredRetry",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "RETRY is stored.",
+   "assumptions": "one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

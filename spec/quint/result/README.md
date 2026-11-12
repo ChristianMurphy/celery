@@ -191,6 +191,68 @@ Why each violation is expected:
 | `quietDone` | ids_pubsub_cut (17), pubsub_cut (17) | open | finding pubsub-reconnect-gap (not in the tracker yet; the MGET before the SUBSCRIBE came with celery PR 5921, 2020; closest symptom celery issue 4039). the reader's pub/sub connection is lost; the reconnect reads the key (MGET), the final write and its message come next, and only then the new connection subscribes: the message reached nobody and get() waits for ever |
 <!-- end generated -->
 
+## Housekeeping: forget, ignored results, saved groups
+
+`housekeeping.qnt`, `housekeeping_instances.qnt` (10 instances; celery
+768e476, the same at 9c2f238): one task id with at most one retry;
+ignore_result and store_errors_even_if_ignored; a client that forgets the
+task at any time, or saves a group of it, forgets or deletes the group and
+restores it. Instances `<settings>_<ending or client op>`.
+
+<!-- generated: properties housekeeping.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `finalNotUnready` | safety | Once the task finished, what is stored is a final state or nothing, never RETRY. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Absence (RETRY stored after the task finished), after the last run | docs/userguide/tasks.rst:1162-1165 and configuration.rst:536-550 (celery 768e476): with ignore_result the return value is not stored; store_errors_even_if_ignored stores the errors as well |
+| `forgetSticks` | safety | A forgotten result stays forgotten. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Absence (a state stored after forget), after forget | celery/result.py:136-143 (celery 768e476): AsyncResult.forget, "Forget the result of this task and its parents" |
+| `restoredReady` | safety | A group restored after its tasks finished is ready: every task has a final state stored. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Absence (a restored group that is not ready after its tasks finished), global | celery/result.py:979-987 and 1036-1042 (celery 768e476): save a group result for later retrieval with restore |
+| `quietDone` | liveness | At the end a task whose result is kept, and that no client removed, reads SUCCESS or FAILURE. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Response (lemma 3 of 3: at the end a kept result reads its final state) | docs/userguide/tasks.rst (celery 768e476), Result backends |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Existence | sanity |
+| `neverStoredRetry` | witness | RETRY is stored. Assumes: one task id with at most one retry (Task.retry, countdown 0); ignore_result and store_errors_even_if_ignored as the instance says; one client that may forget the task at any time, or save a group of that task once it finished, then forget or delete the group, then restore it. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results housekeeping.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| forget_running | 3 | forgetSticks (4) | neverQuiet (4) |
+| forget_running_ignore | 3 | none | neverQuiet (4) |
+| group_delete | 6 | none | neverQuiet (6) |
+| group_forget | 5 | restoredReady (6) | neverQuiet (6) |
+| ignore_retry | 4 | none | neverQuiet (5) |
+| ignore_storeerr_raises | 2 | none | neverQuiet (3) |
+| ignore_storeerr_retry | 4 | finalNotUnready (5) | neverQuiet (5), neverStoredRetry (3) |
+| plain_raises | 2 | none | neverQuiet (3) |
+| plain_retry | 4 | none | neverQuiet (5), neverStoredRetry (3) |
+| plain_returns | 2 | none | neverQuiet (3) |
+<!-- end generated -->
+
+<!-- generated: reasons housekeeping.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `finalNotUnready` | ignore_storeerr_retry (5) | open | finding ignored-retry-stays-retry (closest celery issue 11008, closed by celery PR 11009, which keeps RETRY stored under store_errors_even_if_ignored for a retry after a lost worker). RETRY is stored as an error, the successful retry stores nothing: RETRY for ever |
+| `forgetSticks` | forget_running (4) | by design | celery/result.py:136-143 and backends/base.py:883-885 (celery 768e476): forget deletes what is stored now and records nothing, so a task still running stores its final state afterwards (3 of 3 on 9c2f238, findings/ignored-retry-stays-retry/confirm_ignored_retry.py forget) |
+| `restoredReady` | group_forget (6) | documented | celery/result.py:712-715 (celery 768e476): GroupResult.forget forgets all the tasks, not the saved group; restore then returns a group whose tasks read PENDING, so ready() is false and get() waits (3 of 3 on 9c2f238, findings/ignored-retry-stays-retry/confirm_ignored_retry.py groupforget) |
+<!-- end generated -->
+
+What the model says, and what the real code did (9c2f238, kombu 445027e,
+Redis 7, `../findings/ignored-retry-stays-retry/confirm_ignored_retry.py`,
+nothing injected):
+
+* ignore_result with store_errors_even_if_ignored: the retry stores RETRY
+  as an error and the successful attempt stores nothing, so the task reads
+  RETRY for ever (`ignore_storeerr_retry.finalNotUnready`, 3 of 3; without
+  store_errors_even_if_ignored it reads PENDING, 3 of 3). See
+  [ignored-retry-stays-retry](../findings/ignored-retry-stays-retry/).
+* forget() while the task runs: the final write puts the result back
+  (`forget_running.forgetSticks`, 3 of 3); forget records nothing.
+* GroupResult.forget() forgets the tasks and leaves the saved group:
+  restore() returns a group that is never ready (`group_forget`, 3 of 3);
+  delete() and restore() give None (`group_delete` passes).
+* Seen on the way: with the result kept and -c 2, one of three plain
+  retries read RETRY after its SUCCESS, which is finding retry-over-failure
+  happening without the injected delay.
+
 ## Findings
 
 No store keeps a ready state other than SUCCESS (`finalStable`, on all

@@ -1260,6 +1260,73 @@
    }
   }
  },
+ "housekeeping.qnt": {
+  "forget_running": {
+   "D": 3,
+   "violated": {
+    "forgetSticks": 4,
+    "neverQuiet": 4
+   }
+  },
+  "forget_running_ignore": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "group_delete": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 6
+   }
+  },
+  "group_forget": {
+   "D": 5,
+   "violated": {
+    "neverQuiet": 6,
+    "restoredReady": 6
+   }
+  },
+  "ignore_retry": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "ignore_storeerr_raises": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3
+   }
+  },
+  "ignore_storeerr_retry": {
+   "D": 4,
+   "violated": {
+    "finalNotUnready": 5,
+    "neverQuiet": 5,
+    "neverStoredRetry": 3
+   }
+  },
+  "plain_raises": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3
+   }
+  },
+  "plain_retry": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "neverStoredRetry": 3
+   }
+  },
+  "plain_returns": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3
+   }
+  }
+ },
  "publisher.qnt": {
   "off_crash": {
    "D": 8,

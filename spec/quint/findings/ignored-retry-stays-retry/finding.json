@@ -1,0 +1,16 @@
+{
+ "id": "ignored-retry-stays-retry",
+ "title": "ignore_result with store_errors_even_if_ignored: a task that retried and then succeeded reads RETRY for ever",
+ "cells": [
+  "ignore_storeerr_retry.finalNotUnready"
+ ],
+ "outcome": "visible failure",
+ "status": "open",
+ "where": "trace.py:166-205 (celery 768e476, the same at 9c2f238): handle_retry stores RETRY when store_errors is on, and with ignore_result store_errors is store_errors_even_if_ignored; trace.py:479-485 stores SUCCESS only when the result is not ignored. configuration.rst:536-550 and tasks.rst:1162-1165 say that errors are stored even if the result is ignored; they do not say that a RETRY then stays as the last state. Closest thread: celery issue 11008 (closed 2026-11-03 by celery PR 11009, merged): the same RETRY for ever after a retry on a lost worker with an ignored result; the PR stops storing RETRY there but keeps it under store_errors_even_if_ignored on purpose (\"With store_errors_even_if_ignored, RETRY is still stored\") and names Task.retry() as already correct, which holds only without store_errors_even_if_ignored. Searched: store_errors_even_if_ignored retry, ignore_result RETRY state, ignore_result retry stuck, store_errors_even_if_ignored, state stays RETRY (issues and pull requests); not in the tracker yet",
+ "thread": "celery issue 11008 or celery PR 11009 (a follow-up comment; the lead decides)",
+ "confirm": [
+  "confirm_ignored_retry.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, one prefork worker -c 2; nothing injected. storeerr (ignore_result=True, store_errors_even_if_ignored=True, the first run calls self.retry(countdown=0), the second returns): 3 of 3 runs both attempts ran and RETRY was stored at the end; the caller's AsyncResult (marked ignored) get() returned None at once, a fresh AsyncResult(id) read RETRY and get(timeout=5) raised TimeoutError. Control noerr (store_errors_even_if_ignored off): 3 of 3 PENDING (nothing stored), the same get() results. Control plain (result kept): SUCCESS in 2 of 3; the third read RETRY after SUCCESS, which is finding retry-over-failure (a natural occurrence on -c 2, 1 of 3 here). Celery 5.5.3 (kombu 5.5.4) and 5.4.0 (kombu 5.4.2): storeerr 1 of 1 each the same. Natural rate: every task that retries at least once and then succeeds, with ignore_result and store_errors_even_if_ignored; a status page or Flower's result view shows it as retrying. The same script backs two reasons of housekeeping.qnt: forget 3 of 3 (forgotten 0.7 s into a 2 s run, SUCCESS stored at the end) and groupforget 3 of 3 (GroupResult.forget then restore: a group, ready() False, get(timeout=3) TimeoutError)."
+}
