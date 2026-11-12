@@ -16,5 +16,5 @@
   "confirm_chain_store_error.py"
  ],
  "scenarios": "",
- "observed": "768e476 with kombu 445027e, a real prefork worker on Redis: a returns a value the serializer cannot encode: 5 of 5 runs ran the link and the errback, and b was read PENDING, FAILURE, then SUCCESS (lead: 3 of 3 on main 9c2f238). Mode operational, a backend that raises kombu OperationalError on a's SUCCESS write: 3 of 3, the same, nothing redelivered."
+ "observed": "768e476 with kombu 445027e, a real prefork worker on Redis: a returns a value the serializer cannot encode: 5 of 5 runs ran the link and the errback, and b was read PENDING, FAILURE, then SUCCESS (lead: 3 of 3 on main 9c2f238). Mode operational, a backend that raises kombu OperationalError on a's SUCCESS write: 3 of 3, the same, nothing redelivered. A plain task with a link and a link_error (content.qnt's result instance; a scratchpad probe on 9c2f238 with kombu 445027e, 1 of 1): returning an object JSON cannot encode stored FAILURE (EncodeError) and ran both its link and its link_error."
 }

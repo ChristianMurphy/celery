@@ -1572,3 +1572,12 @@ Probed on 9c2f238 and not modeled (scratchpad `inspprobe.py`, 1 of 1):
 `control.purge()` with prefetched messages returned 0 and every prefetched
 task ran, as faq.rst:385-395 documents; an ETA task is in scheduled and
 tasks waiting for the process in reserved, as the docs say.
+
+Worker heartbeats during a long task (scratchpad `hbprobe9.py`, 9c2f238,
+`-E`, a monitor feeding events.State, 1 of 1 each): with `-P solo` a task
+that sleeps 30 s sends no worker-heartbeat for 31 s and events.State calls
+the worker offline from 5 s into the task until it ends; with prefork 15
+heartbeats arrive during the same task and the worker stays alive. By
+design: the solo pool runs the task in the main thread
+(concurrency/index.rst:27), which also blocks control commands
+(workers.rst:509-514).

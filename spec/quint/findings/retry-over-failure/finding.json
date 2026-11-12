@@ -12,8 +12,9 @@
  "where": "tracker es-ready-states (a late RETRY replaces a final FAILURE), in the reply on celery discussion 10681; this is a trigger without any fault",
  "thread": "celery discussion 10681 (the reply there), or a new issue if the lead prefers",
  "confirm": [
-  "confirm_retry_over_failure.py"
+  "confirm_retry_over_failure.py",
+  "confirm_retry_then_success.py"
  ],
  "scenarios": "",
- "observed": "768e476 with kombu 445027e, Redis broker and backend, two prefork workers -c 4, a task that always calls self.retry(countdown=0, max_retries=1): natural, nothing injected: 0 of 2000 read RETRY at the end. With mark_as_retry delayed 0.2 s (a RedisBackend subclass; injected): 4 of 20 read RETRY for ever after their last attempt stored FAILURE. The model's design retryFirst (store RETRY before publishing the copy) passes every property."
+ "observed": "768e476 with kombu 445027e, Redis broker and backend, two prefork workers -c 4, a task that always calls self.retry(countdown=0, max_retries=1): natural, nothing injected: 0 of 2000 read RETRY at the end. With mark_as_retry delayed 0.2 s (a RedisBackend subclass; injected): 4 of 20 read RETRY for ever after their last attempt stored FAILURE. The model's design retryFirst (store RETRY before publishing the copy) passes every property. Natural rate of the simpler shape (confirm_retry_then_success.py: retry(countdown=0) once, then return; one task at a time on one worker; nothing injected): 9c2f238 with kombu 445027e, -c 2: 23 of 200 read RETRY for ever (11.5%), each after both attempts ran and the second returned; -c 1: 0 of 100. Celery 5.5.3 (kombu 5.5.4), -c 2: 13 of 200. The SUCCESS guard of the key-value backends reads the stored state and then writes (base.py:1355-1377), so a RETRY write that read PENDING before the copy stored SUCCESS replaces it. This is the case seen in 1 of 3 plain runs of ../ignored-retry-stays-retry/confirm_ignored_retry.py."
 }
