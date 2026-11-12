@@ -1386,6 +1386,56 @@
    }
   }
  },
+ "lifecycle.qnt": {
+  "cancel_loss": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 3,
+    "neverRerun": 4
+   }
+  },
+  "cancel_loss2": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 3,
+    "neverRerun": 4
+   }
+  },
+  "nocancel_loss": {
+   "D": 5,
+   "violated": {
+    "neverQuiet": 3,
+    "neverRerun": 4,
+    "noOverlap": 4
+   }
+  },
+  "nocancel_loss2": {
+   "D": 8,
+   "violated": {
+    "neverQuiet": 3,
+    "neverRerun": 4,
+    "noOverlap": 4
+   }
+  },
+  "poolrestart": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 3
+   }
+  },
+  "recycle": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 3
+   }
+  },
+  "shrink": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 3
+   }
+  }
+ },
  "priorities.qnt": {
   "rabbit_nomax_p1": {
    "D": 9,

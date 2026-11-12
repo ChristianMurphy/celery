@@ -1082,7 +1082,7 @@ are in `handlers.qnt`.
 | `outcomeVisible` | liveness | At the end a final state, SUCCESS or FAILURE, is stored. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Response (at the end a final state is stored) | docs/userguide/tasks.rst:1541-1554 (celery 768e476): a Reject without requeue stores FAILURE regardless of acks_late; a requeued message runs again |
 | `requeueRuns` | liveness | A run that asks for its message to be requeued (Reject(requeue=True), a lost process under reject_on_worker_lost) is followed by another run. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Response (a requeue is followed by a run) | docs/userguide/tasks.rst:1550-1554 (celery 768e476); configuration.rst, task_reject_on_worker_lost |
 | `rejectDeadLetters` | liveness | A message the task rejects without requeue reaches the queue's dead letter exchange. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Response (a rejected message reaches the dead letter exchange) | docs/userguide/tasks.rst:1533-1537 (celery 768e476): rejected messages are redelivered to a dead letter exchange where the broker has one |
-| `quietDone` | liveness | At the end the message is acked, removed or dead lettered, and no new message waits. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Response (lemma 3 of 3: at the end the message is settled) | docs/userguide/tasks.rst (celery 768e476), acks_late |
+| `quietDone` | liveness | At the end the message is acked, removed or dead lettered, and no new message waits. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Response (lemma 3 of 3: at the end the message is settled) | docs/userguide/configuration.rst:3949-3959 (celery 768e476): a task not acknowledged before a connection loss is redelivered |
 | `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
 | `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
 | `neverQuiet` | witness | Some run ends. Assumes: one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue. | Existence | sanity |
@@ -1332,6 +1332,57 @@ routing.rst:276-282 says queue_order_strategy 'priority' is needed to
 schedule by priority on Redis, while the priority steps are read in order
 without it (the probe ran 0, 0, 3, 6, 9, 9 with the default) and the
 option orders queues, not priorities.
+
+## The worker's lifecycle around a running task
+
+`lifecycle.qnt`, `lifecycle_instances.qnt` (7 instances; celery 768e476,
+the same at 9c2f238, kombu 445027e): one acks_late task on Redis, a
+prefork worker with two processes; one or two broker connection losses
+with worker_cancel_long_running_tasks_on_connection_loss off or on, or an
+autoscale down, a pool_restart or a max_tasks_per_child recycle.
+
+<!-- generated: properties lifecycle.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `noOverlap` | safety | The task never runs twice at the same time. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Absence (two runs of the task at once), global | docs/userguide/configuration.rst:3956-3957 (celery 768e476): with worker_cancel_long_running_tasks_on_connection_loss the tasks not completed are cancelled and terminated |
+| `noRerunWithoutLoss` | safety | The task starts again only after a connection loss: at most one run per loss, plus the first; an autoscale down, a pool restart or a recycled child never runs it again. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Bounded existence (runs per delivery), global | docs/userguide/workers.rst:877-889 and 913-920 (celery 768e476): a child is replaced after it executed its maximum number of tasks; the autoscaler resizes the pool by load |
+| `quietDone` | liveness | At the end SUCCESS is stored and the message is acked. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Response (lemma 3 of 3: at the end SUCCESS is stored and the message acked) | docs/userguide/configuration.rst:3949-3959 (celery 768e476): a task not acknowledged before a connection loss is redelivered |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Existence | sanity |
+| `neverRerun` | witness | The task runs a second time. Assumes: one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results lifecycle.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| cancel_loss | 4 | none | neverQuiet (3), neverRerun (4) |
+| cancel_loss2 | 6 | none | neverQuiet (3), neverRerun (4) |
+| nocancel_loss | 5 | noOverlap (4) | neverQuiet (3), neverRerun (4) |
+| nocancel_loss2 | 8 | noOverlap (4) | neverQuiet (3), neverRerun (4) |
+| poolrestart | 3 | none | neverQuiet (3) |
+| recycle | 3 | none | neverQuiet (3) |
+| shrink | 3 | none | neverQuiet (3) |
+<!-- end generated -->
+
+<!-- generated: reasons lifecycle.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `noOverlap` | nocancel_loss (4), nocancel_loss2 (4) | documented | docs/userguide/configuration.rst:3949-3954 (celery 768e476): without the setting a late-ack task is executed twice per connection loss, sometimes in parallel; consumer.py:129-135 warns at every loss (on 9c2f238, -c 2, two CLIENT KILLs 0.2 s apart during a 6 s task: three runs, two of them at the same time, 1 of 1) |
+<!-- end generated -->
+
+What the real code did (9c2f238, kombu 445027e, Redis 7, a scratchpad
+probe, 1 of 1 each, nothing injected beyond the connection loss): a
+pool_restart 1.5 s into a 5 s task: the run ended SUCCESS on the same
+process. autoscale 3,1 with three 6 s tasks running, then autoscale(1, 1):
+all three ended SUCCESS, none ran again. max_tasks_per_child 1 with four
+tasks: each ran once on a new process. Two CLIENT KILLs of every Redis
+client 0.2 s apart during a 6 s task on -c 2: with the setting off the
+task ran three times, two at once, as configuration.rst says; with it on
+the first two runs were terminated and the third ended SUCCESS. Nothing
+here is a finding. Startup with an unreachable broker or backend was not
+modeled: the broker retries on startup, and a backend error during a run
+is the class of dedup-read-error and revoke-backend-error.
 
 ## Where this stopped
 

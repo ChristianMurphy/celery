@@ -308,6 +308,14 @@ MUTANTS = [
      "    | RoundRobin => if (lastQ == 0) [1, 0] else [0, 1]", "    | RoundRobin => [0, 1]"),
     ('priorities: a prefetch that acks the message without running it', 'priorities.qnt', 'redis_prio_p2', 'quietDone',
      "      where' = where.set(m, Held), held' = held.append(m),", "      where' = where.set(m, Done), held' = held,"),
+    # lifecycle.qnt: one mutant per property
+    ('lifecycle: a cancel that leaves the run going', 'lifecycle.qnt', 'cancel_loss', 'noOverlap',
+     "    val c = if (CFG.cancelOnLoss) running else 0", "    val c = 0"),
+    ('lifecycle: a pool restart that requeues the running task', 'lifecycle.qnt', 'poolrestart', 'noRerunWithoutLoss',
+     "    queued' = queued, unacked' = unacked, running' = running, runs' = runs,\n    done' = done, lossesLeft' = lossesLeft, procs' = procs, did(PoolRestart),",
+     "    queued' = (queued or unacked), unacked' = false, running' = running, runs' = runs,\n    done' = done, lossesLeft' = lossesLeft, procs' = procs, did(PoolRestart),"),
+    ('lifecycle: a finish that does not ack', 'lifecycle.qnt', 'nocancel_loss', 'quietDone',
+     "    unacked' = (unacked and running - 1 > 0), queued' = queued, runs' = runs,", "    unacked' = unacked, queued' = queued, runs' = runs,"),
 ]
 
 
