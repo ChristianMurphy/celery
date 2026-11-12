@@ -576,6 +576,33 @@
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
+  },
+  "nested.qnt": {
+   "family": "canvas",
+   "types": "nesttypes",
+   "metric": "",
+   "pins": {
+    "celery": "9c2f238"
+   },
+   "properties": [
+    "bodyOnlyOnSuccess",
+    "errbackOnce",
+    "quietDone",
+    "errbackOnFailure"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverErrback"
+   ],
+   "apalache": [],
+   "fast": [
+    "nested_yfail_option",
+    "nested_fail_option"
+   ],
+   "passes_all": "nested_yfail_option",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
   }
  },
  "properties": [
@@ -4934,6 +4961,146 @@
    "pattern": "Existence",
    "statement": "The task runs a second time.",
    "assumptions": "one acks_late task on a Redis broker, one prefork worker with two processes; one or two broker connection losses with worker_cancel_long_running_tasks_on_connection_loss off or on, or one autoscale down, pool_restart or max_tasks_per_child recycle while the task is queued or runs",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "nested.bodyOnlyOnSuccess",
+   "spec": "nested.qnt",
+   "definition": "bodyOnlyOnSuccess",
+   "kind": "safety",
+   "pattern": "Absence (the body runs after a header task failed), global",
+   "statement": "The chord body runs only if no header task failed.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "docs/userguide/canvas.rst:905-906 (celery 9c2f238): the body executes after all of the tasks in the header have finished",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "nested: a chord that runs its body after a failed part",
+   "violations": []
+  },
+  {
+   "id": "nested.errbackOnce",
+   "spec": "nested.qnt",
+   "definition": "errbackOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one errback call), global",
+   "statement": "The chord's errback is called at most once.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "docs/userguide/canvas.rst:1030-1034 (celery 9c2f238): errbacks just once if any task in the chord header or body fails",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverErrback",
+   "mutant": "nested: an errback call on every failed part",
+   "violations": []
+  },
+  {
+   "id": "nested.quietDone",
+   "spec": "nested.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the chord body ran or is stored FAILURE)",
+   "statement": "At the end the outer chord's body ran or is stored FAILURE.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "docs/userguide/canvas.rst:905-906 and 1030-1034 (celery 9c2f238)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "nested: an inner body that returns no part",
+   "violations": [
+    {
+     "instances": "nested_*fail_onerror",
+     "reason": "open",
+     "where": "celery issue 10783 (open) says the enclosing chord does not complete when a nested chord's header fails, as designed (test_nested_chord_header_link_error), with the errback as the signal; celery PR 10767 (merged) lists the case as still pending",
+     "note": "chord_error_from_stack fails the inner body and returns no part to the outer chord (base.py:464-503)"
+    },
+    {
+     "instances": "nested_fail_option",
+     "reason": "open",
+     "where": "finding chord-option-errback-nested; the hang itself is celery issue 10783's as designed",
+     "note": "the same hang, with no errback either"
+    }
+   ]
+  },
+  {
+   "id": "nested.errbackOnFailure",
+   "spec": "nested.qnt",
+   "definition": "errbackOnFailure",
+   "kind": "liveness",
+   "pattern": "Response (a failed header task is followed by an errback call)",
+   "statement": "At the end, if a header task failed, the chord's errback was called.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "docs/userguide/canvas.rst:1030-1050 (celery 9c2f238): errbacks just once if any task in the chord header or body fails; link_error passed to chord.apply_async() is linked the same way chord.link_error() links it",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverErrback",
+   "mutant": "nested: a failed chord that calls no errback",
+   "violations": [
+    {
+     "instances": "nested_fail_option",
+     "reason": "open",
+     "where": "finding chord-option-errback-nested (new on main with celery PR 10778; 5.5.3 raised TypeError at the call); closest celery issue 10783 and celery PR 10784, the same symptom through chain(...).on_error()",
+     "note": "apply_async's link_error goes to the outer body only (canvas.py:2583-2600); the nested chord's special case in chord.link_error() is skipped"
+    }
+   ]
+  },
+  {
+   "id": "nested.progress",
+   "spec": "nested.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "nested.stepOrQuiet",
+   "spec": "nested.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "nested.neverQuiet",
+   "spec": "nested.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "nested.neverErrback",
+   "spec": "nested.qnt",
+   "definition": "neverErrback",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The errback is called.",
+   "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

@@ -1436,6 +1436,71 @@
    }
   }
  },
+ "nested.qnt": {
+  "flat_fail_option": {
+   "D": 2,
+   "violated": {
+    "neverErrback": 3,
+    "neverQuiet": 3
+   }
+  },
+  "flat_ok_option": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "nested_bothfail_onerror": {
+   "D": 3,
+   "violated": {
+    "neverErrback": 3,
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "nested_fail_onerror": {
+   "D": 3,
+   "violated": {
+    "neverErrback": 3,
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "nested_fail_option": {
+   "D": 3,
+   "violated": {
+    "errbackOnFailure": 4,
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "nested_ok_option": {
+   "D": 5,
+   "violated": {
+    "neverQuiet": 6
+   }
+  },
+  "nested_yfail_option": {
+   "D": 4,
+   "violated": {
+    "neverErrback": 5,
+    "neverQuiet": 5
+   }
+  },
+  "replaced_fail_option": {
+   "D": 3,
+   "violated": {
+    "neverErrback": 4,
+    "neverQuiet": 4
+   }
+  },
+  "replaced_ok_option": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  }
+ },
  "priorities.qnt": {
   "rabbit_nomax_p1": {
    "D": 9,

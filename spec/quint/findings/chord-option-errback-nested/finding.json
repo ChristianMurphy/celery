@@ -1,0 +1,16 @@
+{
+ "id": "chord-option-errback-nested",
+ "title": "An errback passed to chord.apply_async() as link_error is never called when a chord nested in the header fails: the chord stays PENDING with no signal, where on_error() calls the errback",
+ "cells": [
+  "nested_fail_option.errbackOnFailure"
+ ],
+ "outcome": "hang",
+ "status": "open",
+ "where": "canvas.py:2565-2600 (celery 9c2f238): _add_body_callbacks moves an apply_async link_error to the outer body only; chord.link_error() also links it to a chord nested in the header (canvas.py:2744-2749, celery PR 9580), and the apply_async path skips that. When the nested chord's header fails, the Redis backend fails the inner body through chord_error_from_stack (redis.py:1052-1056, base.py:464-503), which calls the inner body's errbacks and returns no part to the outer chord, so the outer body is never run or failed. canvas.rst:1030-1034 says the errback runs once if any task in the chord header fails, and canvas.rst:1042-1050 (versionchanged 5.7) says link_error given to chord.apply_async() is linked the same way chord.link_error() links it. The apply_async path came with celery PR 10778 (merged 2026-10-26, unreleased); 5.5.3 and 5.4.0 raised TypeError at the call. The outer chord staying PENDING is known and called as designed in celery issue 10783 (open, with open celery PR 10784: the same missing errback through chain(...).on_error() on a frozen chord), and celery PR 10767 lists it as still pending; PR 10784 changes chord.link_error() and does not touch _add_body_callbacks. Searched: nested chord error, chord inside chord fail, nested chord pending, nested chord errback, nested chords failure (issues and pull requests); not in the tracker yet",
+ "thread": "none yet (a comment on celery PR 10784 or celery issue 10783, or on celery PR 10778; the lead decides)",
+ "confirm": [
+  "confirm_chord_option_errback.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend (dbs 13 and 14), one prefork worker -c 2; nothing injected. outer = chord([chord([add(1), boom()], tsum), add(10)], tsum). option (outer.apply_async(link_error=eb.si())): 3 of 3 runs (and 2 of 2 in a first probe) the outer body stayed PENDING 6 s after the call and the errback ran 0 times. Controls: onerror (outer.on_error(eb.si()).apply_async()) 3 of 3 the errback ran once, the outer body PENDING (celery issue 10783's as designed); flat (chord([add(1), boom()], tsum).apply_async(link_error=eb.si())) 3 of 3 the body FAILURE and the errback ran once. Celery 5.5.3 (kombu 5.5.4) and 5.4.0 (kombu 5.4.2): option 1 of 1 each the call raised TypeError: Cannot add link to group; onerror 1 of 1: 5.5.3 called the errback once, 5.4.0 not at all (before celery PR 9580). Natural rate: every chord with a nested chord in its header whose own header fails, given an errback through apply_async's link_error; no timing involved. Found in the first probe (scratchpad, 2 of 2 with a 12 s wait: no errback, the outer group's join key held only add(10)'s part)."
+}

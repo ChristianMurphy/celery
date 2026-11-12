@@ -13,6 +13,11 @@ it models with a checked `@cite`. The rearrangement changed no result
 abstract delivery environment of `../lib/delivery.qnt`. See
 [Chains](#chains) below.
 
+`nested.qnt`, `nested_instances.qnt`: a chord with a chord nested in its
+header or a task that replaces itself, and the chord's errback. See
+[Nested chords, replace, groups and chains](#nested-chords-replace-groups-and-chains)
+below.
+
 ## Model
 
 A chord with two header tasks and three worker processes. Protocols:
@@ -515,3 +520,70 @@ Why each violation is expected:
 | `noFailedParentAfterSend` | early_child (6), early_unencodable (7), late_child (6), late_refuse (6), late_storeerr (7), late_unencodable (7) | open | finding chain-store-error; celery issue 10954 (a pool child lost after the link was published). a FAILURE for a task whose link and next step run |
 | `quietDone` | early_node (4) | documented | docs/userguide/tasks.rst:24-26 (celery 768e476): with early ack "a task invocation that already started is never executed again"; a run lost after the ack leaves its result PENDING. a hang for anyone waiting on a's result; b is not affected |
 <!-- end generated -->
+
+## Nested chords, replace, groups and chains
+
+`nested.qnt`, `nested_instances.qnt` (9 instances; celery 9c2f238, after
+celery PR 10778): chord([X, Y], body) on the Redis result backend, where X
+is a task, a chord nested in the header, or a task that replaces itself;
+the header tasks that fail per instance; an errback given by `on_error()`
+or as `apply_async`'s `link_error`.
+
+<!-- generated: properties nested.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `bodyOnlyOnSuccess` | safety | The chord body runs only if no header task failed. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Absence (the body runs after a header task failed), global | docs/userguide/canvas.rst:905-906 (celery 9c2f238): the body executes after all of the tasks in the header have finished |
+| `errbackOnce` | safety | The chord's errback is called at most once. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Bounded existence (at most one errback call), global | docs/userguide/canvas.rst:1030-1034 (celery 9c2f238): errbacks just once if any task in the chord header or body fails |
+| `quietDone` | liveness | At the end the outer chord's body ran or is stored FAILURE. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Response (lemma 3 of 3: at the end the chord body ran or is stored FAILURE) | docs/userguide/canvas.rst:905-906 and 1030-1034 (celery 9c2f238) |
+| `errbackOnFailure` | liveness | At the end, if a header task failed, the chord's errback was called. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Response (a failed header task is followed by an errback call) | docs/userguide/canvas.rst:1030-1050 (celery 9c2f238): errbacks just once if any task in the chord header or body fails; link_error passed to chord.apply_async() is linked the same way chord.link_error() links it |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Existence | sanity |
+| `neverErrback` | witness | The errback is called. Assumes: chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results nested.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| flat_fail_option | 2 | none | neverQuiet (3), neverErrback (3) |
+| flat_ok_option | 3 | none | neverQuiet (4) |
+| nested_bothfail_onerror | 3 | quietDone (4) | neverQuiet (4), neverErrback (3) |
+| nested_fail_onerror | 3 | quietDone (4) | neverQuiet (4), neverErrback (3) |
+| nested_fail_option | 3 | quietDone (4), errbackOnFailure (4) | neverQuiet (4) |
+| nested_ok_option | 5 | none | neverQuiet (6) |
+| nested_yfail_option | 4 | none | neverQuiet (5), neverErrback (5) |
+| replaced_fail_option | 3 | none | neverQuiet (4), neverErrback (4) |
+| replaced_ok_option | 4 | none | neverQuiet (5) |
+<!-- end generated -->
+
+<!-- generated: reasons nested.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `quietDone` | nested_bothfail_onerror (4), nested_fail_onerror (4) | open | celery issue 10783 (open) says the enclosing chord does not complete when a nested chord's header fails, as designed (test_nested_chord_header_link_error), with the errback as the signal; celery PR 10767 (merged) lists the case as still pending. chord_error_from_stack fails the inner body and returns no part to the outer chord (base.py:464-503) |
+| `quietDone` | nested_fail_option (4) | open | finding chord-option-errback-nested; the hang itself is celery issue 10783's as designed. the same hang, with no errback either |
+| `errbackOnFailure` | nested_fail_option (4) | open | finding chord-option-errback-nested (new on main with celery PR 10778; 5.5.3 raised TypeError at the call); closest celery issue 10783 and celery PR 10784, the same symptom through chain(...).on_error(). apply_async's link_error goes to the outer body only (canvas.py:2583-2600); the nested chord's special case in chord.link_error() is skipped |
+<!-- end generated -->
+
+Finding [chord-option-errback-nested](../findings/chord-option-errback-nested/)
+(a hang): `outer.apply_async(link_error=eb)` with a nested chord whose own
+header fails: the outer chord stays PENDING and `eb` is never called;
+`outer.on_error(eb)` calls it once. On main only: 5.5.3 and 5.4.0 raise
+TypeError at the call.
+
+What a scratchpad probe on 9c2f238 (kombu 445027e, Redis 7, -c 2, nothing
+injected, 1 of 1 each unless said) did for the shapes the spec leaves out
+or passes:
+
+| Case | Result | Status |
+|---|---|---|
+| `Task.replace` with a task, a chain, a failing task in a chord header | the body got the replacement's value (103, 1103) or failed with ChordError | as `replaced_*` |
+| `Task.replace` with a group in a chord header | the body got the group's list as that member's value: tsum([1, [102, 202]]) | the replaced task's value is the group's result |
+| `Task.replace` in the middle of a chain, with a task or a group | the chain went on with the replacement's value (107; 304) | passes |
+| chain(add, group(add, boom), tsum) with link_error | FAILURE (ChordError), the errback once | passes |
+| `group.link(cb)` | cb ran when the first task succeeded, also with the second failing; not when the first failed | documented, canvas.rst:736-756 |
+| `group.link_error(eb)` with two failing tasks | eb ran twice | documented, canvas.rst:758-772 |
+| `group.apply_async(link=cb)` | TypeError: Cannot add link to group: use a chord | visible at the call |
+| a chord in a chord header, all succeed | 13, as expected | passes (`nested_ok_option`) |
+| `group([])`, `chord([], tsum)`, chain(add, chord([], tsum)) | an empty GroupResult, ready, get() []; tsum([]) ran, 0 | passes |
+| chain with an immutable step; a link on a middle step | the immutable step ignored its parent (15); the link got the step's value (cb(12,)) | passes |
+| a link_error on a middle step that fails, and one on the chain | both errbacks ran once each | passes |

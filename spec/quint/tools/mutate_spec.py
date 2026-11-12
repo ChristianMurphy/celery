@@ -316,6 +316,15 @@ MUTANTS = [
      "    queued' = (queued or unacked), unacked' = false, running' = running, runs' = runs,\n    done' = done, lossesLeft' = lossesLeft, procs' = procs, did(PoolRestart),"),
     ('lifecycle: a finish that does not ack', 'lifecycle.qnt', 'nocancel_loss', 'quietDone',
      "    unacked' = (unacked and running - 1 > 0), queued' = queued, runs' = runs,", "    unacked' = unacked, queued' = queued, runs' = runs,"),
+    # nested.qnt: one mutant per property
+    ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
+     "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),
+    ('nested: an errback call on every failed part', 'nested.qnt', 'flat_fail_option', 'errbackOnce',
+     "    if (allIn(ps) and anyFailed(ps)) errbacks + 1 else errbacks", "    if (anyFailed(ps)) errbacks + 1 else errbacks"),
+    ('nested: an inner body that returns no part', 'nested.qnt', 'nested_ok_option', 'quietDone',
+     "    val ps = outerAfter(1, Ok)", "    val ps = parts"),
+    ('nested: a failed chord that calls no errback', 'nested.qnt', 'flat_fail_option', 'errbackOnFailure',
+     "    if (allIn(ps) and anyFailed(ps)) errbacks + 1 else errbacks", "    errbacks"),
 ]
 
 
