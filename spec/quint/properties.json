@@ -633,6 +633,34 @@
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
+  },
+  "eager.qnt": {
+   "family": "worker",
+   "types": "eagertypes",
+   "metric": "",
+   "pins": {
+    "celery": "9c2f238"
+   },
+   "properties": [
+    "notEarly",
+    "noRunAfterExpiry",
+    "callbacksMatch",
+    "runsBounded",
+    "quietDone",
+    "callerAgrees"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverRetried"
+   ],
+   "apalache": [],
+   "fast": [
+    "real_retry_expires"
+   ],
+   "passes_all": "real_retry_expires",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
   }
  },
  "properties": [
@@ -5293,6 +5321,183 @@
    "pattern": "Existence",
    "statement": "worker_shutdown is dispatched.",
    "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eager.notEarly",
+   "spec": "eager.qnt",
+   "definition": "notEarly",
+   "kind": "safety",
+   "pattern": "Absence (a run before its countdown), global",
+   "statement": "No run starts before its countdown, nor a retry before its retry countdown.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "docs/userguide/calling.rst:261-262 (celery 9c2f238): the countdown is the earliest time at which the task will be executed",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRetried",
+   "mutant": "eager: a worker that runs a message before its eta",
+   "violations": [
+    {
+     "instances": "eager_*",
+     "reason": "documented",
+     "where": "docs/userguide/testing.rst:29-36 (celery 9c2f238): eager mode only emulates a worker and there are many discrepancies (apply_async runs apply() at once, task.py:736-760; a retry runs again at once, task.py:949-955)",
+     "note": "probe on 9c2f238: countdown=3 with expires=1 ran at once and returned; retry(countdown=2) with expires=1 ran four times"
+    }
+   ]
+  },
+  {
+   "id": "eager.noRunAfterExpiry",
+   "spec": "eager.qnt",
+   "definition": "noRunAfterExpiry",
+   "kind": "safety",
+   "pattern": "Absence (a run at or after the expiry), global",
+   "statement": "No run starts at or after the task's expiry, also a retry's copy.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "docs/userguide/calling.rst:53-54 (celery 9c2f238): countdown=60, expires=120 executes in one minute but expires after 2 minutes",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "eager: a worker that runs an expired message",
+   "violations": []
+  },
+  {
+   "id": "eager.callbacksMatch",
+   "spec": "eager.qnt",
+   "definition": "callbacksMatch",
+   "kind": "safety",
+   "pattern": "Universality (a link only after SUCCESS, a link_error only after FAILURE), global",
+   "statement": "The link runs only after SUCCESS, the link_error only after FAILURE, and at most one of them runs once.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "docs/userguide/calling.rst (celery 9c2f238), Linking (callbacks/errbacks)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "eager: a link that runs after a retry",
+   "violations": []
+  },
+  {
+   "id": "eager.runsBounded",
+   "spec": "eager.qnt",
+   "definition": "runsBounded",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most max_retries + 1 runs), global",
+   "statement": "The task runs at most max_retries + 1 times.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "docs/userguide/tasks.rst (celery 9c2f238), Task.max_retries",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRetried",
+   "mutant": "eager: a retry that ignores max_retries",
+   "violations": []
+  },
+  {
+   "id": "eager.quietDone",
+   "spec": "eager.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the caller sees a final state)",
+   "statement": "At the end the caller sees a final state: SUCCESS, FAILURE or REVOKED.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "docs/userguide/tasks.rst (celery 9c2f238), Built-in states",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "eager: a retry that stores RETRY and sends nothing",
+   "violations": [
+    {
+     "instances": "real_ignores",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1489-1494 (celery 9c2f238): Ignore records no state; the task reads PENDING",
+     "note": "probe: PENDING, get() timed out"
+    },
+    {
+     "instances": "eager_*",
+     "reason": "documented",
+     "where": "docs/userguide/testing.rst:29-36 (celery 9c2f238): eager mode only emulates a worker; Ignore and Reject give the eager states IGNORED and REJECTED (trace.py:563-576)",
+     "note": "probe: get() returned None in both"
+    }
+   ]
+  },
+  {
+   "id": "eager.callerAgrees",
+   "spec": "eager.qnt",
+   "definition": "callerAgrees",
+   "kind": "liveness",
+   "pattern": "Response (at the end the caller sees what the backend stores)",
+   "statement": "At the end the caller sees what the result backend stores.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "docs/userguide/tasks.rst (celery 9c2f238), Result backends: the state is read from the backend",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "eager: a run that does not store its result",
+   "violations": [
+    {
+     "instances": "eager_*",
+     "reason": "documented",
+     "where": "docs/userguide/testing.rst:38-39 (celery 9c2f238): eagerly executed tasks don't write results to the backend unless task_store_eager_result is set",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "eager.progress",
+   "spec": "eager.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eager.stepOrQuiet",
+   "spec": "eager.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eager.neverQuiet",
+   "spec": "eager.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "eager.neverRetried",
+   "spec": "eager.qnt",
+   "definition": "neverRetried",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The task runs more than once.",
+   "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

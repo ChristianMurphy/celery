@@ -1455,3 +1455,72 @@ injected but the signal or the closed port):
 | broker unreachable at the start, broker_connection_max_retries 3 | retry_on_startup on: exit 1 after 15 s; off: exit 1 after 4 s | documented: configuration.rst:3509-3525 (9c2f238), broker_connection_retry_on_startup and broker_connection_max_retries |
 | result backend unreachable at the start | the worker starts, runs the task, logs "Exception raised outside body" and acks it; nothing is stored | finding dedup-read-error's class (a backend error outside the body) |
 | `celery multi restart` | stops each node with SIGTERM and starts it again: the `term` case | not run |
+
+## Task options and eager mode
+
+`eager.qnt`, `eager_instances.qnt` (14 instances; celery 9c2f238): one
+task with a link and a link_error, whose body returns, retries once,
+retries until max_retries, raises Ignore, Reject(requeue=False) or an
+error; a countdown, an expiry and a retry countdown on one clock; run by a
+worker or eagerly (`task_always_eager`).
+
+<!-- generated: properties eager.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `notEarly` | safety | No run starts before its countdown, nor a retry before its retry countdown. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Absence (a run before its countdown), global | docs/userguide/calling.rst:261-262 (celery 9c2f238): the countdown is the earliest time at which the task will be executed |
+| `noRunAfterExpiry` | safety | No run starts at or after the task's expiry, also a retry's copy. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Absence (a run at or after the expiry), global | docs/userguide/calling.rst:53-54 (celery 9c2f238): countdown=60, expires=120 executes in one minute but expires after 2 minutes |
+| `callbacksMatch` | safety | The link runs only after SUCCESS, the link_error only after FAILURE, and at most one of them runs once. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Universality (a link only after SUCCESS, a link_error only after FAILURE), global | docs/userguide/calling.rst (celery 9c2f238), Linking (callbacks/errbacks) |
+| `runsBounded` | safety | The task runs at most max_retries + 1 times. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Bounded existence (at most max_retries + 1 runs), global | docs/userguide/tasks.rst (celery 9c2f238), Task.max_retries |
+| `quietDone` | liveness | At the end the caller sees a final state: SUCCESS, FAILURE or REVOKED. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Response (lemma 3 of 3: at the end the caller sees a final state) | docs/userguide/tasks.rst (celery 9c2f238), Built-in states |
+| `callerAgrees` | liveness | At the end the caller sees what the result backend stores. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Response (at the end the caller sees what the backend stores) | docs/userguide/tasks.rst (celery 9c2f238), Result backends: the state is read from the backend |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Existence | sanity |
+| `neverRetried` | witness | The task runs more than once. Assumes: one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off). | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results eager.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| eager_cd_expires | 1 | notEarly (2), callerAgrees (2) | neverQuiet (2) |
+| eager_ignores | 1 | quietDone (2), callerAgrees (2) | neverQuiet (2) |
+| eager_rejects | 1 | quietDone (2), callerAgrees (2) | neverQuiet (2) |
+| eager_retry_expires | 1 | notEarly (2), callerAgrees (2) | neverQuiet (2), neverRetried (2) |
+| eager_retry_once | 1 | callerAgrees (2) | neverQuiet (2), neverRetried (2) |
+| eager_returns | 1 | callerAgrees (2) | neverQuiet (2) |
+| real_cd_expires | 5 | none | neverQuiet (6) |
+| real_ignores | 2 | quietDone (3) | neverQuiet (3) |
+| real_raises | 2 | none | neverQuiet (3) |
+| real_rejects | 2 | none | neverQuiet (3) |
+| real_retry_always | 4 | none | neverQuiet (5), neverRetried (4) |
+| real_retry_expires | 5 | none | neverQuiet (6) |
+| real_retry_once | 3 | none | neverQuiet (4), neverRetried (4) |
+| real_returns | 2 | none | neverQuiet (3) |
+<!-- end generated -->
+
+<!-- generated: reasons eager.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `notEarly` | eager_cd_expires (2), eager_retry_expires (2) | documented | docs/userguide/testing.rst:29-36 (celery 9c2f238): eager mode only emulates a worker and there are many discrepancies (apply_async runs apply() at once, task.py:736-760; a retry runs again at once, task.py:949-955). probe on 9c2f238: countdown=3 with expires=1 ran at once and returned; retry(countdown=2) with expires=1 ran four times |
+| `quietDone` | real_ignores (3) | documented | docs/userguide/tasks.rst:1489-1494 (celery 9c2f238): Ignore records no state; the task reads PENDING. probe: PENDING, get() timed out |
+| `quietDone` | eager_ignores (2), eager_rejects (2) | documented | docs/userguide/testing.rst:29-36 (celery 9c2f238): eager mode only emulates a worker; Ignore and Reject give the eager states IGNORED and REJECTED (trace.py:563-576). probe: get() returned None in both |
+| `callerAgrees` | eager_cd_expires (2), eager_ignores (2), eager_rejects (2), eager_retry_expires (2), eager_retry_once (2), eager_returns (2) | documented | docs/userguide/testing.rst:38-39 (celery 9c2f238): eagerly executed tasks don't write results to the backend unless task_store_eager_result is set |
+<!-- end generated -->
+
+Every violation is documented. What the real code did on 9c2f238 (kombu
+445027e, Redis 7, -c 2, scratchpad `optprobe.py`, 1 of 1 each, nothing
+injected), beside each instance's case:
+
+| Case | Worker | Eager |
+|---|---|---|
+| retry(countdown=0) once, then return | SUCCESS, 2 runs | SUCCESS, 2 runs, nothing stored |
+| Ignore | PENDING, get() timed out | IGNORED, get() None |
+| Reject(requeue=False), with a link_error | FAILURE (Reject), the errback once | REJECTED, get() None |
+| countdown=3, expires=1 | REVOKED, not run | ran at once, SUCCESS |
+| retry(countdown=2) with expires=1 | the copy REVOKED after 1 run | 4 runs, MaxRetriesExceededError |
+| soft_time_limit=1 caught, the task goes on | SUCCESS, the handler ran | no limit, SUCCESS |
+| autoretry_for=(ValueError,), max_retries=2, retry_backoff=1, no jitter | 3 runs, FAILURE | 3 runs, FAILURE |
+| autoretry_for=(LookupError,), dont_autoretry_for=(KeyError,), a KeyError | 1 run, FAILURE | 1 run, FAILURE |
+| throws=(ValueError,) | FAILURE, logged at INFO "raised expected" | FAILURE |
+| typing=False with a wrong argument count | the call returns; FAILURE (TypeError) | FAILURE (TypeError) |
+| the same task with typing on | the call raises TypeError | the call raises TypeError |

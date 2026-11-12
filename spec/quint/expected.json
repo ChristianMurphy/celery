@@ -1158,6 +1158,107 @@
    }
   }
  },
+ "eager.qnt": {
+  "eager_cd_expires": {
+   "D": 1,
+   "violated": {
+    "callerAgrees": 2,
+    "neverQuiet": 2,
+    "notEarly": 2
+   }
+  },
+  "eager_ignores": {
+   "D": 1,
+   "violated": {
+    "callerAgrees": 2,
+    "neverQuiet": 2,
+    "quietDone": 2
+   }
+  },
+  "eager_rejects": {
+   "D": 1,
+   "violated": {
+    "callerAgrees": 2,
+    "neverQuiet": 2,
+    "quietDone": 2
+   }
+  },
+  "eager_retry_expires": {
+   "D": 1,
+   "violated": {
+    "callerAgrees": 2,
+    "neverQuiet": 2,
+    "neverRetried": 2,
+    "notEarly": 2
+   }
+  },
+  "eager_retry_once": {
+   "D": 1,
+   "violated": {
+    "callerAgrees": 2,
+    "neverQuiet": 2,
+    "neverRetried": 2
+   }
+  },
+  "eager_returns": {
+   "D": 1,
+   "violated": {
+    "callerAgrees": 2,
+    "neverQuiet": 2
+   }
+  },
+  "real_cd_expires": {
+   "D": 5,
+   "violated": {
+    "neverQuiet": 6
+   }
+  },
+  "real_ignores": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3,
+    "quietDone": 3
+   }
+  },
+  "real_raises": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3
+   }
+  },
+  "real_rejects": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3
+   }
+  },
+  "real_retry_always": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "neverRetried": 4
+   }
+  },
+  "real_retry_expires": {
+   "D": 5,
+   "violated": {
+    "neverQuiet": 6
+   }
+  },
+  "real_retry_once": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "neverRetried": 4
+   }
+  },
+  "real_returns": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3
+   }
+  }
+ },
  "eta.qnt": {
   "cd_same": {
    "D": 7,
