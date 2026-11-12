@@ -278,6 +278,13 @@ MUTANTS = [
      "    val expired = workerNow > curExpires", "    val expired = false"),
     ('eta: an ETA past the end of the run', 'eta.qnt', 'cd_same', 'quietDone',
      "| Absolute => CFG.clientOff + CFG.countdown", "| Absolute => CFG.clientOff + CFG.countdown + T"),
+    # routing.qnt: one mutant per property
+    ('routing: a consumed queue that drops the message', 'routing.qnt', 'redis_consumed', 'noSilentDrop',
+     "    | Consumed => (Returned, Queued({ consumed: true }), false)", "    | Consumed => (Returned, Dropped, false)"),
+    ('routing: a pending channel error that confirm_publish does not catch', 'routing.qnt', 'rabbit_undeclared_confirm', 'errorIsOwn',
+     "      else if (CFG.confirm) (Raised({ own: true }), Refused, false)", "      else if (CFG.confirm) (Returned, Dropped, true)"),
+    ('routing: a worker that does not run m2', 'routing.qnt', 'redis_consumed', 'quietDone',
+     "      pub' = pub.set(2, Returned), msg' = msg.set(2, Queued({ consumed: true })),", "      pub' = pub.set(2, Returned), msg' = msg.set(2, Queued({ consumed: false })),"),
 ]
 
 

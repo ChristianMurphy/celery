@@ -188,8 +188,7 @@
    ],
    "apalache": [],
    "fast": [
-    "late_none",
-    "late_unencodable"
+    "late_none"
    ],
    "passes_all": "late_none",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -449,6 +448,32 @@
     "cdexp_same"
    ],
    "passes_all": "cdexp_same",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "routing.qnt": {
+   "family": "transport",
+   "types": "routingtypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "noSilentDrop",
+    "errorIsOwn",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverRaised"
+   ],
+   "apalache": [],
+   "fast": [
+    "redis_consumed"
+   ],
+   "passes_all": "redis_consumed",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -4126,6 +4151,186 @@
    "pattern": "Existence",
    "statement": "The task runs.",
    "assumptions": "one task called at true time 0 with a countdown, an expires, or both; the client's and the worker's clocks may differ by 2; the message reaches the worker after a delay of up to 2; the run ends at true time 5; design absolute (Celery: the client sends absolute times) or relative (durations from the worker's receive time; a comparison)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "routing.noSilentDrop",
+   "spec": "routing.qnt",
+   "definition": "noSilentDrop",
+   "kind": "safety",
+   "pattern": "Absence (a message dropped after its publish returned), global",
+   "statement": "A message whose publish returned is not dropped by the broker.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "docs/userguide/calling.rst:523-528 (celery 768e476): with RabbitMQ, messages can be silently dropped only when the broker hits resource limits; confirm_publish detects that",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "routing: a consumed queue that drops the message",
+   "violations": [
+    {
+     "instances": "*_unbound*",
+     "reason": "documented",
+     "where": "amqp/channel.py:1745-1752 (py-amqp 5.4.2, the AMQP 0-9-1 text of basic.publish): without the mandatory flag the server silently drops a message it cannot route; Celery does not set mandatory, and confirm_publish does not change this (rabbit_unbound_confirm). kombu's virtual transports (Redis) do the same unless transport_options deadletter_queue is set (kombu virtual/base.py:467-471 and 717-744)",
+     "note": "an exchange with no queue bound for the routing key"
+    },
+    {
+     "instances": "redis_undeclared",
+     "reason": "documented",
+     "where": "kombu virtual/base.py:717-744 (445027e): Redis has no exchange declarations, so an unknown exchange routes to no queue as an unbound one does, and the message is dropped unless deadletter_queue is set",
+     "note": ""
+    },
+    {
+     "instances": "rabbit_undeclared",
+     "reason": "open",
+     "where": "finding undeclared-exchange-next-call (closest kombu issue 285, 2013, closed: a publish to an undeclared exchange is not reported)",
+     "note": "without confirm_publish the 404 is not read by the publish that caused it"
+    },
+    {
+     "instances": "*_deleted",
+     "reason": "documented",
+     "where": "kombu/common.py:110-111 (445027e): maybe_declare declares an entity once per connection (cached); a queue deleted later is not declared again by the client. The worker that consumes it reconnects on basic.cancel and declares it again; a publish in between is dropped (1 of 1 on 9c2f238 with RabbitMQ 3.13, a queue deleted with queue_delete)",
+     "note": ""
+    },
+    {
+     "instances": "*_ttl",
+     "reason": "documented",
+     "where": "kombu/entity.py:474-480 (445027e): with message_ttl a message nobody consumed in time is deleted and no consumer sees it",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "routing.errorIsOwn",
+   "spec": "routing.qnt",
+   "definition": "errorIsOwn",
+   "kind": "safety",
+   "pattern": "Absence (an error raised to another call), global",
+   "statement": "A publish raises only for its own message: a call whose message is fine does not raise because of an earlier call.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "docs/userguide/calling.rst:477-521 (celery 768e476): apply_async raises OperationalError when the message cannot be sent, and the caller handles it",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRaised",
+   "mutant": "routing: a pending channel error that confirm_publish does not catch",
+   "violations": [
+    {
+     "instances": "rabbit_undeclared",
+     "reason": "open",
+     "where": "finding undeclared-exchange-next-call",
+     "note": "the 404 for m1 is raised by m2's publish, and m2 is not sent"
+    }
+   ]
+  },
+  {
+   "id": "routing.quietDone",
+   "spec": "routing.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end every message whose publish returned ran)",
+   "statement": "At the end every message whose publish returned has run.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "docs/userguide/routing.rst:67-73 (celery 768e476): a worker processes the queues it is started with",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "routing: a worker that does not run m2",
+   "violations": [
+    {
+     "instances": "*_unconsumed",
+     "reason": "documented",
+     "where": "docs/userguide/routing.rst:67-80 (celery 768e476): a worker consumes the queues given with -Q; a task on a queue no worker consumes waits there, PENDING",
+     "note": ""
+    },
+    {
+     "instances": "redis_missing",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:3104-3112 and routing.rst:27-32 (celery 768e476): a queue missing from task_queues is created; the message waits there until a worker consumes it (probe: nothing logged)",
+     "note": ""
+    },
+    {
+     "instances": "*_unbound*",
+     "reason": "documented",
+     "where": "as noSilentDrop",
+     "note": ""
+    },
+    {
+     "instances": "*_undeclared",
+     "reason": "documented",
+     "where": "as noSilentDrop (rabbit_undeclared: finding undeclared-exchange-next-call)",
+     "note": ""
+    },
+    {
+     "instances": "*_deleted",
+     "reason": "documented",
+     "where": "as noSilentDrop",
+     "note": ""
+    },
+    {
+     "instances": "*_ttl",
+     "reason": "documented",
+     "where": "as noSilentDrop",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "routing.progress",
+   "spec": "routing.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "routing.stepOrQuiet",
+   "spec": "routing.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "routing.neverQuiet",
+   "spec": "routing.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "routing.neverRaised",
+   "spec": "routing.qnt",
+   "definition": "neverRaised",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some publish raises.",
+   "assumptions": "one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

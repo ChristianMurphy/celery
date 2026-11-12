@@ -2420,6 +2420,119 @@
    }
   }
  },
+ "routing.qnt": {
+  "rabbit_consumed": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "rabbit_deleted": {
+   "D": 5,
+   "violated": {
+    "neverQuiet": 5,
+    "noSilentDrop": 2,
+    "quietDone": 5
+   }
+  },
+  "rabbit_missing_nocreate": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "neverRaised": 2
+   }
+  },
+  "rabbit_ttl": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "noSilentDrop": 3,
+    "quietDone": 5
+   }
+  },
+  "rabbit_unbound": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "noSilentDrop": 2,
+    "quietDone": 4
+   }
+  },
+  "rabbit_unbound_confirm": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "noSilentDrop": 2,
+    "quietDone": 4
+   }
+  },
+  "rabbit_undeclared": {
+   "D": 2,
+   "violated": {
+    "errorIsOwn": 3,
+    "neverQuiet": 3,
+    "neverRaised": 3,
+    "noSilentDrop": 2,
+    "quietDone": 3
+   }
+  },
+  "rabbit_undeclared_confirm": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "neverRaised": 2
+   }
+  },
+  "redis_consumed": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "redis_deleted": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "redis_missing": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "redis_missing_nocreate": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "neverRaised": 2
+   }
+  },
+  "redis_unbound": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "noSilentDrop": 2,
+    "quietDone": 4
+   }
+  },
+  "redis_unconsumed": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "quietDone": 4
+   }
+  },
+  "redis_undeclared": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "noSilentDrop": 2,
+    "quietDone": 4
+   }
+  }
+ },
  "worker.qnt": {
   "ackfull_early_cut": {
    "D": 21,

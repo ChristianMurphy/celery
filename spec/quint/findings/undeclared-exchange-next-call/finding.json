@@ -1,0 +1,17 @@
+{
+ "id": "undeclared-exchange-next-call",
+ "title": "RabbitMQ without confirm_publish: a task sent to an exchange that does not exist is lost and its apply_async returns; the 404 is raised by the next apply_async on that connection, whose own task is not sent",
+ "cells": [
+  "rabbit_undeclared.noSilentDrop",
+  "rabbit_undeclared.errorIsOwn"
+ ],
+ "outcome": "silent loss",
+ "status": "open",
+ "where": "kombu messaging.py:358-370 (445027e) declares only the entities in declare (Celery passes the queue, amqp.py:593-594 at 9c2f238, not an exchange given by name); py-amqp 5.4.2 channel.py:1790-1797 reads pending frames with drain_events(timeout=0) before each publish, so the Channel.Close (404 NOT_FOUND) of the earlier publish is raised there. calling.rst:523-528 and configuration.rst:3595-3601 (celery 768e476, the same at 9c2f238) say that without confirm_publish messages can be silently dropped when the broker hits resource limits; they do not say that a routing error is raised by a later, unrelated call. On Redis the same publish returns and the message is dropped with no error at all (documented by the model's reason: an unknown exchange routes to no queue, kombu virtual/base.py:717-744). Upstream: closest py-amqp issue 218 (open, 2018: a publish to a nonexistent exchange fails at a later call, conn.close()) and kombu issue 285 (closed, 2013: kombu does not report the soft error); celery issue 2720 (closed, 2015) is a retry to the exchange '' failing. Searched: NOT_FOUND no exchange, Basic.publish 404, NotFound exchange delay, exchange typo task lost, undeclared exchange, exchange does not exist task lost (celery, kombu, py-amqp); not in the tracker yet",
+ "thread": "none yet (a docs sentence next to the confirm_publish note, or a reply on py-amqp issue 218; the lead decides)",
+ "confirm": [
+  "confirm_undeclared_exchange.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, py-amqp 5.4.2, RabbitMQ 3.13 (5682), Redis 7 backend, one solo worker consuming the default queue; nothing injected. Per run: apply_async(exchange='ghost') for a task, then two correct apply_async calls to the default queue. rabbit (confirm_publish off): 3 of 3 runs the ghost call returned, the next call raised NotFound \"no exchange 'ghost'\" and its task never ran, the third ran; only the third task ran. Control rabbitconfirm (confirm_publish on): 3 of 3 the ghost call raised NotFound itself and both correct tasks ran. redis: 3 of 3 every call returned, the ghost task was dropped with nothing raised or logged, both correct tasks ran. Celery 5.5.3 (kombu 5.5.4) and 5.4.0 (kombu 5.4.2): 1 of 1 each the same as 9c2f238. Natural rate: every publish to an exchange nobody declared, without confirm_publish, followed by another publish on that connection; no timing involved. In a worker the next publish can be a chain's next step or a retry."
+}

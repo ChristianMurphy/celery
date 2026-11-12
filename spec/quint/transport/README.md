@@ -197,3 +197,87 @@ copy on the queue (7 and 8 states): silent loss becomes a duplicate. Cost:
 two frames per publish where there was one, and a wait for the second. The
 model was not run against RabbitMQ; its results match the runs in the
 exactly-once report (191 of 2,280 lost without confirms, none with).
+
+## Routing
+
+`routing.qnt`, `routing_instances.qnt` (15 instances; celery 768e476, the
+same at 9c2f238, kombu 445027e, py-amqp 5.4.2): one client publishes m1 to
+the target under test and then m2 to the default queue on the same
+connection; a worker consumes the default queue. Targets: a queue in
+task_queues that no worker consumes, a queue missing from task_queues
+(task_create_missing_queues on and off), an exchange with no queue bound,
+an exchange nobody declared, a queue deleted after the client cached its
+declaration, a queue with x-message-ttl. Instances
+`<broker>_<target>[_nocreate][_confirm]`.
+
+<!-- generated: properties routing.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `noSilentDrop` | safety | A message whose publish returned is not dropped by the broker. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Absence (a message dropped after its publish returned), global | docs/userguide/calling.rst:523-528 (celery 768e476): with RabbitMQ, messages can be silently dropped only when the broker hits resource limits; confirm_publish detects that |
+| `errorIsOwn` | safety | A publish raises only for its own message: a call whose message is fine does not raise because of an earlier call. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Absence (an error raised to another call), global | docs/userguide/calling.rst:477-521 (celery 768e476): apply_async raises OperationalError when the message cannot be sent, and the caller handles it |
+| `quietDone` | liveness | At the end every message whose publish returned has run. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Response (lemma 3 of 3: at the end every message whose publish returned ran) | docs/userguide/routing.rst:67-73 (celery 768e476): a worker processes the queues it is started with |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Existence | sanity |
+| `neverRaised` | witness | Some publish raises. Assumes: one client publishes m1 to the target under test and then m2 to the default queue on the same connection; a worker consumes the default queue and the target queue when it is in task_queues and consumed; Redis or RabbitMQ; confirm_publish and task_create_missing_queues as the instance says; Celery does not set mandatory. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results routing.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| rabbit_consumed | 4 | none | neverQuiet (5) |
+| rabbit_deleted | 5 | noSilentDrop (2), quietDone (5) | neverQuiet (5) |
+| rabbit_missing_nocreate | 3 | none | neverQuiet (4), neverRaised (2) |
+| rabbit_ttl | 4 | noSilentDrop (3), quietDone (5) | neverQuiet (5) |
+| rabbit_unbound | 3 | noSilentDrop (2), quietDone (4) | neverQuiet (4) |
+| rabbit_unbound_confirm | 3 | noSilentDrop (2), quietDone (4) | neverQuiet (4) |
+| rabbit_undeclared | 2 | noSilentDrop (2), errorIsOwn (3), quietDone (3) | neverQuiet (3), neverRaised (3) |
+| rabbit_undeclared_confirm | 3 | none | neverQuiet (4), neverRaised (2) |
+| redis_consumed | 4 | none | neverQuiet (5) |
+| redis_deleted | 4 | none | neverQuiet (5) |
+| redis_missing | 3 | quietDone (4) | neverQuiet (4) |
+| redis_missing_nocreate | 3 | none | neverQuiet (4), neverRaised (2) |
+| redis_unbound | 3 | noSilentDrop (2), quietDone (4) | neverQuiet (4) |
+| redis_unconsumed | 3 | quietDone (4) | neverQuiet (4) |
+| redis_undeclared | 3 | noSilentDrop (2), quietDone (4) | neverQuiet (4) |
+<!-- end generated -->
+
+<!-- generated: reasons routing.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `noSilentDrop` | rabbit_unbound (2), rabbit_unbound_confirm (2), redis_unbound (2) | documented | amqp/channel.py:1745-1752 (py-amqp 5.4.2, the AMQP 0-9-1 text of basic.publish): without the mandatory flag the server silently drops a message it cannot route; Celery does not set mandatory, and confirm_publish does not change this (rabbit_unbound_confirm). kombu's virtual transports (Redis) do the same unless transport_options deadletter_queue is set (kombu virtual/base.py:467-471 and 717-744). an exchange with no queue bound for the routing key |
+| `noSilentDrop` | redis_undeclared (2) | documented | kombu virtual/base.py:717-744 (445027e): Redis has no exchange declarations, so an unknown exchange routes to no queue as an unbound one does, and the message is dropped unless deadletter_queue is set |
+| `noSilentDrop` | rabbit_undeclared (2) | open | finding undeclared-exchange-next-call (closest kombu issue 285, 2013, closed: a publish to an undeclared exchange is not reported). without confirm_publish the 404 is not read by the publish that caused it |
+| `noSilentDrop` | rabbit_deleted (2) | documented | kombu/common.py:110-111 (445027e): maybe_declare declares an entity once per connection (cached); a queue deleted later is not declared again by the client. The worker that consumes it reconnects on basic.cancel and declares it again; a publish in between is dropped (1 of 1 on 9c2f238 with RabbitMQ 3.13, a queue deleted with queue_delete) |
+| `noSilentDrop` | rabbit_ttl (3) | documented | kombu/entity.py:474-480 (445027e): with message_ttl a message nobody consumed in time is deleted and no consumer sees it |
+| `errorIsOwn` | rabbit_undeclared (3) | open | finding undeclared-exchange-next-call. the 404 for m1 is raised by m2's publish, and m2 is not sent |
+| `quietDone` | redis_unconsumed (4) | documented | docs/userguide/routing.rst:67-80 (celery 768e476): a worker consumes the queues given with -Q; a task on a queue no worker consumes waits there, PENDING |
+| `quietDone` | redis_missing (4) | documented | docs/userguide/configuration.rst:3104-3112 and routing.rst:27-32 (celery 768e476): a queue missing from task_queues is created; the message waits there until a worker consumes it (probe: nothing logged) |
+| `quietDone` | rabbit_unbound (4), rabbit_unbound_confirm (4), redis_unbound (4) | documented | as noSilentDrop |
+| `quietDone` | rabbit_undeclared (3), redis_undeclared (4) | documented | as noSilentDrop (rabbit_undeclared: finding undeclared-exchange-next-call) |
+| `quietDone` | rabbit_deleted (5) | documented | as noSilentDrop |
+| `quietDone` | rabbit_ttl (5) | documented | as noSilentDrop |
+<!-- end generated -->
+
+What the model says, and what the real code did (9c2f238, kombu 445027e,
+py-amqp 5.4.2, RabbitMQ 3.13 and Redis 7):
+
+* An exchange nobody declared on RabbitMQ without confirm_publish
+  (`rabbit_undeclared`): m1's call returns and m1 is lost; the 404 is
+  raised by m2's call, and m2 is not sent (`errorIsOwn`, 3 states). With
+  confirm_publish m1's own call raises and m2 runs
+  (`rabbit_undeclared_confirm` passes every property). See
+  [undeclared-exchange-next-call](../findings/undeclared-exchange-next-call/):
+  3 of 3, the control 3 of 3, Celery 5.5.3 and 5.4.0 the same.
+* On Redis the same call returns and the message is dropped with nothing
+  raised or logged (3 of 3 in the same script); an exchange with no queue
+  bound drops the message on both brokers, with or without confirms (AMQP
+  without mandatory). Both documented (the reasons above).
+* A queue missing from task_queues raises QueueNotFound at the call when
+  task_create_missing_queues is off, and is created and waits, with nothing
+  logged, when it is on (scratchpad probe, 1 of 1 each broker).
+* A queue deleted while a worker consumes it: the worker logs
+  ConsumerCancelled as a lost connection, reconnects and declares the
+  queue again within a few milliseconds; a publish in between is dropped,
+  because the client does not declare a cached queue again
+  (`rabbit_deleted`, 1 of 1 on the real code). On Redis nothing is lost.
