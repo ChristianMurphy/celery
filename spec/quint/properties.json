@@ -625,8 +625,7 @@
    ],
    "apalache": [],
    "fast": [
-    "term_quit",
-    "quit"
+    "term_quit"
    ],
    "passes_all": "term_quit",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -683,6 +682,31 @@
     "ok"
    ],
    "passes_all": "ok",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "inspect.qnt": {
+   "family": "worker",
+   "types": "insptypes",
+   "metric": "",
+   "pins": {
+    "celery": "9c2f238"
+   },
+   "properties": [
+    "inspectSeesAll",
+    "newRateApplies",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverWaited"
+   ],
+   "apalache": [],
+   "fast": [
+    "bucket_raise_move"
+   ],
+   "passes_all": "bucket_raise_move",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -5648,6 +5672,131 @@
    "pattern": "Existence",
    "statement": "The caller gets an error.",
    "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "inspect.inspectSeesAll",
+   "spec": "inspect.qnt",
+   "definition": "inspectSeesAll",
+   "kind": "safety",
+   "pattern": "Universality (a received, unfinished task is listed by inspect), global",
+   "statement": "inspect active, reserved and scheduled list every task the worker has received and not finished.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "source": "docs/userguide/workers.rst:1181-1185 (celery 9c2f238): reserved tasks are tasks that have been received, but are still waiting to be executed",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverWaited",
+   "mutant": "inspect: reserved does not list the pool's waiting tasks",
+   "violations": [
+    {
+     "instances": "bucket",
+     "reason": "open",
+     "where": "finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found)",
+     "note": "a rate limited request is marked reserved only when the bucket releases it (strategy.py:216-217, consumer.py:346-348)"
+    },
+    {
+     "instances": "bucket_raise",
+     "reason": "open",
+     "where": "finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "inspect.newRateApplies",
+   "spec": "inspect.qnt",
+   "definition": "newRateApplies",
+   "kind": "safety",
+   "pattern": "Absence (a request waits for the old rate after a change), after the change",
+   "statement": "After control.rate_limit raises the rate, no request waits in the bucket for the old rate.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "source": "docs/userguide/workers.rst:846-868 (celery 9c2f238): changing rate limits at run time",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverWaited",
+   "mutant": "inspect: a raise that keeps the waiting requests in the old bucket",
+   "violations": [
+    {
+     "instances": "bucket_raise",
+     "reason": "open",
+     "where": "finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found)",
+     "note": "reset_rate_limits replaces the buckets for later requests; the waiting ones drain on the old bucket's timer (consumer.py:317-320, 350-372)"
+    }
+   ]
+  },
+  {
+   "id": "inspect.quietDone",
+   "spec": "inspect.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end every task ran)",
+   "statement": "At the end every task ran.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "source": "docs/userguide/workers.rst:846-868 (celery 9c2f238): a rate limit delays tasks, it does not drop them",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "inspect: a bucket that never releases its second request",
+   "violations": []
+  },
+  {
+   "id": "inspect.progress",
+   "spec": "inspect.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "inspect.stepOrQuiet",
+   "spec": "inspect.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "inspect.neverQuiet",
+   "spec": "inspect.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "inspect.neverWaited",
+   "spec": "inspect.qnt",
+   "definition": "neverWaited",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A task waits in a token bucket.",
+   "assumptions": "one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

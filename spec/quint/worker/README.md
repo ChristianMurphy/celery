@@ -1524,3 +1524,51 @@ injected), beside each instance's case:
 | throws=(ValueError,) | FAILURE, logged at INFO "raised expected" | FAILURE |
 | typing=False with a wrong argument count | the call returns; FAILURE (TypeError) | FAILURE (TypeError) |
 | the same task with typing on | the call raises TypeError | the call raises TypeError |
+
+## inspect and control against what a worker holds
+
+`inspect.qnt`, `inspect_instances.qnt` (6 instances; celery 9c2f238): one
+worker with one process; three tasks received at once, plain, with a
+countdown, or with a rate limit; control.rate_limit raises the rate once
+in the `raise` instances. Designs: `bucketVisible` and `moveOnRaise`.
+
+<!-- generated: properties inspect.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `inspectSeesAll` | safety | inspect active, reserved and scheduled list every task the worker has received and not finished. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Universality (a received, unfinished task is listed by inspect), global | docs/userguide/workers.rst:1181-1185 (celery 9c2f238): reserved tasks are tasks that have been received, but are still waiting to be executed |
+| `newRateApplies` | safety | After control.rate_limit raises the rate, no request waits in the bucket for the old rate. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Absence (a request waits for the old rate after a change), after the change | docs/userguide/workers.rst:846-868 (celery 9c2f238): changing rate limits at run time |
+| `quietDone` | liveness | At the end every task ran. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Response (lemma 3 of 3: at the end every task ran) | docs/userguide/workers.rst:846-868 (celery 9c2f238): a rate limit delays tasks, it does not drop them |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Existence | sanity |
+| `neverWaited` | witness | A task waits in a token bucket. Assumes: one prefork worker with one process and prefetch for every message; three tasks received at once, plain, with a countdown, or with a rate limit (one release per 2 ticks); control.rate_limit raises the rate once at any time in the raise instances; a discrete clock that ends at 8. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results inspect.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| bucket | 20 | inspectSeesAll (2) | neverQuiet (21), neverWaited (2) |
+| bucket_raise | 21 | inspectSeesAll (2), newRateApplies (8) | neverQuiet (19), neverWaited (2) |
+| bucket_raise_move | 21 | none | neverQuiet (19), neverWaited (2) |
+| bucket_visible | 20 | none | neverQuiet (21), neverWaited (2) |
+| eta | 20 | none | neverQuiet (21) |
+| pool | 17 | none | neverQuiet (18) |
+<!-- end generated -->
+
+<!-- generated: reasons inspect.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `inspectSeesAll` | bucket (2) | open | finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found). a rate limited request is marked reserved only when the bucket releases it (strategy.py:216-217, consumer.py:346-348) |
+| `inspectSeesAll` | bucket_raise (2) | open | finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found) |
+| `newRateApplies` | bucket_raise (8) | open | finding rate-limit-bucket-hidden (not in the tracker yet; no upstream thread found). reset_rate_limits replaces the buckets for later requests; the waiting ones drain on the old bucket's timer (consumer.py:317-320, 350-372) |
+<!-- end generated -->
+
+Finding [rate-limit-bucket-hidden](../findings/rate-limit-bucket-hidden/)
+(a visible failure: rate limited tasks waiting for a token are invisible
+to inspect, and a raised rate limit does not reach them); the same on
+5.5.3 and 5.4.0.
+
+Probed on 9c2f238 and not modeled (scratchpad `inspprobe.py`, 1 of 1):
+`control.purge()` with prefetched messages returned 0 and every prefetched
+task ran, as faq.rst:385-395 documents; an ETA task is in scheduled and
+tasks waiting for the process in reserved, as the docs say.

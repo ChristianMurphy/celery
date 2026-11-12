@@ -354,6 +354,13 @@ MUTANTS = [
      "                    errbacks + 1 else errbacks,", "                    errbacks else errbacks,"),
     ('content: a message dropped although it can be decoded', 'content.qnt', 'ok', 'quietDone',
      "    val dropped = not(CFG.compressionKnown) or not(CFG.accepted)", "    val dropped = true"),
+    # inspect.qnt: one mutant per property
+    ('inspect: reserved does not list the pool\'s waiting tasks', 'inspect.qnt', 'pool', 'inspectSeesAll',
+     "    | Queued => false | InBucket => CFG.bucketVisible | InPool => true", "    | Queued => false | InBucket => CFG.bucketVisible | InPool => false"),
+    ('inspect: a raise that keeps the waiting requests in the old bucket', 'inspect.qnt', 'bucket_raise_move', 'newRateApplies',
+     "    where' = if (CFG.moveOnRaise)", "    where' = if (false)"),
+    ('inspect: a bucket that never releases its second request', 'inspect.qnt', 'bucket', 'quietDone',
+     "    nextRelease' = if (where.get(i) == InBucket) t + R else nextRelease,", "    nextRelease' = if (where.get(i) == InBucket) t + 20 else nextRelease,"),
     # nested.qnt: one mutant per property
     ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
      "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),

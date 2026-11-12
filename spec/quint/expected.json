@@ -1565,6 +1565,51 @@
    }
   }
  },
+ "inspect.qnt": {
+  "bucket": {
+   "D": 20,
+   "violated": {
+    "inspectSeesAll": 2,
+    "neverQuiet": 21,
+    "neverWaited": 2
+   }
+  },
+  "bucket_raise": {
+   "D": 21,
+   "violated": {
+    "inspectSeesAll": 2,
+    "neverQuiet": 19,
+    "neverWaited": 2,
+    "newRateApplies": 8
+   }
+  },
+  "bucket_raise_move": {
+   "D": 21,
+   "violated": {
+    "neverQuiet": 19,
+    "neverWaited": 2
+   }
+  },
+  "bucket_visible": {
+   "D": 20,
+   "violated": {
+    "neverQuiet": 21,
+    "neverWaited": 2
+   }
+  },
+  "eta": {
+   "D": 20,
+   "violated": {
+    "neverQuiet": 21
+   }
+  },
+  "pool": {
+   "D": 17,
+   "violated": {
+    "neverQuiet": 18
+   }
+  }
+ },
  "lifecycle.qnt": {
   "cancel_loss": {
    "D": 4,

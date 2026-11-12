@@ -1,0 +1,18 @@
+{
+ "id": "rate-limit-bucket-hidden",
+ "title": "Tasks with a rate limit that wait in the worker's token bucket are received and unacked but listed by none of inspect active, reserved and scheduled; and control.rate_limit does not apply to them: they keep the old rate",
+ "cells": [
+  "bucket.inspectSeesAll",
+  "bucket_raise.inspectSeesAll",
+  "bucket_raise.newRateApplies"
+ ],
+ "outcome": "visible failure",
+ "status": "open",
+ "where": "strategy.py:210-222 and consumer.py:346-372 (celery 9c2f238): a request with a rate limited task goes into its bucket (limit_task) and task_reserved is called only when the bucket releases it (_limit_move_to_pool), so it is in none of active_requests, reserved_requests and scheduled_requests that inspect reports (control.py:436-462). control.rate_limit calls reset_rate_limits (control.py:281-306, consumer.py:317-320), which puts new bucket objects in task_buckets for later requests; the requests already in the old bucket are released by the old bucket's timer at the old rate. workers.rst:1181-1185 says reserved tasks are tasks that have been received but are still waiting to be executed; workers.rst:846-868 shows changing rate limits at run time and says nothing about tasks already waiting. Monitors that size a backlog or find a stuck task with inspect (Flower's reserved view) do not see these tasks. No upstream thread found (searched inspect reserved rate limit, rate limited tasks not shown inspect, rate_limit control existing tasks, rate_limit change does not apply, inspect reserved missing tasks, in issues and pull requests; closest celery issue 8119, open, a rate_limit that limits other tasks in the queue as well, about prefetch); not in the tracker yet",
+ "thread": "none yet (a new issue, or a docs sentence in workers.rst's reserved and rate limit sections; the lead decides)",
+ "confirm": [
+  "confirm_rate_limit_bucket.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 on 6391 (dbs 9 to 11), one prefork worker -c 1, prefetch multiplier 4, acks_late; nothing injected. bucket (four tasks with rate_limit='6/m'; read 3 s later): 5 of 5 runs (3 with the first script version, 2 with this one) 3 tasks waiting with 3 messages unacked, and 0 of them in inspect active, reserved or scheduled. Control pool (one 6 s task and three quick ones, no rate limit): 5 of 5 all 3 waiting tasks in reserved. raise (four tasks at 6/m, control.rate_limit to 600/m 1 s later, three more sent after it): 3 of 3 the three sent after the change ran at 2.0 to 2.3 s, the three already waiting at 10, 20 and 30 s. Celery 5.5.3 (kombu 5.5.4) and 5.4.0 (kombu 5.4.2): bucket 1 of 1 each 0 of 3 listed; raise 1 of 1 each the waiting ones 10 s apart (5.2, 15.2, 25.2 s), the later ones at once. Natural rate: every task with a rate limit that has to wait for a token; no timing involved. The designs bucketVisible (list the bucket's requests as reserved) and moveOnRaise (move the waiting requests to the new bucket) pass both properties in the model."
+}
