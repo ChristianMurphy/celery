@@ -251,6 +251,15 @@ MUTANTS = [
      "failedRuns' = if (rq) failedRuns else failedRuns + 1,", "failedRuns' = failedRuns + 1,"),
     ('handlers: a return that stores nothing', 'handlers.qnt', 'returns_default', 'quietDone',
      "            stored' = Success,", "            stored' = stored,"),
+    # badmsg.qnt: one mutant per property
+    ('badmsg: an undecodable body that stops the worker', 'badmsg.qnt', 'undecodable_alone', 'workerSurvives',
+     "msg' = Settled, workerUp' = true,", "msg' = Settled, workerUp' = CFG.kind != Undecodable,"),
+    ('badmsg: a bad ETA that stores nothing', 'badmsg.qnt', 'badeta_chord', 'outcomeVisible',
+     "      | BadEta => failWithContext", "      | BadEta => storeNothing"),
+    ('badmsg: a failure stored without the request', 'badmsg.qnt', 'known_errback', 'failurePropagates',
+     "      | Known => failWithContext", "      | Known => failWithoutContext"),
+    ('badmsg: a sibling that does not return its part', 'badmsg.qnt', 'known_chord', 'quietDone',
+     "parts' = parts + 1, siblingDone' = true,", "parts' = parts, siblingDone' = true,"),
 ]
 
 

@@ -1,4 +1,96 @@
 {
+ "badmsg.qnt": {
+  "badeta_chord": {
+   "D": 3,
+   "violated": {
+    "neverFailed": 2,
+    "neverQuiet": 4
+   }
+  },
+  "disallowed_alone": {
+   "D": 1,
+   "violated": {
+    "neverQuiet": 2,
+    "outcomeVisible": 2
+   }
+  },
+  "known_alone": {
+   "D": 1,
+   "violated": {
+    "neverFailed": 2,
+    "neverQuiet": 2
+   }
+  },
+  "known_chain": {
+   "D": 1,
+   "violated": {
+    "neverFailed": 2,
+    "neverQuiet": 2
+   }
+  },
+  "known_chord": {
+   "D": 3,
+   "violated": {
+    "neverFailed": 2,
+    "neverQuiet": 4
+   }
+  },
+  "known_errback": {
+   "D": 1,
+   "violated": {
+    "neverFailed": 2,
+    "neverQuiet": 2
+   }
+  },
+  "undecodable_alone": {
+   "D": 1,
+   "violated": {
+    "neverQuiet": 2,
+    "outcomeVisible": 2
+   }
+  },
+  "undecodable_chord": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3,
+    "outcomeVisible": 3,
+    "quietDone": 3
+   }
+  },
+  "unknown_alone": {
+   "D": 1,
+   "violated": {
+    "neverFailed": 2,
+    "neverQuiet": 2
+   }
+  },
+  "unknown_chain": {
+   "D": 1,
+   "violated": {
+    "failurePropagates": 2,
+    "neverFailed": 2,
+    "neverQuiet": 2,
+    "quietDone": 2
+   }
+  },
+  "unknown_chord": {
+   "D": 2,
+   "violated": {
+    "failurePropagates": 3,
+    "neverFailed": 2,
+    "neverQuiet": 3,
+    "quietDone": 3
+   }
+  },
+  "unknown_errback": {
+   "D": 1,
+   "violated": {
+    "failurePropagates": 2,
+    "neverFailed": 2,
+    "neverQuiet": 2
+   }
+  }
+ },
  "beat.qnt": {
   "cron_back": {
    "D": 15,

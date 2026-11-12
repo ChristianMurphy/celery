@@ -94,8 +94,7 @@
    "apalache": [],
    "fast": [
     "main_crash",
-    "pr_credit_timeout",
-    "renewblind_held_credit"
+    "pr_credit_timeout"
    ],
    "passes_all": "pr_credit_timeout",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -374,6 +373,32 @@
     "returns_default"
    ],
    "passes_all": "returns_default",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "badmsg.qnt": {
+   "family": "worker",
+   "types": "badmsgtypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "workerSurvives",
+    "outcomeVisible",
+    "failurePropagates",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverFailed"
+   ],
+   "apalache": [],
+   "fast": [
+    "known_chord"
+   ],
+   "passes_all": "known_chord",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -3598,6 +3623,159 @@
    "pattern": "Existence",
    "statement": "FAILURE is stored.",
    "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "badmsg.workerSurvives",
+   "spec": "badmsg.qnt",
+   "definition": "workerSurvives",
+   "kind": "safety",
+   "pattern": "Absence (the worker stops), global",
+   "statement": "The worker stays up after a message it cannot handle.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "open celery issue 4308 (Worker dies if unable to decode a message); consumer.py:856-859 (celery 768e476) now catches DecodeError and ContentDisallowed around the strategy",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "badmsg: an undecodable body that stops the worker",
+   "violations": []
+  },
+  {
+   "id": "badmsg.outcomeVisible",
+   "spec": "badmsg.qnt",
+   "definition": "outcomeVisible",
+   "kind": "liveness",
+   "pattern": "Response (a settled message has a final state)",
+   "statement": "When the message is settled a final state is stored for its task id.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "docs/userguide/tasks.rst (celery 768e476), states: PENDING is a task waiting or unknown",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "badmsg: a bad ETA that stores nothing",
+   "violations": [
+    {
+     "instances": "undecodable_*",
+     "reason": "by design",
+     "where": "consumer.py:565-579 (celery 768e476): on_decode_error logs and acks the message so it does not enter a loop; no task id is read from it",
+     "note": "the task id reads PENDING for ever"
+    },
+    {
+     "instances": "disallowed_*",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:243-246 (celery 768e476): a message whose content type is not in accept_content is discarded with an error",
+     "note": "the task id reads PENDING for ever"
+    }
+   ]
+  },
+  {
+   "id": "badmsg.failurePropagates",
+   "spec": "badmsg.qnt",
+   "definition": "failurePropagates",
+   "kind": "safety",
+   "pattern": "Response (a stored failure reaches the errback, the chain and the chord), global",
+   "statement": "When FAILURE is stored for the task and nothing more happens, its errback ran, the chain's next step is failed and the chord's body is failed.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "docs/userguide/canvas.rst (celery 768e476), Error handling: link_error is called when the task fails, and a chord whose header task fails stores ChordError for its body; base.py:298-317 does this for every failure stored with the task's request",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "badmsg: a failure stored without the request",
+   "violations": [
+    {
+     "instances": "unknown_*",
+     "reason": "open",
+     "where": "finding unknown-task-chord (no upstream thread found)",
+     "note": "on_unknown_task stores FAILURE with a request of its own: chord None, errbacks None, no chain"
+    }
+   ]
+  },
+  {
+   "id": "badmsg.quietDone",
+   "spec": "badmsg.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end nothing waits for the message)",
+   "statement": "At the end the message is settled, and no next step of a chain or chord body waits for it.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "docs/userguide/canvas.rst (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "badmsg: a sibling that does not return its part",
+   "violations": [
+    {
+     "instances": "unknown_*",
+     "reason": "open",
+     "where": "finding unknown-task-chord",
+     "note": "the chain's next step and the chord's body are PENDING for ever"
+    },
+    {
+     "instances": "undecodable_*",
+     "reason": "by design",
+     "where": "consumer.py:565-579 (celery 768e476): on_decode_error acks and stores nothing",
+     "note": "the chord's body waits for ever"
+    }
+   ]
+  },
+  {
+   "id": "badmsg.progress",
+   "spec": "badmsg.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "badmsg.stepOrQuiet",
+   "spec": "badmsg.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "badmsg.neverQuiet",
+   "spec": "badmsg.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "badmsg.neverFailed",
+   "spec": "badmsg.qnt",
+   "definition": "neverFailed",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "FAILURE is stored.",
+   "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

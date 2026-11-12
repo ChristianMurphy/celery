@@ -1,0 +1,20 @@
+{
+ "id": "unknown-task-chord",
+ "title": "A task name the worker does not know is stored FAILURE, but its errback is not called, the next step of its chain stays PENDING, and a chord it belongs to never runs or fails its body",
+ "cells": [
+  "unknown_errback.failurePropagates",
+  "unknown_chain.failurePropagates",
+  "unknown_chain.quietDone",
+  "unknown_chord.failurePropagates",
+  "unknown_chord.quietDone"
+ ],
+ "outcome": "hang",
+ "status": "open",
+ "where": "consumer.py:752-783 (celery 768e476, the same at 9c2f238): on_unknown_task rejects the message and calls mark_as_failure with a Bunch whose chord and errbacks are None and which has no chain, so base.py:298-317 stores FAILURE and does nothing else; a task that raises fails the chord, the chain and calls the errback. No upstream thread found (searched NotRegistered chord, unregistered task chord, unregistered task link_error, NotRegistered errback, on_unknown_task, unregistered task chain, NotRegistered chain, Received unregistered task chord; closest celery issue 1522 (2013, chains with unregistered tasks, a send_task bug) and celery issue 2791 (the task-failed event for unknown tasks, closed)); not in the tracker yet",
+ "thread": "none yet (a new issue; the lead decides)",
+ "confirm": [
+  "confirm_bad_messages.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, one prefork worker -c 2 that does not have the task bmapp.not_deployed (as in a rolling deploy, or a worker started with another app); nothing injected. unknown: 3 of 3 runs the task alone with link_error stored FAILURE and the errback ran 0 times; chain(not_deployed, quick) stored FAILURE then PENDING for the second step; chord([not_deployed, quick], body) stored FAILURE and SUCCESS for the header and PENDING for the body, 8 s watched, nothing queued. Control raise (a registered task that raises, the same three shapes): 3 of 3 the errback ran once, the chain's second step FAILURE, the chord's body FAILURE. Natural rate: every message for a task the worker lacks; no timing involved. Also checked: undecodable (a JSON body that does not parse) and disallowed (a pickle message, accept_content json): 1 of 1 each, the message is settled, nothing is stored (PENDING), the worker stays up and runs the next task (open celery issue 4308's crash path is guarded at 9c2f238)."
+}

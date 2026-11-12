@@ -994,6 +994,77 @@ Why each violation is expected:
 | `failedIsFinal` | hard_noackto (6) | open | finding hard-limit-twice (case noackto). the error callback requeues and stores nothing; the timeout callback then stores FAILURE, calls the errback, on_failure and task_failure; the requeued message runs again |
 <!-- end generated -->
 
+## Messages a worker cannot handle
+
+`badmsg.qnt`, `badmsg_instances.qnt`: one message of a kind in a context.
+Kinds: `known` (a registered task that raises; the control), `unknown` (a
+name the worker has no task for), `undecodable` (a body that does not
+parse), `disallowed` (a content type outside accept_content), `badeta` (an
+ETA that cannot be converted). Contexts: `alone`, `errback` (link_error),
+`chain` (the first of two steps), `chord` (one of two header tasks whose
+sibling succeeds). The consumer settles the message by its kind
+(consumer.py:752-860, strategy.py:132-195).
+
+<!-- generated: properties badmsg.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `workerSurvives` | safety | The worker stays up after a message it cannot handle. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Absence (the worker stops), global | open celery issue 4308 (Worker dies if unable to decode a message); consumer.py:856-859 (celery 768e476) now catches DecodeError and ContentDisallowed around the strategy |
+| `outcomeVisible` | liveness | When the message is settled a final state is stored for its task id. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Response (a settled message has a final state) | docs/userguide/tasks.rst (celery 768e476), states: PENDING is a task waiting or unknown |
+| `failurePropagates` | safety | When FAILURE is stored for the task and nothing more happens, its errback ran, the chain's next step is failed and the chord's body is failed. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Response (a stored failure reaches the errback, the chain and the chord), global | docs/userguide/canvas.rst (celery 768e476), Error handling: link_error is called when the task fails, and a chord whose header task fails stores ChordError for its body; base.py:298-317 does this for every failure stored with the task's request |
+| `quietDone` | liveness | At the end the message is settled, and no next step of a chain or chord body waits for it. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Response (lemma 3 of 3: at the end nothing waits for the message) | docs/userguide/canvas.rst (celery 768e476) |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Existence | sanity |
+| `neverFailed` | witness | FAILURE is stored. Assumes: one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message). | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results badmsg.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| badeta_chord | 3 | none | neverQuiet (4), neverFailed (2) |
+| disallowed_alone | 1 | outcomeVisible (2) | neverQuiet (2) |
+| known_alone | 1 | none | neverQuiet (2), neverFailed (2) |
+| known_chain | 1 | none | neverQuiet (2), neverFailed (2) |
+| known_chord | 3 | none | neverQuiet (4), neverFailed (2) |
+| known_errback | 1 | none | neverQuiet (2), neverFailed (2) |
+| undecodable_alone | 1 | outcomeVisible (2) | neverQuiet (2) |
+| undecodable_chord | 2 | outcomeVisible (3), quietDone (3) | neverQuiet (3) |
+| unknown_alone | 1 | none | neverQuiet (2), neverFailed (2) |
+| unknown_chain | 1 | failurePropagates (2), quietDone (2) | neverQuiet (2), neverFailed (2) |
+| unknown_chord | 2 | failurePropagates (3), quietDone (3) | neverQuiet (3), neverFailed (2) |
+| unknown_errback | 1 | failurePropagates (2) | neverQuiet (2), neverFailed (2) |
+<!-- end generated -->
+
+What the model says, and what the real code did (9c2f238, kombu 445027e,
+`../findings/unknown-task-chord/confirm_bad_messages.py`):
+
+* An unknown task name is stored FAILURE (NotRegistered) with a request
+  that has no chord, no errbacks and no chain: the errback is not called,
+  the chain's next step stays PENDING, and the chord's body is never run
+  or failed (`unknown_*`, 2 and 3 states). Real code 3 of 3; the control
+  (a task that raises) fails all three, 3 of 3
+  ([unknown-task-chord](../findings/unknown-task-chord/)).
+* An undecodable body is acked and a disallowed content type is rejected;
+  nothing is stored, so the id reads PENDING and a chord waits for ever
+  (`undecodable_*`, `disallowed_alone`; documented for accept_content, by
+  design in on_decode_error). The worker stays up: real code 1 of 1 each,
+  the next task ran (open celery issue 4308 reported a crash on this path;
+  consumer.py:856-859 catches it now).
+* An ETA that cannot be converted is failed with the request's own
+  context, so the chord fails (`badeta_chord` passes).
+
+Why each violation is expected:
+
+<!-- generated: reasons badmsg.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `outcomeVisible` | undecodable_alone (2), undecodable_chord (3) | by design | consumer.py:565-579 (celery 768e476): on_decode_error logs and acks the message so it does not enter a loop; no task id is read from it. the task id reads PENDING for ever |
+| `outcomeVisible` | disallowed_alone (2) | documented | docs/userguide/configuration.rst:243-246 (celery 768e476): a message whose content type is not in accept_content is discarded with an error. the task id reads PENDING for ever |
+| `failurePropagates` | unknown_chain (2), unknown_chord (3), unknown_errback (2) | open | finding unknown-task-chord (no upstream thread found). on_unknown_task stores FAILURE with a request of its own: chord None, errbacks None, no chain |
+| `quietDone` | unknown_chain (2), unknown_chord (3) | open | finding unknown-task-chord. the chain's next step and the chord's body are PENDING for ever |
+| `quietDone` | undecodable_chord (3) | by design | consumer.py:565-579 (celery 768e476): on_decode_error acks and stores nothing. the chord's body waits for ever |
+<!-- end generated -->
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the
