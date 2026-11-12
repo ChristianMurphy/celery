@@ -1397,3 +1397,61 @@ is the class of dedup-read-error and revoke-backend-error.
   with).
 * The model cannot say why the warm-shutdown duplicate is rarer with early
   ack: it has no time.
+
+## Signals that stop or restart a worker
+
+`shutdown.qnt`, `shutdown_instances.qnt` (7 instances; celery 9c2f238,
+kombu 445027e): one acks_late task running in a prefork worker on Redis
+and one waiting; the instance's signals arrive in order at any time:
+SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP
+with the worker started by the `celery` console script or as
+`python -m celery`.
+
+<!-- generated: properties shutdown.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `hookAfterRuns` | safety | worker_shutdown is never dispatched while a task still runs. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Absence (worker_shutdown while a task runs), global | docs/userguide/workers.rst:138-145 (celery 9c2f238): a warm shutdown finishes all currently executing tasks; additional TERM signals are ignored |
+| `hookOnShutdown` | safety | A worker that has stopped dispatched worker_shutdown. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Response (a stopped worker dispatched worker_shutdown), global | docs/userguide/signals.rst:687-692 (celery 9c2f238): worker_shutdown is dispatched when the worker is about to shut down |
+| `quietDone` | liveness | At the end every task ran or its message waits in the queue. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Response (lemma 3 of 3: at the end every task ran or waits in the queue) | docs/userguide/workers.rst:162-200 (celery 9c2f238): a cold shutdown terminates running tasks; acks_late messages are redelivered |
+| `restartResumes` | liveness | After a SIGHUP the worker runs again and has taken every task. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Response (a SIGHUP is followed by a running worker that consumes) | docs/userguide/workers.rst:324-337 (celery 9c2f238): the worker can be restarted with the HUP signal; it restarts itself, which only works without a controlling terminal |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Existence | sanity |
+| `neverHook` | witness | worker_shutdown is dispatched. Assumes: one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results shutdown.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| hup | 5 | none | neverQuiet (6), neverHook (4) |
+| hup_pym | 5 | restartResumes (4) | neverQuiet (4), neverHook (4) |
+| int2 | 5 | none | neverQuiet (3), neverHook (3) |
+| quit | 4 | hookOnShutdown (2) | neverQuiet (2) |
+| term | 5 | none | neverQuiet (4), neverHook (4) |
+| term2 | 6 | none | neverQuiet (4), neverHook (4) |
+| term_quit | 5 | none | neverQuiet (3), neverHook (3) |
+<!-- end generated -->
+
+<!-- generated: reasons shutdown.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `hookOnShutdown` | quit (2) | open | finding cold-shutdown-no-hook (not in the tracker yet; no upstream thread found). SIGQUIT raises WorkerTerminate; WorkController.start calls terminate(), which dispatches nothing (worker.py:272-273, 322-334) |
+| `restartResumes` | hup_pym (4) | open | finding hup-restart-python-m (not in the tracker yet; no upstream thread found). the exec runs celery/__main__.py as a script, which fails on its relative import (apps/worker.py:524-529) |
+<!-- end generated -->
+
+Findings: [cold-shutdown-no-hook](../findings/cold-shutdown-no-hook/) (a
+visible failure: SIGQUIT skips worker_shutdown and exits 0) and
+[hup-restart-python-m](../findings/hup-restart-python-m/) (a hang: SIGHUP
+kills a worker started as `python -m celery`). Both are the same on 5.5.3
+and 5.4.0.
+
+Probed on 9c2f238 and not modeled (scratchpad, 1 of 1 each, nothing
+injected but the signal or the closed port):
+
+| Case | What the real code did | Status |
+|---|---|---|
+| SIGTERM while a task waits for its retry countdown | the warm shutdown kept the retry message (RETRY stored, the message back in the queue); a new worker ran it to SUCCESS | passes |
+| a second SIGTERM during a warm shutdown | logged, nothing else; the task ended SUCCESS | documented: workers.rst:145, additional TERM signals are ignored (`term2`) |
+| broker unreachable at the start, broker_connection_max_retries 3 | retry_on_startup on: exit 1 after 15 s; off: exit 1 after 4 s | documented: configuration.rst:3509-3525 (9c2f238), broker_connection_retry_on_startup and broker_connection_max_retries |
+| result backend unreachable at the start | the worker starts, runs the task, logs "Exception raised outside body" and acks it; nothing is stored | finding dedup-read-error's class (a backend error outside the body) |
+| `celery multi restart` | stops each node with SIGTERM and starts it again: the `term` case | not run |

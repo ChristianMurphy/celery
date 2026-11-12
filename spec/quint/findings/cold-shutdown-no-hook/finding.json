@@ -1,0 +1,16 @@
+{
+ "id": "cold-shutdown-no-hook",
+ "title": "A cold shutdown by SIGQUIT never dispatches worker_shutdown and exits with code 0, though its handler asks for EX_FAILURE; the same cold shutdown reached during a warm one dispatches it",
+ "cells": [
+  "quit.hookOnShutdown"
+ ],
+ "outcome": "visible failure",
+ "status": "open",
+ "where": "worker.py:269-280 and 322-334 (celery 9c2f238, the same code since 2016, 9d8e4276e): SIGQUIT's handler sets should_terminate to EX_FAILURE (apps/worker.py:500-503, 324-361); maybe_shutdown raises WorkerTerminate(EX_FAILURE), which WorkController.start catches with self.terminate(): terminate() dispatches nothing and the exit code it carries is dropped, so the process exits 0. A warm shutdown leaves through WorkerShutdown and stop(exitcode=...), which dispatches worker_shutdown (worker.py:312-320); a cold shutdown after SIGTERM or a second SIGINT runs inside that stop() and dispatches it. signals.rst:687-692 says worker_shutdown is dispatched when the worker is about to shut down; workers.rst:162-200 describes the cold shutdown and says nothing about the signal or the exit code. REMAP_SIGTERM=SIGQUIT (workers.rst:172-173) makes every SIGTERM take this path. No upstream thread found (searched worker_shutdown signal cold, worker_shutdown SIGQUIT, worker_shutdown not called, cold shutdown exit code, in issues and pull requests); not in the tracker yet",
+ "thread": "none yet (a new issue; the lead decides)",
+ "confirm": [
+  "confirm_cold_shutdown_hook.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend (dbs 13 and 14), one prefork worker -c 1 started as python -m celery, acks_late, a 4 s task, the signals sent 1 s into it; nothing injected. quit (SIGQUIT): 3 of 3 runs (and 4 of 4 in scratchpad probes) worker_shutting_down was dispatched (SIGQUIT Cold), worker_shutdown was not, the exit code was 0, the task PENDING with its message back in the queue. Controls: term (SIGTERM) 3 of 3 worker_shutdown after the task ended, SUCCESS, exit 0; termquit (SIGTERM, then SIGQUIT 1 s later) 3 of 3 worker_shutdown dispatched, exit 0; int2 (SIGINT twice) 3 of 3 worker_shutdown dispatched, exit 1. Celery 5.5.3 (kombu 5.5.4) and 5.4.0 (kombu 5.4.2): quit 1 of 1 each the same (no worker_shutdown, exit 0; the task read RETRY on 5.5.3 and FAILURE on 5.4.0). Natural rate: every cold shutdown that is not preceded by a warm one: SIGQUIT, or SIGTERM under REMAP_SIGTERM=SIGQUIT; no timing involved. A handler that closes connections or flushes metrics on worker_shutdown does not run, and a supervisor that restarts on a failure exit code sees a clean exit."
+}

@@ -1,0 +1,16 @@
+{
+ "id": "hup-restart-python-m",
+ "title": "A worker started as python -m celery dies on SIGHUP instead of restarting: the exec runs celery/__main__.py as a script, which fails on its relative import, and the queue is no longer consumed",
+ "cells": [
+  "hup_pym.restartResumes"
+ ],
+ "outcome": "hang",
+ "status": "open",
+ "where": "apps/worker.py:524-542 (celery 9c2f238, the same since 2013, 118b300fc): the SIGHUP handler registers an atexit hook that runs os.execv(sys.executable, [sys.executable] + sys.argv); started with python -m celery, sys.argv[0] is the path of celery/__main__.py, which then runs as a plain script and fails on 'from . import maybe_patch_concurrency' (ImportError: attempted relative import with no known parent package). The warm shutdown before the exec completes, so the running task ends SUCCESS. workers.rst:324-341 says the worker can be restarted with HUP, that this is prone to problems and not recommended in production, and that it works only without a controlling terminal; it does not say that it needs the celery console script. No upstream thread found (searched SIGHUP restart python -m, HUP relative import, attempted relative import with no known parent package, SIGHUP worker restart, _reload_current_worker, in issues and pull requests); not in the tracker yet",
+ "thread": "none yet (a new issue, or a docs sentence in workers.rst; the lead decides)",
+ "confirm": [
+  "confirm_hup_restart.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend (dbs 13 and 14), one prefork worker -c 1 with no controlling terminal, acks_late; SIGHUP 1 s into a 4 s task A, task B sent 8 s later; nothing injected. pym (python -m celery): 3 of 3 runs (and 2 of 2 in scratchpad probes) A ended SUCCESS, the log has 'Restarting celery worker (.../celery/__main__.py ...)' and then the ImportError, the process was gone and B stayed PENDING in the queue. Control script (the celery console script): 3 of 3 the worker logged ready again and B ended SUCCESS. Celery 5.5.3 (kombu 5.5.4) and 5.4.0 (kombu 5.4.2): pym 1 of 1 each the same, script 1 of 1 each restarted. Natural rate: every SIGHUP to a worker started as python -m celery without a terminal (for example a container's command, or a supervisor program line using python -m); no timing involved. Under a supervisor that restarts exited programs the worker comes back; without one, nothing consumes the queue."
+}

@@ -2867,6 +2867,58 @@
    }
   }
  },
+ "shutdown.qnt": {
+  "hup": {
+   "D": 5,
+   "violated": {
+    "neverHook": 4,
+    "neverQuiet": 6
+   }
+  },
+  "hup_pym": {
+   "D": 5,
+   "violated": {
+    "neverHook": 4,
+    "neverQuiet": 4,
+    "restartResumes": 4
+   }
+  },
+  "int2": {
+   "D": 5,
+   "violated": {
+    "neverHook": 3,
+    "neverQuiet": 3
+   }
+  },
+  "quit": {
+   "D": 4,
+   "violated": {
+    "hookOnShutdown": 2,
+    "neverQuiet": 2
+   }
+  },
+  "term": {
+   "D": 5,
+   "violated": {
+    "neverHook": 4,
+    "neverQuiet": 4
+   }
+  },
+  "term2": {
+   "D": 6,
+   "violated": {
+    "neverHook": 4,
+    "neverQuiet": 4
+   }
+  },
+  "term_quit": {
+   "D": 5,
+   "violated": {
+    "neverHook": 3,
+    "neverQuiet": 3
+   }
+  }
+ },
  "worker.qnt": {
   "ackfull_early_cut": {
    "D": 21,

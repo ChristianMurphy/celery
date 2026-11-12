@@ -605,6 +605,34 @@
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
+  },
+  "shutdown.qnt": {
+   "family": "worker",
+   "types": "sdtypes",
+   "metric": "",
+   "pins": {
+    "celery": "9c2f238",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "hookAfterRuns",
+    "hookOnShutdown",
+    "quietDone",
+    "restartResumes"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverHook"
+   ],
+   "apalache": [],
+   "fast": [
+    "term_quit",
+    "quit"
+   ],
+   "passes_all": "term_quit",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
   }
  },
  "properties": [
@@ -5131,6 +5159,140 @@
    "pattern": "Existence",
    "statement": "The errback is called.",
    "assumptions": "chord([X, Y], body) on the Redis result backend; X a task, a chord with two header tasks, or a task that replaces itself with a task; header tasks that return or raise as the instance says; the errback given by on_error() or as apply_async's link_error; task_allow_error_cb_on_chord_header False; no duplicates or lost workers",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "shutdown.hookAfterRuns",
+   "spec": "shutdown.qnt",
+   "definition": "hookAfterRuns",
+   "kind": "safety",
+   "pattern": "Absence (worker_shutdown while a task runs), global",
+   "statement": "worker_shutdown is never dispatched while a task still runs.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "docs/userguide/workers.rst:138-145 (celery 9c2f238): a warm shutdown finishes all currently executing tasks; additional TERM signals are ignored",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverHook",
+   "mutant": "shutdown: a warm exit that does not wait for the pool",
+   "violations": []
+  },
+  {
+   "id": "shutdown.hookOnShutdown",
+   "spec": "shutdown.qnt",
+   "definition": "hookOnShutdown",
+   "kind": "safety",
+   "pattern": "Response (a stopped worker dispatched worker_shutdown), global",
+   "statement": "A worker that has stopped dispatched worker_shutdown.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "docs/userguide/signals.rst:687-692 (celery 9c2f238): worker_shutdown is dispatched when the worker is about to shut down",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverHook",
+   "mutant": "shutdown: a warm exit that dispatches nothing",
+   "violations": [
+    {
+     "instances": "quit",
+     "reason": "open",
+     "where": "finding cold-shutdown-no-hook (not in the tracker yet; no upstream thread found)",
+     "note": "SIGQUIT raises WorkerTerminate; WorkController.start calls terminate(), which dispatches nothing (worker.py:272-273, 322-334)"
+    }
+   ]
+  },
+  {
+   "id": "shutdown.quietDone",
+   "spec": "shutdown.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end every task ran or waits in the queue)",
+   "statement": "At the end every task ran or its message waits in the queue.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "docs/userguide/workers.rst:162-200 (celery 9c2f238): a cold shutdown terminates running tasks; acks_late messages are redelivered",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "shutdown: a cold shutdown that drops the running task",
+   "violations": []
+  },
+  {
+   "id": "shutdown.restartResumes",
+   "spec": "shutdown.qnt",
+   "definition": "restartResumes",
+   "kind": "liveness",
+   "pattern": "Response (a SIGHUP is followed by a running worker that consumes)",
+   "statement": "After a SIGHUP the worker runs again and has taken every task.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "docs/userguide/workers.rst:324-337 (celery 9c2f238): the worker can be restarted with the HUP signal; it restarts itself, which only works without a controlling terminal",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "shutdown: an exec that never comes back",
+   "violations": [
+    {
+     "instances": "hup_pym",
+     "reason": "open",
+     "where": "finding hup-restart-python-m (not in the tracker yet; no upstream thread found)",
+     "note": "the exec runs celery/__main__.py as a script, which fails on its relative import (apps/worker.py:524-529)"
+    }
+   ]
+  },
+  {
+   "id": "shutdown.progress",
+   "spec": "shutdown.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "shutdown.stepOrQuiet",
+   "spec": "shutdown.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "shutdown.neverQuiet",
+   "spec": "shutdown.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "shutdown.neverHook",
+   "spec": "shutdown.qnt",
+   "definition": "neverHook",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "worker_shutdown is dispatched.",
+   "assumptions": "one acks_late task A running in a prefork worker on Redis and a task B waiting in the queue; the signals of the instance delivered in order at any time (SIGTERM once or twice, SIGINT twice, SIGQUIT, SIGTERM then SIGQUIT, SIGHUP); the worker started by the celery console script or as python -m celery; no soft shutdown timeout",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

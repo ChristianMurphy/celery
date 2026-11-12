@@ -319,6 +319,16 @@ MUTANTS = [
     # beat.qnt: noBurst
     ('beat: a send that does not move last_run_at', 'beat.qnt', 'cron_pause', 'noBurst',
      "      procs' = procs.set(b, Up({ last: wall,", "      procs' = procs.set(b, Up({ last: u.last,"),
+    # shutdown.qnt: one mutant per property
+    ('shutdown: a warm exit that does not wait for the pool', 'shutdown.qnt', 'term', 'hookAfterRuns',
+     "    worker == Warm, not(running),\n    hooks' = hooks + 1,", "    worker == Warm,\n    hooks' = hooks + 1,"),
+    ('shutdown: a warm exit that dispatches nothing', 'shutdown.qnt', 'term', 'hookOnShutdown',
+     "    worker == Warm, not(running),\n    hooks' = hooks + 1,", "    worker == Warm, not(running),\n    hooks' = hooks,"),
+    ('shutdown: a cold shutdown that drops the running task', 'shutdown.qnt', 'quit', 'quietDone',
+     "    tasks.keys().mapBy(t => if (tasks.get(t) == Running) Queued else tasks.get(t))",
+     "    tasks.keys().mapBy(t => if (tasks.get(t) == Running) Lost else tasks.get(t))"),
+    ('shutdown: an exec that never comes back', 'shutdown.qnt', 'hup', 'restartResumes',
+     "    val restarts = hupSeen and CFG.launch == ConsoleScript", "    val restarts = false"),
     # nested.qnt: one mutant per property
     ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
      "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),
