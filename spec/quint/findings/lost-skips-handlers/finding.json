@@ -1,0 +1,17 @@
+{
+ "id": "lost-skips-handlers",
+ "title": "A task whose pool process is lost is stored FAILURE, its errback runs and task_failure is sent, but Task.on_failure and after_return are never called",
+ "cells": [
+  "lost_default.failureCallsHandler",
+  "any_default.failureCallsHandler"
+ ],
+ "outcome": "visible failure",
+ "status": "open",
+ "where": "request.py:776-796 (celery 768e476, the same at 9c2f238): Request.on_failure with WorkerLostError calls mark_as_failure and sends task_failure in the main process and calls neither Task.on_failure nor after_return; tasks.rst:1816-1846 says on_failure is run by the worker when the task fails and after_return runs after it when the task reaches a terminal state; celery PR 10226 made the hard time limit path call them, not this one. No upstream thread found (searched on_failure WorkerLostError, on_failure not called worker lost, after_return WorkerLostError, on_failure handler SIGKILL; closest celery PR 9720, the request context for task_failure on a lost worker); not in the tracker yet",
+ "thread": "none yet (with hard-limit-twice, the lead decides)",
+ "confirm": [
+  "../hard-limit-twice/confirm_hard_limit.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, billiard 4.3.2, redis-py 8.1.0, Redis 7 broker and backend, one prefork worker -c 1, acks_late, case lost of ../hard-limit-twice/confirm_hard_limit.py: the task SIGKILLs its own pool process (injected: the kill, as an OOM kill would): 3 of 3 runs (and 1 of 1 in a first probe) FAILURE (WorkerLostError) stored, the errback ran once, task_failure sent once, Task.on_failure and after_return 0 times. Control raise: 3 of 3 each hook once. Natural rate: every lost pool process with reject_on_worker_lost off."
+}

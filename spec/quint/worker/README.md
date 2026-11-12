@@ -922,6 +922,78 @@ Why each violation is expected:
 | `outcomeVisible` | early_halt (9) | open | finding cold-early-retry |
 <!-- end generated -->
 
+## Handlers, signals and time limits at the end of a run
+
+`handlers.qnt`, `handlers_instances.qnt`: one acks_late task with a
+link_error errback on a prefork worker. The first run returns, raises, hits
+its hard time limit or loses its pool process; a requeued message runs
+again and returns. The child runs the trace (on a raise: FAILURE, the
+errback, Task.on_failure, task_failure, after_return). The main process
+gets the pool's report: a result goes to Request.on_success; an error to
+Request.on_failure; on a hard limit billiard calls the error callback and
+then the timeout callback, Request.on_timeout. Instances
+`<outcome>_<settings>`: `default`, `noackto` (task_acks_on_timeout off),
+`rejectlost` (task_reject_on_worker_lost on); `any_default` lets the first
+run do any of the four.
+
+<!-- generated: properties handlers.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `hooksOnce` | safety | In one run, the link_error errback, the task_failure signal and Task.on_failure each fire at most once. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Bounded existence (at most one errback, task_failure and Task.on_failure per run), global | docs/userguide/tasks.rst:1140-1153 (celery 9c2f238): a hard time limit invokes on_failure, errbacks and task_failure in the parent process, as a soft limit does (once); docs/userguide/signals.rst:271-276: task_failure is dispatched when a task fails |
+| `failureCallsHandler` | safety | A run that stores FAILURE, calls the errback and sends task_failure also calls Task.on_failure. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Absence (FAILURE stored without Task.on_failure), global | docs/userguide/tasks.rst:1816-1846 (celery 9c2f238): on_failure is run by the worker when the task fails; after_return runs after on_failure when the task reaches a terminal state |
+| `failedIsFinal` | safety | A task whose errback was called is not run again and does not end SUCCESS. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Absence (a run, or SUCCESS, after the errback), global | docs/userguide/configuration.rst:705-719 (celery 9c2f238): with task_acks_on_timeout disabled a timed-out message is rejected and requeued (not failed); request.py:778 stores FAILURE only if the task was not requeued |
+| `quietDone` | liveness | At the end the message is acked and a final state is stored. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Response (lemma 3 of 3: at the end the message is acked and a final state stored) | docs/userguide/tasks.rst (celery 9c2f238), acks_late |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Existence | sanity |
+| `neverFailed` | witness | FAILURE is stored. Assumes: one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results handlers.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| any_default | 4 | hooksOnce (5), failureCallsHandler (4) | neverQuiet (4), neverFailed (3) |
+| hard_default | 4 | hooksOnce (5) | neverQuiet (5), neverFailed (4) |
+| hard_noackto | 7 | failedIsFinal (6) | neverQuiet (8), neverFailed (5) |
+| lost_default | 3 | failureCallsHandler (4) | neverQuiet (4), neverFailed (4) |
+| lost_rejectlost | 6 | none | neverQuiet (7) |
+| raises_default | 3 | none | neverQuiet (4), neverFailed (3) |
+| returns_default | 3 | none | neverQuiet (4) |
+<!-- end generated -->
+
+What the model says, and what the real code did (9c2f238, kombu 445027e,
+billiard 4.3.2, `../findings/hard-limit-twice/confirm_hard_limit.py`):
+
+* A hard time limit runs the failure path twice: both callbacks call
+  mark_as_failure, which calls the errbacks, and both send task_failure
+  (`hard_default.hooksOnce`, 5 states). Real code 3 of 3: the errback ran
+  twice, task_failure twice, on_failure and after_return once
+  ([hard-limit-twice](../findings/hard-limit-twice/)).
+* With task_acks_on_timeout off the error callback requeues and stores
+  nothing, as configuration.rst says, and the timeout callback then stores
+  FAILURE and calls the errback, on_failure and task_failure; the message
+  runs again (`hard_noackto.failedIsFinal`, 6 states). Real code 3 of 3:
+  FAILURE and one errback, then a second run and SUCCESS.
+* A lost pool process stores FAILURE, calls the errback and sends
+  task_failure from the main process, and never calls Task.on_failure or
+  after_return (`lost_default.failureCallsHandler`, 4 states). Real code 3
+  of 3 ([lost-skips-handlers](../findings/lost-skips-handlers/)).
+* A return, a raise and a requeue on a lost worker (`rejectlost`) pass
+  every property; the control (a raise) ran each hook once on the real
+  code, 3 of 3.
+
+Why each violation is expected:
+
+<!-- generated: reasons handlers.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `hooksOnce` | hard_default (5) | open | finding hard-limit-twice (no upstream thread found; celery PR 10226 added the second task_failure in on_timeout). billiard calls the error callback (Request.on_failure with TimeLimitExceeded) and then the timeout callback (Request.on_timeout); both call mark_as_failure and send task_failure |
+| `hooksOnce` | any_default (5) | open | finding hard-limit-twice. the hard limit branch |
+| `failureCallsHandler` | lost_default (4) | open | finding lost-skips-handlers (no upstream thread found). Request.on_failure with WorkerLostError stores FAILURE, calls the errback and sends task_failure in the main process, and does not call Task.on_failure or after_return |
+| `failureCallsHandler` | any_default (4) | open | finding lost-skips-handlers. the lost worker branch |
+| `failedIsFinal` | hard_noackto (6) | open | finding hard-limit-twice (case noackto). the error callback requeues and stores nothing; the timeout callback then stores FAILURE, calls the errback, on_failure and task_failure; the requeued message runs again |
+<!-- end generated -->
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

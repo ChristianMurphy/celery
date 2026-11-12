@@ -899,6 +899,60 @@
    }
   }
  },
+ "handlers.qnt": {
+  "any_default": {
+   "D": 4,
+   "violated": {
+    "failureCallsHandler": 4,
+    "hooksOnce": 5,
+    "neverFailed": 3,
+    "neverQuiet": 4
+   }
+  },
+  "hard_default": {
+   "D": 4,
+   "violated": {
+    "hooksOnce": 5,
+    "neverFailed": 4,
+    "neverQuiet": 5
+   }
+  },
+  "hard_noackto": {
+   "D": 7,
+   "violated": {
+    "failedIsFinal": 6,
+    "neverFailed": 5,
+    "neverQuiet": 8
+   }
+  },
+  "lost_default": {
+   "D": 3,
+   "violated": {
+    "failureCallsHandler": 4,
+    "neverFailed": 4,
+    "neverQuiet": 4
+   }
+  },
+  "lost_rejectlost": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7
+   }
+  },
+  "raises_default": {
+   "D": 3,
+   "violated": {
+    "neverFailed": 3,
+    "neverQuiet": 4
+   }
+  },
+  "returns_default": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  }
+ },
  "publisher.qnt": {
   "off_crash": {
    "D": 8,

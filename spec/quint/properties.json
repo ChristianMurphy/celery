@@ -23,7 +23,6 @@
     "es"
    ],
    "fast": [
-    "rtw",
     "mongofinal_rev"
    ],
    "passes_all": "mongofinal_rev",
@@ -349,6 +348,32 @@
     "sync1_cron_kill"
    ],
    "passes_all": "sync1_cron_kill",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "handlers.qnt": {
+   "family": "worker",
+   "types": "handlerstypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "hooksOnce",
+    "failureCallsHandler",
+    "failedIsFinal",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverFailed"
+   ],
+   "apalache": [],
+   "fast": [
+    "returns_default"
+   ],
+   "passes_all": "returns_default",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -3420,6 +3445,159 @@
    "pattern": "Existence",
    "statement": "The entry is sent twice.",
    "assumptions": "one periodic entry, an interval (run every R) or a crontab (every wall-clock multiple of R), R = 2, sync_every = 5, the run ends at true time 9; one or two schedulers (PersistentScheduler, each with its own file); a scheduler wakes when its entry is due",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "handlers.hooksOnce",
+   "spec": "handlers.qnt",
+   "definition": "hooksOnce",
+   "kind": "safety",
+   "pattern": "Bounded existence (at most one errback, task_failure and Task.on_failure per run), global",
+   "statement": "In one run, the link_error errback, the task_failure signal and Task.on_failure each fire at most once.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "docs/userguide/tasks.rst:1140-1153 (celery 9c2f238): a hard time limit invokes on_failure, errbacks and task_failure in the parent process, as a soft limit does (once); docs/userguide/signals.rst:271-276: task_failure is dispatched when a task fails",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "handlers: a pool result that runs the failure hooks again",
+   "violations": [
+    {
+     "instances": "hard_default",
+     "reason": "open",
+     "where": "finding hard-limit-twice (no upstream thread found; celery PR 10226 added the second task_failure in on_timeout)",
+     "note": "billiard calls the error callback (Request.on_failure with TimeLimitExceeded) and then the timeout callback (Request.on_timeout); both call mark_as_failure and send task_failure"
+    },
+    {
+     "instances": "any_default",
+     "reason": "open",
+     "where": "finding hard-limit-twice",
+     "note": "the hard limit branch"
+    }
+   ]
+  },
+  {
+   "id": "handlers.failureCallsHandler",
+   "spec": "handlers.qnt",
+   "definition": "failureCallsHandler",
+   "kind": "safety",
+   "pattern": "Absence (FAILURE stored without Task.on_failure), global",
+   "statement": "A run that stores FAILURE, calls the errback and sends task_failure also calls Task.on_failure.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "docs/userguide/tasks.rst:1816-1846 (celery 9c2f238): on_failure is run by the worker when the task fails; after_return runs after on_failure when the task reaches a terminal state",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "handlers: a requeue on a lost worker counted as a failure",
+   "violations": [
+    {
+     "instances": "lost_default",
+     "reason": "open",
+     "where": "finding lost-skips-handlers (no upstream thread found)",
+     "note": "Request.on_failure with WorkerLostError stores FAILURE, calls the errback and sends task_failure in the main process, and does not call Task.on_failure or after_return"
+    },
+    {
+     "instances": "any_default",
+     "reason": "open",
+     "where": "finding lost-skips-handlers",
+     "note": "the lost worker branch"
+    }
+   ]
+  },
+  {
+   "id": "handlers.failedIsFinal",
+   "spec": "handlers.qnt",
+   "definition": "failedIsFinal",
+   "kind": "safety",
+   "pattern": "Absence (a run, or SUCCESS, after the errback), global",
+   "statement": "A task whose errback was called is not run again and does not end SUCCESS.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "docs/userguide/configuration.rst:705-719 (celery 9c2f238): with task_acks_on_timeout disabled a timed-out message is rejected and requeued (not failed); request.py:778 stores FAILURE only if the task was not requeued",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverFailed",
+   "mutant": "handlers: a requeue that still counts the run as failed",
+   "violations": [
+    {
+     "instances": "hard_noackto",
+     "reason": "open",
+     "where": "finding hard-limit-twice (case noackto)",
+     "note": "the error callback requeues and stores nothing; the timeout callback then stores FAILURE, calls the errback, on_failure and task_failure; the requeued message runs again"
+    }
+   ]
+  },
+  {
+   "id": "handlers.quietDone",
+   "spec": "handlers.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the message is acked and a final state stored)",
+   "statement": "At the end the message is acked and a final state is stored.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "docs/userguide/tasks.rst (celery 9c2f238), acks_late",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "handlers: a return that stores nothing",
+   "violations": []
+  },
+  {
+   "id": "handlers.progress",
+   "spec": "handlers.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "handlers.stepOrQuiet",
+   "spec": "handlers.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "handlers.neverQuiet",
+   "spec": "handlers.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "handlers.neverFailed",
+   "spec": "handlers.qnt",
+   "definition": "neverFailed",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "FAILURE is stored.",
+   "assumptions": "one task message with a link_error errback, acks_late, one worker with the prefork pool; the first run returns, raises, hits its hard time limit or loses its pool process, a second run returns; task_acks_on_timeout and task_reject_on_worker_lost per instance",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

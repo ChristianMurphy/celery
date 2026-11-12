@@ -242,6 +242,15 @@ MUTANTS = [
     ('beat: a new entry that starts two periods ahead', 'beat.qnt', 'cron_none', 'quietDone',
      "last: if (saved.get(b) < 0) wall else saved.get(b), lastSync: -1 })),",
      "last: if (saved.get(b) < 0) wall + 2 * R else saved.get(b), lastSync: -1 })),"),
+    # handlers.qnt: one mutant per property
+    ('handlers: a pool result that runs the failure hooks again', 'handlers.qnt', 'raises_default', 'hooksOnce',
+     "requeued' = requeued, runs' = runs, stored' = stored, setHooks(cur),", "requeued' = requeued, runs' = runs, stored' = stored, setHooks(failHooks(cur, true)),"),
+    ('handlers: a requeue on a lost worker counted as a failure', 'handlers.qnt', 'lost_rejectlost', 'failureCallsHandler',
+     "mismatch' = (mismatch or (not(rq) and o == WorkerLost and h.onFailure == 0)),", "mismatch' = (mismatch or (o == WorkerLost and h.onFailure == 0)),"),
+    ('handlers: a requeue that still counts the run as failed', 'handlers.qnt', 'lost_rejectlost', 'failedIsFinal',
+     "failedRuns' = if (rq) failedRuns else failedRuns + 1,", "failedRuns' = failedRuns + 1,"),
+    ('handlers: a return that stores nothing', 'handlers.qnt', 'returns_default', 'quietDone',
+     "            stored' = Success,", "            stored' = stored,"),
 ]
 
 
