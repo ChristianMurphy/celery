@@ -347,6 +347,13 @@ MUTANTS = [
      "      msg' = if (false) Waiting({ eta: t + CFG.retryCountdown,"),
     ('eager: a run that does not store its result', 'eager.qnt', 'real_returns', 'callerAgrees',
      "      stored' = s, seen' = s, runs' = runs + 1,", "      stored' = stored, seen' = s, runs' = runs + 1,"),
+    # content.qnt: one mutant per property
+    ('content: a link published for a dropped message', 'content.qnt', 'pickle_json', 'linkOnlyOnSuccess',
+     "      links' = if (dropped) links else links + 1,", "      links' = links + 1,"),
+    ('content: an encode failure without the errback', 'content.qnt', 'result', 'errbackOnFailure',
+     "                    errbacks + 1 else errbacks,", "                    errbacks else errbacks,"),
+    ('content: a message dropped although it can be decoded', 'content.qnt', 'ok', 'quietDone',
+     "    val dropped = not(CFG.compressionKnown) or not(CFG.accepted)", "    val dropped = true"),
     # nested.qnt: one mutant per property
     ('nested: a chord that runs its body after a failed part', 'nested.qnt', 'flat_fail_option', 'bodyOnlyOnSuccess',
      "    if (not(allIn(ps))) body else if (anyFailed(ps)) Failed else Due", "    if (not(allIn(ps))) body else Due"),

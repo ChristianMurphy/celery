@@ -1158,6 +1158,50 @@
    }
   }
  },
+ "content.qnt": {
+  "args": {
+   "D": 1,
+   "violated": {
+    "neverError": 2,
+    "neverQuiet": 2
+   }
+  },
+  "ok": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "pickle_json": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3,
+    "quietDone": 3
+   }
+  },
+  "reader": {
+   "D": 3,
+   "violated": {
+    "neverError": 4,
+    "neverQuiet": 4
+   }
+  },
+  "result": {
+   "D": 3,
+   "violated": {
+    "linkOnlyOnSuccess": 3,
+    "neverError": 4,
+    "neverQuiet": 4
+   }
+  },
+  "zstd_oldworker": {
+   "D": 2,
+   "violated": {
+    "neverQuiet": 3,
+    "quietDone": 3
+   }
+  }
+ },
  "eager.qnt": {
   "eager_cd_expires": {
    "D": 1,

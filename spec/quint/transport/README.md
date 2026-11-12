@@ -281,3 +281,57 @@ py-amqp 5.4.2, RabbitMQ 3.13 and Redis 7):
   queue again within a few milliseconds; a publish in between is dropped,
   because the client does not declare a cached queue again
   (`rabbit_deleted`, 1 of 1 on the real code). On Redis nothing is lost.
+
+## Content: serializers, compression and accept lists
+
+`content.qnt`, `content_instances.qnt` (6 instances; celery 9c2f238, kombu
+445027e): one task with a link and a link_error; one setting at a time
+does not fit: the arguments for the task serializer, the compression for
+the worker's kombu, the content type for the worker's accept_content, the
+return value for the result serializer, or the reader's result settings
+for the stored result.
+
+<!-- generated: properties content.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `linkOnlyOnSuccess` | safety | The link runs only for a task whose SUCCESS is stored. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Precedence: a stored SUCCESS precedes the link | docs/userguide/calling.rst (celery 9c2f238), Linking: the callback is applied when the task returns successfully |
+| `errbackOnFailure` | safety | A stored FAILURE is followed by its errback, which runs at most once. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Response (a stored FAILURE is followed by one errback call), global | docs/userguide/calling.rst (celery 9c2f238), Linking: the errback is applied when the task fails |
+| `quietDone` | liveness | At the end the caller has a value or an error; it does not wait for ever. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Response (lemma 3 of 3: at the end the caller has a value or an error) | docs/userguide/calling.rst (celery 9c2f238), Serializers: the content type of a message must be one the worker accepts |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Existence | sanity |
+| `neverError` | witness | The caller gets an error. Assumes: one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result. | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results content.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| args | 1 | none | neverQuiet (2), neverError (2) |
+| ok | 3 | none | neverQuiet (4) |
+| pickle_json | 2 | quietDone (3) | neverQuiet (3) |
+| reader | 3 | none | neverQuiet (4), neverError (4) |
+| result | 3 | linkOnlyOnSuccess (3) | neverQuiet (4), neverError (4) |
+| zstd_oldworker | 2 | quietDone (3) | neverQuiet (3) |
+<!-- end generated -->
+
+<!-- generated: reasons content.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `linkOnlyOnSuccess` | result (3) | open | finding chain-store-error (a reply on celery issue 10954 drafted by the lead): the link is published before the result is stored (trace.py:599-612). probe on 9c2f238: a task returning an object JSON cannot encode stored FAILURE (EncodeError) and ran both its link and its link_error, 1 of 1 |
+| `quietDone` | zstd_oldworker (3) | by design | consumer.py:565-579 (celery 9c2f238): on_decode_error logs CRITICAL and acks the message so that it does not loop; no task id is read from it (badmsg.qnt's undecodable case). probe: main (kombu 5.7.0) sent compression='zstd' to a 5.5.3 worker (kombu 5.5.4, no zstd decoder): "Can't decode message body: KeyError('application/zstd')", acked, PENDING for ever, the worker went on, 1 of 1 |
+| `quietDone` | pickle_json (3) | documented | docs/userguide/configuration.rst:243-246 (celery 768e476): a message whose content type is not in accept_content is discarded with an error (badmsg.qnt's disallowed case). probe on 9c2f238: PENDING for ever, "Received invalid task message: Refusing to deserialize untrusted content of type pickle", 1 of 1 |
+<!-- end generated -->
+
+What the real code did on 9c2f238 (kombu 445027e, Redis 7, -c 2,
+scratchpad `serprobe.py` and `mixcomp.py`, 1 of 1 each, nothing injected):
+
+| Case | Result | Status |
+|---|---|---|
+| an argument JSON cannot encode | apply_async raised EncodeError at the call | passes (`args`) |
+| a return value JSON cannot encode, alone | FAILURE (EncodeError); both the link and the link_error ran | finding chain-store-error (`result`) |
+| the same as a group member | FAILURE for that member, SUCCESS for the other; get() returned the EncodeError and the value | passes |
+| the same as a chord header task, with a link_error on the chord | the body FAILURE (ChordError), the errback once | passes |
+| a pickle message to a worker with the default accept_content | "Received invalid task message", acked, PENDING for ever | documented (`pickle_json`) |
+| compression zlib, bzip2, lzma, zstd on main to main | SUCCESS each; brotli raised at the call (no brotli module) | passes |
+| compression zstd from main to a 5.5.3 worker (kombu 5.5.4) | CRITICAL "Can't decode message body: KeyError('application/zstd')", acked, PENDING for ever; zlib to the same worker SUCCESS | by design (`zstd_oldworker`) |
+| results stored as pickle, a reader with result_accept_content json | get_task_meta and get() raised DecodeError at once | passes (`reader`): an error, not a wait |

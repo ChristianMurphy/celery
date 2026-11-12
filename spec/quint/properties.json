@@ -598,8 +598,7 @@
    ],
    "apalache": [],
    "fast": [
-    "nested_yfail_option",
-    "nested_fail_option"
+    "nested_yfail_option"
    ],
    "passes_all": "nested_yfail_option",
    "progress": "finite by exhaustive search with the step counter in the state",
@@ -658,6 +657,32 @@
     "real_retry_expires"
    ],
    "passes_all": "real_retry_expires",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "content.qnt": {
+   "family": "transport",
+   "types": "contenttypes",
+   "metric": "",
+   "pins": {
+    "celery": "9c2f238",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "linkOnlyOnSuccess",
+    "errbackOnFailure",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverError"
+   ],
+   "apalache": [],
+   "fast": [
+    "ok"
+   ],
+   "passes_all": "ok",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -5498,6 +5523,131 @@
    "pattern": "Existence",
    "statement": "The task runs more than once.",
    "assumptions": "one task called once with a link and a link_error; its body returns, retries once, retries until max_retries (2), raises Ignore, raises Reject(requeue=False) or raises; countdown 0 or 3, expires none or 1 s after the call, a retry countdown of 0 or 2; run by one worker on a discrete clock that the client shares, or eagerly with task_always_eager (task_store_eager_result off)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "content.linkOnlyOnSuccess",
+   "spec": "content.qnt",
+   "definition": "linkOnlyOnSuccess",
+   "kind": "safety",
+   "pattern": "Precedence: a stored SUCCESS precedes the link",
+   "statement": "The link runs only for a task whose SUCCESS is stored.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "docs/userguide/calling.rst (celery 9c2f238), Linking: the callback is applied when the task returns successfully",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "content: a link published for a dropped message",
+   "violations": [
+    {
+     "instances": "result",
+     "reason": "open",
+     "where": "finding chain-store-error (a reply on celery issue 10954 drafted by the lead): the link is published before the result is stored (trace.py:599-612)",
+     "note": "probe on 9c2f238: a task returning an object JSON cannot encode stored FAILURE (EncodeError) and ran both its link and its link_error, 1 of 1"
+    }
+   ]
+  },
+  {
+   "id": "content.errbackOnFailure",
+   "spec": "content.qnt",
+   "definition": "errbackOnFailure",
+   "kind": "safety",
+   "pattern": "Response (a stored FAILURE is followed by one errback call), global",
+   "statement": "A stored FAILURE is followed by its errback, which runs at most once.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "docs/userguide/calling.rst (celery 9c2f238), Linking: the errback is applied when the task fails",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverError",
+   "mutant": "content: an encode failure without the errback",
+   "violations": []
+  },
+  {
+   "id": "content.quietDone",
+   "spec": "content.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the caller has a value or an error)",
+   "statement": "At the end the caller has a value or an error; it does not wait for ever.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "docs/userguide/calling.rst (celery 9c2f238), Serializers: the content type of a message must be one the worker accepts",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "content: a message dropped although it can be decoded",
+   "violations": [
+    {
+     "instances": "zstd_oldworker",
+     "reason": "by design",
+     "where": "consumer.py:565-579 (celery 9c2f238): on_decode_error logs CRITICAL and acks the message so that it does not loop; no task id is read from it (badmsg.qnt's undecodable case)",
+     "note": "probe: main (kombu 5.7.0) sent compression='zstd' to a 5.5.3 worker (kombu 5.5.4, no zstd decoder): \"Can't decode message body: KeyError('application/zstd')\", acked, PENDING for ever, the worker went on, 1 of 1"
+    },
+    {
+     "instances": "pickle_json",
+     "reason": "documented",
+     "where": "docs/userguide/configuration.rst:243-246 (celery 768e476): a message whose content type is not in accept_content is discarded with an error (badmsg.qnt's disallowed case)",
+     "note": "probe on 9c2f238: PENDING for ever, \"Received invalid task message: Refusing to deserialize untrusted content of type pickle\", 1 of 1"
+    }
+   ]
+  },
+  {
+   "id": "content.progress",
+   "spec": "content.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "content.stepOrQuiet",
+   "spec": "content.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "content.neverQuiet",
+   "spec": "content.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "content.neverError",
+   "spec": "content.qnt",
+   "definition": "neverError",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The caller gets an error.",
+   "assumptions": "one task with a link and a link_error on Redis; one setting at a time does not fit: the arguments for the task serializer, the message's compression for the worker's kombu, the content type for the worker's accept_content, the return value for the result serializer, the reader's result serializer and result_accept_content for the stored result",
    "source": "sanity",
    "instances": "all",
    "evidence": "",
