@@ -93,7 +93,6 @@
    ],
    "apalache": [],
    "fast": [
-    "main_crash",
     "pr_credit_timeout"
    ],
    "passes_all": "pr_credit_timeout",
@@ -523,6 +522,32 @@
     "ev_returns"
    ],
    "passes_all": "ev_returns",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "priorities.qnt": {
+   "family": "worker",
+   "types": "priotypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476",
+    "kombu": "445027e"
+   },
+   "properties": [
+    "noInversion",
+    "boundedOvertake",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverReordered"
+   ],
+   "apalache": [],
+   "fast": [
+    "redis_queues_rr"
+   ],
+   "passes_all": "redis_queues_rr",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -4647,6 +4672,131 @@
    "pattern": "Existence",
    "statement": "The monitor shows FAILURE.",
    "assumptions": "one task, one prefork worker started with -E, a monitor that applies every task event in order as events.State does; the run ends in one of eight ways (returns, raises, a lost pool process, a hard time limit, Reject without requeue, Ignore, update_state(SUCCESS) then Ignore, a task name the worker lacks)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "priorities.noInversion",
+   "spec": "priorities.qnt",
+   "definition": "noInversion",
+   "kind": "safety",
+   "pattern": "Absence (a start while a more urgent message of the same queue waits on the broker), global",
+   "statement": "A message does not start while a more urgent message of its queue waits on the broker.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
+   "source": "docs/userguide/routing.rst:220-233 and 263-270 (celery 768e476): a more urgent task is generally delivered ahead of a less urgent one",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverReordered",
+   "mutant": "priorities: a fetch that ignores urgency",
+   "violations": [
+    {
+     "instances": "*_p2",
+     "reason": "documented",
+     "where": "docs/userguide/routing.rst:764-772 (celery 768e476): with prefetching, tasks submitted at the same time may run out of priority order; worker_prefetch_multiplier 1 avoids it",
+     "note": "the held message runs while a more urgent one that came later waits"
+    },
+    {
+     "instances": "rabbit_nomax_*",
+     "reason": "documented",
+     "where": "docs/userguide/routing.rst:235-252 (celery 768e476): a RabbitMQ queue supports priorities only when declared with x-max-priority (or task_queue_max_priority)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "priorities.boundedOvertake",
+   "spec": "priorities.qnt",
+   "definition": "boundedOvertake",
+   "kind": "safety",
+   "pattern": "Bounded existence (overtakes of a waiting message by later equal messages of another queue), global",
+   "statement": "A waiting message is overtaken by at most one equally urgent message of another queue published after it.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
+   "source": "kombu/transport/redis.py:1484-1490 (445027e): the default round_robin cycle moves the queue just served to the end",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "priorities: a round robin that does not rotate",
+   "violations": [
+    {
+     "instances": "redis_queues_fixed",
+     "reason": "documented",
+     "where": "kombu/utils/scheduling.py:94-98 (445027e): priority_cycle repeats the queues in order and ignores rotate, so with queue_order_strategy 'priority' the first queue is served while it has messages (1 of 1 on 9c2f238: queue B's message ran after every A message published after it)",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "priorities.quietDone",
+   "spec": "priorities.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end every message ran)",
+   "statement": "At the end every message ran.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
+   "source": "docs/userguide/routing.rst (celery 768e476)",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "priorities: a prefetch that acks the message without running it",
+   "violations": []
+  },
+  {
+   "id": "priorities.progress",
+   "spec": "priorities.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "priorities.stepOrQuiet",
+   "spec": "priorities.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "priorities.neverQuiet",
+   "spec": "priorities.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "priorities.neverReordered",
+   "spec": "priorities.qnt",
+   "definition": "neverReordered",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "A message published later starts before an earlier one.",
+   "assumptions": "one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority)",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

@@ -301,6 +301,13 @@ MUTANTS = [
      "      | Returns => (St(Success), MSucceeded, 1)", "      | Returns => (St(Success), MFailed, 1)"),
     ('events: a return that sends no event', 'events.qnt', 'ev_returns', 'quietDone',
      "      | Returns => (St(Success), MSucceeded, 1)", "      | Returns => (St(Success), MStarted, 0)"),
+    # priorities.qnt: one mutant per property
+    ('priorities: a fetch that ignores urgency', 'priorities.qnt', 'redis_prio_p1', 'noInversion',
+     "    val top = inQ.filter(m => urg(m) == best)", "    val top = inQ"),
+    ('priorities: a round robin that does not rotate', 'priorities.qnt', 'redis_queues_rr', 'boundedOvertake',
+     "    | RoundRobin => if (lastQ == 0) [1, 0] else [0, 1]", "    | RoundRobin => [0, 1]"),
+    ('priorities: a prefetch that acks the message without running it', 'priorities.qnt', 'redis_prio_p2', 'quietDone',
+     "      where' = where.set(m, Held), held' = held.append(m),", "      where' = where.set(m, Done), held' = held,"),
 ]
 
 

@@ -1274,6 +1274,65 @@ nothing injected):
   --heartbeat-interval 2 and events.State kept the worker alive (1 of 1);
   longer tasks were not tried.
 
+## Priorities and several queues
+
+`priorities.qnt`, `priorities_instances.qnt` (8 instances; celery 768e476,
+the same at 9c2f238, kombu 445027e): one worker process, acks_late,
+prefetch 1 or 2; three messages of different priority on one queue, or
+four equal messages on two queues. Redis (priority steps in one BRPOP,
+queue_order_strategy round_robin or priority) and RabbitMQ (with and
+without x-max-priority). Instances `<broker>_<messages>_p<prefetch>`.
+
+<!-- generated: properties priorities.qnt -->
+| Property | Kind | Statement | Pattern | Source |
+|---|---|---|---|---|
+| `noInversion` | safety | A message does not start while a more urgent message of its queue waits on the broker. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Absence (a start while a more urgent message of the same queue waits on the broker), global | docs/userguide/routing.rst:220-233 and 263-270 (celery 768e476): a more urgent task is generally delivered ahead of a less urgent one |
+| `boundedOvertake` | safety | A waiting message is overtaken by at most one equally urgent message of another queue published after it. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Bounded existence (overtakes of a waiting message by later equal messages of another queue), global | kombu/transport/redis.py:1484-1490 (445027e): the default round_robin cycle moves the queue just served to the end |
+| `quietDone` | liveness | At the end every message ran. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Response (lemma 3 of 3: at the end every message ran) | docs/userguide/routing.rst (celery 768e476) |
+| `progress` | liveness | steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Bounded existence of steps (lemma 1 of 3: every run is finite) | the search: D per instance in expected.json |
+| `stepOrQuiet` | liveness | A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Response (lemma 2 of 3: a run stops only in a quiet state) | the search |
+| `neverQuiet` | witness | Some run ends. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Existence | sanity |
+| `neverReordered` | witness | A message published later starts before an earlier one. Assumes: one worker with one process (-c 1), acks_late, prefetch count P of 1 or 2; three messages on one queue with different priorities, or four equal messages on two queues, published in a fixed order at times the model chooses; Redis (priority steps, queue_order_strategy round_robin or priority) or RabbitMQ (with or without x-max-priority). | Existence | sanity |
+<!-- end generated -->
+
+<!-- generated: results priorities.qnt -->
+| instance | D | violated | reachable (witnesses) |
+|---|---|---|---|
+| rabbit_nomax_p1 | 9 | noInversion (5) | neverQuiet (10) |
+| rabbit_prio_p1 | 9 | none | neverQuiet (10), neverReordered (7) |
+| rabbit_prio_p2 | 11 | noInversion (8) | neverQuiet (10), neverReordered (7) |
+| rabbit_queues | 12 | none | neverQuiet (13) |
+| redis_prio_p1 | 9 | none | neverQuiet (10), neverReordered (7) |
+| redis_prio_p2 | 11 | noInversion (8) | neverQuiet (10), neverReordered (7) |
+| redis_queues_fixed | 12 | boundedOvertake (10) | neverQuiet (13), neverReordered (9) |
+| redis_queues_rr | 12 | none | neverQuiet (13) |
+<!-- end generated -->
+
+<!-- generated: reasons priorities.qnt -->
+| Property | Instances (states in a shortest counterexample) | Why | Where |
+|---|---|---|---|
+| `noInversion` | rabbit_prio_p2 (8), redis_prio_p2 (8) | documented | docs/userguide/routing.rst:764-772 (celery 768e476): with prefetching, tasks submitted at the same time may run out of priority order; worker_prefetch_multiplier 1 avoids it. the held message runs while a more urgent one that came later waits |
+| `noInversion` | rabbit_nomax_p1 (5) | documented | docs/userguide/routing.rst:235-252 (celery 768e476): a RabbitMQ queue supports priorities only when declared with x-max-priority (or task_queue_max_priority) |
+| `boundedOvertake` | redis_queues_fixed (10) | documented | kombu/utils/scheduling.py:94-98 (445027e): priority_cycle repeats the queues in order and ignores rotate, so with queue_order_strategy 'priority' the first queue is served while it has messages (1 of 1 on 9c2f238: queue B's message ran after every A message published after it) |
+<!-- end generated -->
+
+What the real code did (9c2f238, kombu 445027e, Redis 7 and RabbitMQ
+3.13, -c 1, acks_late, a scratchpad probe, 1 of 1 each, nothing
+injected): a slow task runs, then a less urgent and a more urgent task are
+published. Multiplier 1: the more urgent one ran first on both brokers;
+multiplier 2: the less urgent one, already prefetched, ran first
+(`*_p2.noInversion`, documented). With queue_order_strategy 'priority' on
+Redis a message on queue B ran after three A messages published after it;
+with the default round_robin it ran next (`redis_queues_fixed`,
+`redis_queues_rr`). Every violation is documented; no finding.
+
+Two notes on the documentation, not counterexamples: Redis treats 0 as the
+most urgent and RabbitMQ 9 (routing.rst:228-233 and 263-270 say so), and
+routing.rst:276-282 says queue_order_strategy 'priority' is needed to
+schedule by priority on Redis, while the priority steps are read in order
+without it (the probe ran 0, 0, 3, 6, 9, 9 with the default) and the
+option orders queues, not priorities.
+
 ## Where this stopped
 
 * No spec-to-code replay adapter for `worker.qnt` or `publisher.qnt`: the

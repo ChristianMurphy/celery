@@ -1386,6 +1386,65 @@
    }
   }
  },
+ "priorities.qnt": {
+  "rabbit_nomax_p1": {
+   "D": 9,
+   "violated": {
+    "neverQuiet": 10,
+    "noInversion": 5
+   }
+  },
+  "rabbit_prio_p1": {
+   "D": 9,
+   "violated": {
+    "neverQuiet": 10,
+    "neverReordered": 7
+   }
+  },
+  "rabbit_prio_p2": {
+   "D": 11,
+   "violated": {
+    "neverQuiet": 10,
+    "neverReordered": 7,
+    "noInversion": 8
+   }
+  },
+  "rabbit_queues": {
+   "D": 12,
+   "violated": {
+    "neverQuiet": 13
+   }
+  },
+  "redis_prio_p1": {
+   "D": 9,
+   "violated": {
+    "neverQuiet": 10,
+    "neverReordered": 7
+   }
+  },
+  "redis_prio_p2": {
+   "D": 11,
+   "violated": {
+    "neverQuiet": 10,
+    "neverReordered": 7,
+    "noInversion": 8
+   }
+  },
+  "redis_queues_fixed": {
+   "D": 12,
+   "violated": {
+    "boundedOvertake": 10,
+    "neverQuiet": 13,
+    "neverReordered": 9
+   }
+  },
+  "redis_queues_rr": {
+   "D": 12,
+   "violated": {
+    "neverQuiet": 13
+   }
+  }
+ },
  "publisher.qnt": {
   "off_crash": {
    "D": 8,
