@@ -7,8 +7,8 @@
  ],
  "outcome": "duplicate",
  "status": "open",
- "where": "beat.py:416-422 and 452-455 (celery 768e476, the same at 9c2f238): the file is synced on the first send after a start and then every sync_every (3 minutes); beat_sync_every (configuration.rst:4672-4683) describes the timing, not that a killed beat repeats sends; no upstream thread found (searched beat sigkill, beat crontab sent twice, celery beat duplicate tasks after restart, beat schedule shelve sync lost, beat_sync_every; closest celery issue 7148, Celery beat should be stateless); not in the tracker yet",
- "thread": "none yet (a new issue or a docs sentence; the lead decides)",
+ "where": "beat.py:416-422 and 452-455 (celery 768e476, the same at 9c2f238): the file is synced on the first send after a start and then every sync_every (3 minutes); beat_sync_every (configuration.rst:4672-4683) describes the timing, not that a killed beat repeats sends; no upstream thread found (searched beat sigkill, beat crontab sent twice, celery beat duplicate tasks after restart, beat schedule shelve sync lost, beat_sync_every; closest celery issue 7148, Celery beat should be stateless); placed as a docs change on branch docs/beat-sync-after-kill (ff9bdb710)",
+ "thread": "a docs pull request from branch docs/beat-sync-after-kill: beat_sync_every says that a killed beat can send again what it sent since the last sync",
  "confirm": [
   "confirm_beat_kill.py"
  ],

@@ -48,7 +48,7 @@ EXPECTED = ROOT / 'expected.json'
 REASONS = ('documented', 'open', 'fixed', 'by design')
 KINDS = ('safety', 'liveness', 'witness')
 #: The fast tier's budget: instances over all specs.
-FAST_BUDGET = 24
+FAST_BUDGET = 30
 #: The liveness lemmas, under the same names in every spec.
 LEMMAS = ('progress', 'stepOrQuiet', 'quietDone')
 NO_MEASURE = 'finite by exhaustive search with the step counter in the state'
