@@ -1,0 +1,17 @@
+{
+ "id": "reject-requeue-early",
+ "title": "Without acks_late, Reject(requeue=True) loses the task: the message was acked when the run started, nothing runs it again and nothing is stored",
+ "cells": [
+  "early_rejectrequeue.outcomeVisible",
+  "early_rejectrequeue.requeueRuns"
+ ],
+ "outcome": "silent loss",
+ "status": "documented",
+ "where": "docs/userguide/tasks.rst:1529-1531 and 1552-1554 (celery 768e476, the same at 9c2f238): Reject has no effect unless acks_late is enabled, and re-queuing only takes effect with acks_late; the docs do not say that the task then reads PENDING for ever",
+ "thread": "none needed: documented",
+ "confirm": [
+  "confirm_ack_matrix.py"
+ ],
+ "scenarios": "",
+ "observed": "9c2f238 with kombu 445027e, redis-py 8.1.0, Redis 7 broker and backend, one prefork worker -c 1, nothing injected. early_rejectrequeue (acks_late off, the first run raises Reject(requeue=True)): 2 of 2 runs the task ran once, the state stayed PENDING, nothing queued or unacked. late_rejectrequeue: 1 of 1 ran twice, SUCCESS. The other cells of the table, 1 of 1 each: early_rejectdrop FAILURE, one run, removed; late_ignores PENDING, one run, removed; late_raises_noackfail (task_acks_on_failure off) FAILURE, one run, removed (Redis has no dead lettering)."
+}

@@ -128,7 +128,6 @@
    "fast": [
     "main_late_partition",
     "pr_late_shutdown",
-    "pr_late_cut",
     "best_late_crash"
    ],
    "passes_all": "best_late_crash",
@@ -399,6 +398,32 @@
     "known_chord"
    ],
    "passes_all": "known_chord",
+   "progress": "finite by exhaustive search with the step counter in the state",
+   "checklist": "enforced",
+   "cite": "enforced"
+  },
+  "ackmatrix.qnt": {
+   "family": "worker",
+   "types": "ackmatrixtypes",
+   "metric": "",
+   "pins": {
+    "celery": "768e476"
+   },
+   "properties": [
+    "outcomeVisible",
+    "requeueRuns",
+    "rejectDeadLetters",
+    "quietDone"
+   ],
+   "witnesses": [
+    "neverQuiet",
+    "neverRanTwice"
+   ],
+   "apalache": [],
+   "fast": [
+    "late_rejectrequeue"
+   ],
+   "passes_all": "late_rejectrequeue",
    "progress": "finite by exhaustive search with the step counter in the state",
    "checklist": "enforced",
    "cite": "enforced"
@@ -3776,6 +3801,159 @@
    "pattern": "Existence",
    "statement": "FAILURE is stored.",
    "assumptions": "one message of a kind (a registered task that raises, an unknown task name, an undecodable body, a content type outside accept_content, an ETA that cannot be converted) alone, with a link_error errback, as the first of a chain of two, or as one of two chord header tasks whose sibling succeeds; protocol 2; a Redis broker (a reject without requeue removes the message)",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "ackmatrix.outcomeVisible",
+   "spec": "ackmatrix.qnt",
+   "definition": "outcomeVisible",
+   "kind": "liveness",
+   "pattern": "Response (at the end a final state is stored)",
+   "statement": "At the end a final state, SUCCESS or FAILURE, is stored.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "docs/userguide/tasks.rst:1541-1554 (celery 768e476): a Reject without requeue stores FAILURE regardless of acks_late; a requeued message runs again",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "ackmatrix: a Reject without requeue that stores nothing",
+   "violations": [
+    {
+     "instances": "early_rejectrequeue",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1529-1531 and 1552-1554 (celery 768e476): Reject has no effect unless acks_late is enabled; re-queuing only takes effect with acks_late",
+     "note": "the message was acked when the child accepted it; nothing is stored, the state stays PENDING"
+    },
+    {
+     "instances": "*_ignores",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1492-1494 (celery 768e476): Ignore records no state and acknowledges the message",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "id": "ackmatrix.requeueRuns",
+   "spec": "ackmatrix.qnt",
+   "definition": "requeueRuns",
+   "kind": "liveness",
+   "pattern": "Response (a requeue is followed by a run)",
+   "statement": "A run that asks for its message to be requeued (Reject(requeue=True), a lost process under reject_on_worker_lost) is followed by another run.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "docs/userguide/tasks.rst:1550-1554 (celery 768e476); configuration.rst, task_reject_on_worker_lost",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverRanTwice",
+   "mutant": "ackmatrix: a requeue that removes the message",
+   "violations": [
+    {
+     "instances": "early_rejectrequeue",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1552-1554 (celery 768e476): re-queuing only takes effect when acks_late is enabled",
+     "note": "the reject is a no-op on an acked message (request.py:907-911)"
+    }
+   ]
+  },
+  {
+   "id": "ackmatrix.rejectDeadLetters",
+   "spec": "ackmatrix.qnt",
+   "definition": "rejectDeadLetters",
+   "kind": "liveness",
+   "pattern": "Response (a rejected message reaches the dead letter exchange)",
+   "statement": "A message the task rejects without requeue reaches the queue's dead letter exchange.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "docs/userguide/tasks.rst:1533-1537 (celery 768e476): rejected messages are redelivered to a dead letter exchange where the broker has one",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "ackmatrix: dead lettering on the wrong broker",
+   "violations": [
+    {
+     "instances": "early_rejectdrop_dlx",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1529-1531 (celery 768e476): Reject has no effect unless acks_late is enabled",
+     "note": "the message was acked at the start; FAILURE is stored"
+    },
+    {
+     "instances": "*_rejectdrop",
+     "reason": "documented",
+     "where": "docs/userguide/tasks.rst:1533-1535 (celery 768e476): some brokers implement dead lettering; kombu's Redis transport has none, a reject without requeue removes the message",
+     "note": "FAILURE is stored"
+    }
+   ]
+  },
+  {
+   "id": "ackmatrix.quietDone",
+   "spec": "ackmatrix.qnt",
+   "definition": "quietDone",
+   "kind": "liveness",
+   "pattern": "Response (lemma 3 of 3: at the end the message is settled)",
+   "statement": "At the end the message is acked, removed or dead lettered, and no new message waits.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "docs/userguide/tasks.rst (celery 768e476), acks_late",
+   "instances": "all",
+   "evidence": "",
+   "witness": "neverQuiet",
+   "mutant": "ackmatrix: a second run that requeues again",
+   "violations": []
+  },
+  {
+   "id": "ackmatrix.progress",
+   "spec": "ackmatrix.qnt",
+   "definition": "progress",
+   "kind": "liveness",
+   "pattern": "Bounded existence of steps (lemma 1 of 3: every run is finite)",
+   "statement": "steps <= D: finite by exhaustive search with the step counter in the state. The spec has no closed-form measure.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "the search: D per instance in expected.json",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "ackmatrix.stepOrQuiet",
+   "spec": "ackmatrix.qnt",
+   "definition": "stepOrQuiet",
+   "kind": "liveness",
+   "pattern": "Response (lemma 2 of 3: a run stops only in a quiet state)",
+   "statement": "A run stops only in a quiet state: TLC runs stepOrQuiet with deadlock detection on.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "the search",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "ackmatrix.neverQuiet",
+   "spec": "ackmatrix.qnt",
+   "definition": "neverQuiet",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "Some run ends.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
+   "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "ackmatrix.neverRanTwice",
+   "spec": "ackmatrix.qnt",
+   "definition": "neverRanTwice",
+   "kind": "witness",
+   "pattern": "Existence",
+   "statement": "The task runs twice.",
+   "assumptions": "one task message; the first run returns, raises, retries, raises Reject(requeue=True), Reject(requeue=False) or Ignore, or loses its pool process; a second run (a requeued message, or a retry's new message) returns; acks_late, task_acks_on_failure and task_reject_on_worker_lost per instance; a Redis broker, or RabbitMQ with a dead letter exchange on the queue",
    "source": "sanity",
    "instances": "all",
    "evidence": "",

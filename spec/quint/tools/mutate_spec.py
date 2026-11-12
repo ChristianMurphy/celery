@@ -260,6 +260,15 @@ MUTANTS = [
      "      | Known => failWithContext", "      | Known => failWithoutContext"),
     ('badmsg: a sibling that does not return its part', 'badmsg.qnt', 'known_chord', 'quietDone',
      "parts' = parts + 1, siblingDone' = true,", "parts' = parts, siblingDone' = true,"),
+    # ackmatrix.qnt: one mutant per property
+    ('ackmatrix: a Reject without requeue that stores nothing', 'ackmatrix.qnt', 'late_rejectdrop', 'outcomeVisible',
+     "val store = e == RejectDrop or (e == Lost and not(requeue))", "val store = (e == Lost and not(requeue))"),
+    ('ackmatrix: a requeue that removes the message', 'ackmatrix.qnt', 'late_rejectrequeue', 'requeueRuns',
+     "             else if (requeue) Queued", "             else if (requeue) Gone"),
+    ('ackmatrix: dead lettering on the wrong broker', 'ackmatrix.qnt', 'late_rejectdrop_dlx', 'rejectDeadLetters',
+     "else if (drop and CFG.broker == RabbitDlx) DeadLettered", "else if (drop and CFG.broker == Redis) DeadLettered"),
+    ('ackmatrix: a second run that requeues again', 'ackmatrix.qnt', 'late_rejectrequeue', 'quietDone',
+     "val e = if (runs == 1) CFG.ending else Returns", "val e = if (runs == 1) CFG.ending else RejectRequeue"),
 ]
 
 

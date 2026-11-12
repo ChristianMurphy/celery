@@ -1,4 +1,137 @@
 {
+ "ackmatrix.qnt": {
+  "early_ignores": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "outcomeVisible": 5
+   }
+  },
+  "early_lost": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "early_lost_rejectlost": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "early_raises": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "early_rejectdrop": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "rejectDeadLetters": 5
+   }
+  },
+  "early_rejectdrop_dlx": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "rejectDeadLetters": 5
+   }
+  },
+  "early_rejectrequeue": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5,
+    "outcomeVisible": 5,
+    "requeueRuns": 5
+   }
+  },
+  "early_retries": {
+   "D": 8,
+   "violated": {
+    "neverQuiet": 9,
+    "neverRanTwice": 6
+   }
+  },
+  "early_returns": {
+   "D": 4,
+   "violated": {
+    "neverQuiet": 5
+   }
+  },
+  "late_ignores": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "outcomeVisible": 4
+   }
+  },
+  "late_lost": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "late_lost_rejectlost": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRanTwice": 5
+   }
+  },
+  "late_raises": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "late_raises_noackfail": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "late_raises_noackfail_dlx": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "late_rejectdrop": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4,
+    "rejectDeadLetters": 4
+   }
+  },
+  "late_rejectdrop_dlx": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  },
+  "late_rejectrequeue": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRanTwice": 5
+   }
+  },
+  "late_retries": {
+   "D": 6,
+   "violated": {
+    "neverQuiet": 7,
+    "neverRanTwice": 5
+   }
+  },
+  "late_returns": {
+   "D": 3,
+   "violated": {
+    "neverQuiet": 4
+   }
+  }
+ },
  "badmsg.qnt": {
   "badeta_chord": {
    "D": 3,
