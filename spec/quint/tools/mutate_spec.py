@@ -172,7 +172,11 @@ MUTANTS = [
      "ended' = if (over) (if (CFG.dlx) DeadLettered else Dropped) else ended,",
      "ended' = if (over) Dropped else ended,"),
     ('redelivery: an early ack that leaves the record', 'redelivery.qnt', 'redis_early_kill', 'earlyAtMostOnce',
-     "rec' = if (REDIS and not(LATE)) NoRec else rec,", "rec' = rec,"),
+     # in start(): backendFails() has the same line
+     "rec' = if (REDIS and not(LATE)) NoRec else rec,\n"
+     "      unacked' = if (LATE) unacked else unackedAfter(w, h),",
+     "rec' = rec,\n"
+     "      unacked' = if (LATE) unacked else unackedAfter(w, h),"),
     ('redelivery: a restore that does not mark the copy redelivered', 'redelivery.qnt', 'redis_dedup_long_w1', 'noRerunAfterSuccess',
      "ready' = ready + 1, redeliv' = true, rec' = NoRec,", "ready' = ready + 1, redeliv' = redeliv, rec' = NoRec,"),
     ('redelivery: a delivery that leaves the copy on the queue', 'redelivery.qnt', 'redis_late_short', 'projectionOk',
