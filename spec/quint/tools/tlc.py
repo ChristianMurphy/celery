@@ -9,7 +9,10 @@ so each property is checked by its own TLC run on the same file:
 * a violated one comes with a shortest counterexample (one worker, BFS);
 * with a step counter in the state, the search depth is the longest run;
 * with the specs' ``stepOrQuiet`` as the step and deadlock checking on, a
-  state without a successor is a run that stopped without being quiet.
+  state without a successor is a run that stopped without being quiet;
+* a temporal property (``settles``) is checked over every behavior that
+  meets its fairness condition; a violation is a run that ends in a state
+  that repeats for ever.
 
     python3 tools/tlc.py chord.qnt redis_dup atMostOnce quietDone
 """
@@ -130,12 +133,15 @@ def instance_file(spec: str | Path, main: str) -> Path:
 
 
 def compile_tla(spec: str | Path, main: str, props: list[str],
-                step: str = 'step') -> Path:
-    """Compile instance ``main`` of ``spec`` to TLA+, keeping ``props``.
+                step: str = 'step', temporal: list[str] | None = None) -> Path:
+    """Compile instance ``main`` of ``spec`` to TLA+, keeping ``props`` and
+    the temporal properties ``temporal``.
 
     Not safe to call in parallel: quint talks to one Apalache server."""
     single = instance_file(spec, main)
-    key = hashlib.sha1(f'{step}:{",".join(props)}'.encode()).hexdigest()[:8]
+    temporal = temporal or []
+    key = hashlib.sha1(':'.join([step, ','.join(props), *temporal])
+                       .encode()).hexdigest()[:8]
     out = single.parent / key / f'{main}.tla'
     if out.exists() and out.stat().st_size:
         return out
@@ -147,7 +153,8 @@ def compile_tla(spec: str | Path, main: str, props: list[str],
     with open(part, 'w') as f:
         p = subprocess.run(
             ['quint', 'compile', '--target=tlaplus', f'--main={main}',
-             str(single), f'--step={step}', f'--invariant={",".join(props)}'],
+             str(single), f'--step={step}', f'--invariant={",".join(props)}',
+             *([f'--temporal={",".join(temporal)}'] if temporal else [])],
             cwd=ROOT, stdout=f, stderr=subprocess.PIPE, text=True)
     text = part.read_text()
     part.unlink()
@@ -168,12 +175,14 @@ def operator(tla: Path, name: str) -> str:
 
 def run_tlc(tla: Path, invariants: list[str] | str | None, workers: int = 1,
             heap: str = '-Xmx3G', timeout: float | None = None,
-            deadlock: bool = False) -> dict:
+            deadlock: bool = False, temporal: str | None = None) -> dict:
     """Run TLC on a compiled instance. Returns
     {result: 'holds'|'violated'|'deadlock'|'error', states, distinct, depth,
     trace, secs, violated}. ``trace`` is the number of states in the
     counterexample, ``violated`` the Quint name of the invariant. With
-    ``deadlock`` a state without a successor is reported."""
+    ``deadlock`` a state without a successor is reported. ``temporal``
+    names one temporal property to check as well; when it fails, ``trace``
+    counts the states before the one that repeats."""
     if isinstance(invariants, str):
         invariants = [invariants]
     names = {operator(tla, i): i for i in invariants or []}
@@ -183,6 +192,8 @@ def run_tlc(tla: Path, invariants: list[str] | str | None, workers: int = 1,
         cfg = 'INIT q_init\nNEXT q_step\n'
         for name in names:
             cfg += f'INVARIANT {name}\n'
+        if temporal:
+            cfg += f'PROPERTY {operator(tla, temporal)}\n'
         (tmp / f'{tla.stem}.cfg').write_text(cfg)
         t0 = time.time()
         try:
@@ -208,6 +219,12 @@ def run_tlc(tla: Path, invariants: list[str] | str | None, workers: int = 1,
             res['depth'] = int(m[1])
         if p.returncode == 0:
             res['result'] = 'holds'
+        elif re.search(r'Temporal propert\w+ .*violated', text):
+            res['result'] = 'violated'
+            res['violated'] = temporal
+            res['trace'] = max(int(n) for n in
+                               re.findall(r'^State (\d+):', text, re.M)) - 1
+            res['text'] = text[text.index('Error: '):]
         elif 'is violated' in text or 'Deadlock reached' in text:
             m = re.search(r'Error: Invariant (\w+) is violated', text)
             res['result'] = 'violated' if m else 'deadlock'

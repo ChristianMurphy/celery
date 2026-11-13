@@ -20,7 +20,10 @@ fast   the catalog (catalog.py): an entry per property, a reason per expected
 full   one exhaustive search per instance with TLC (see tlc.py): every
        reachable state, the exact longest run D, every property that should
        hold, and that a run stops only in a quiet state; one more search per
-       expected violation, for its shortest counterexample. Then Apalache
+       expected violation, for its shortest counterexample; and where the
+       catalog lists a temporal property (``settles``), a search of every
+       fair behavior for it, which must fail exactly where the lemmas do.
+       Then Apalache
        on the small instances: ``steps <= D`` at depth D + 1, which makes
        its bounded check of each property at depth D complete.
 long   the same Apalache checks for the other instances (each can take
@@ -77,6 +80,8 @@ class Spec:
     fast_samples: int = 300
     # the module whose ``type Action`` lists the actions and outcomes
     types: str = ''
+    # temporal properties, checked by TLC in the full tier
+    temporal: list[str] = field(default_factory=list)
 
 
 def instances(file: str) -> list[str]:
@@ -96,7 +101,8 @@ def specs() -> dict[str, Spec]:
         out[short.get(stem, stem)] = Spec(
             file, instances(file), s['properties'], s['witnesses'],
             apalache=s['apalache'], fast=s['fast'], metric=s['metric'],
-            types=s['types'], fast_samples=s.get('fast_samples', 300))
+            types=s['types'], fast_samples=s.get('fast_samples', 300),
+            temporal=s.get('temporal', []))
     return out
 
 
@@ -276,10 +282,12 @@ def fast(names: list[str], only: str | None, samples: int | None, seed: str,
 
 
 # ---- full tier -------------------------------------------------------------
-def search(spec: Spec, inst: str, tla: Path, exp: dict) -> dict:
+def search(spec: Spec, inst: str, tla: Path, exp: dict,
+           temporal_tla: Path | None = None) -> dict:
     """Exhaustive search of one instance: the properties expected to hold in
     one pass (with the longest run and the quiet-stop check), then each
-    expected violation on its own for its shortest counterexample."""
+    expected violation on its own for its shortest counterexample, then
+    each temporal property over every fair behavior."""
     violated = exp.get('violated', {})
     # a witness expected to hold (its state is unreachable here) is checked
     # in the same pass
@@ -311,8 +319,23 @@ def search(spec: Spec, inst: str, tla: Path, exp: dict) -> dict:
             res['secs'] += r['secs']
             res['cells'][prop] = (r['trace'] if r['result'] == 'violated'
                                   else r['result'])
+    res['temporal'] = {}
+    for prop in spec.temporal if temporal_tla else []:
+        r = tlc.run_tlc(temporal_tla, None, temporal=prop)
+        res['secs'] += r['secs']
+        res['temporal'][prop] = (r['trace'] if r['result'] == 'violated'
+                                 else r['result'])
     res['secs'] = round(res['secs'], 1)
     return res
+
+
+def lemmas_hold(res: dict) -> bool:
+    """Whether the three liveness lemmas hold in a search result: every run
+    is finite (the search ended), it stops only when quiet, and a quiet
+    state has ended (``quietDone``, where the spec has it)."""
+    return (res['stops_quiet']
+            and res['cells'].get('progress', 'holds') == 'holds'
+            and res['cells'].get('quietDone', 'holds') == 'holds')
 
 
 def apalache(spec: Spec, inst: str, depth: int, exp: dict,
@@ -364,17 +387,25 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
         tc = time.time()
         tlas = {i: tlc.compile_tla(spec.file, i, spec.props + spec.witnesses,
                                    step='stepOrQuiet') for i in insts}
+        ttlas = {i: tlc.compile_tla(spec.file, i, [], step='stepOrQuiet',
+                                    temporal=spec.temporal)
+                 for i in insts} if spec.temporal else {}
         compile_secs = time.time() - tc
         with cf.ThreadPoolExecutor(jobs) as ex:
             res = dict(zip(insts, ex.map(
                 lambda i: search(spec, i, tlas[i],
-                                 exp.get(spec.file, {}).get(i, {})), insts)))
+                                 exp.get(spec.file, {}).get(i, {}),
+                                 ttlas.get(i)), insts)))
         report[spec.file] = res
         cols = spec.props + spec.witnesses
         print(f'\n{spec.file} (TLC, every reachable state; compile '
               f'{compile_secs:.0f} s). Properties: {", ".join(spec.props)}. '
               f'Witnesses: {", ".join(spec.witnesses)}. A number is the '
-              'states in a shortest counterexample.')
+              'states in a shortest counterexample.'
+              + (f' Temporal: {", ".join(spec.temporal)}, over every fair '
+                 'behavior; it must fail exactly where a liveness lemma '
+                 'does, and its number is the states before the one that '
+                 'repeats (not a shortest trace).' if spec.temporal else ''))
         print('| instance | D | states | violated | reachable (witnesses) | '
               'stops only when quiet | time |')
         print('|---|---|---|---|---|---|---|')
@@ -392,6 +423,16 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
                 if cell:
                     cells['witnesses' if prop in spec.witnesses
                           else 'props'].append(cell)
+            for prop, got in r['temporal'].items():
+                want_holds = lemmas_hold(r)
+                if (got == 'holds') != want_holds or got in ('error',
+                                                             'timeout'):
+                    ok = False
+                    cells['props'].append(
+                        f'{prop} ({got}) EXPECTED '
+                        f'{"holds" if want_holds else "a violation"}')
+                elif got != 'holds':
+                    cells['props'].append(f'{prop} ({got})')
             d = str(r['D'])
             if e.get('D') != r['D'] and not update:
                 ok = False

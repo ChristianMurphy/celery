@@ -1207,15 +1207,15 @@ module chord {
 
   // The choices are made next to the actions that use them: the simulator
   // and TLC try every combination of the choices in scope for every action.
-  action step: bool = any {
+  // What the code and the clock do on their own.
+  action work: bool = any {
     {
       nondet w = EXECS.oneOf()
       any {
         deliverUnlock(w), store(w), partReturn(w), redisJoin(w), extend(w),
-        cleanup(w), count(w), kvClean(w), finish(w), loseWorker(w),
-        loseChild(w),
+        cleanup(w), count(w), kvClean(w), finish(w),
         returned(w), countKey(w), readResults(w), checkKeys(w), reread(w),
-        claim(w),
+        claim(w), publish(w, true), unlockPoll(w, true),
       }
     },
     {
@@ -1226,13 +1226,23 @@ module chord {
     {
       nondet w = EXECS.oneOf()
       nondet ok = Set(true, false).oneOf()
-      any { publish(w, ok), kvJoin(w, ok), unlockPoll(w, ok) }
+      kvJoin(w, ok)
+    },
+    claimExpires, doneExpires,
+  }
+
+  // What may happen and need not: each of these uses up a fault budget.
+  action fault: bool = any {
+    {
+      nondet w = EXECS.oneOf()
+      any {
+        loseWorker(w), loseChild(w), publish(w, false), unlockPoll(w, false),
+      }
     },
     {
       nondet h = HEADERS.oneOf()
       dup(h)
     },
-    claimExpires, doneExpires,
     {
       nondet k = KEYS.oneOf()
       evict(k)
@@ -1244,6 +1254,8 @@ module chord {
       interrupt(w, point, ran)
     },
   }
+
+  action step: bool = any { work, fault }
 
   // ---- properties --------------------------------------------------------------
   // Safety: the body is dispatched at most once.
@@ -1288,6 +1300,7 @@ module chord {
   //    failed (quietDone).
   // Together: every run ends, within D steps, with the body dispatched or
   // the chord failed. An instance that breaks 3 has a run that hangs.
+  // "settles" below says the same in one formula, and TLC checks it.
   val remaining: Faults = {
     dups: CFG.max.dups - used.dups,
     workerLost: CFG.max.workerLost - used.workerLost,
@@ -1313,7 +1326,9 @@ module chord {
   val progress: bool = measure >= 0 and steps + measure <= MEASURE0
 
   // Quiet: nothing is left that could change the chord's outcome without a
-  // new fault.
+  // new fault. A quiet state is not final while a fault budget is left: a
+  // duplicate delivery after it starts the work again. So quietDone is
+  // checked in every quiet state, not only in the last one.
   //   redis, kv  no message queued, no process busy, no claim left to
   //              expire (a claim that expires lets a later copy claim).
   //   unlock     no header message queued or running, and either every
@@ -1345,6 +1360,22 @@ module chord {
     lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula: a run in which the code keeps working ends in
+  // a quiet state, for good, with the body dispatched or the chord failed.
+  // The fairness is on "work" only: no fault has to happen, and any that
+  // the budgets allow may. It is the conclusion of the three lemmas above,
+  // checked on its own by TLC with stepOrQuiet as the step (the simulator
+  // and Apalache's bounded search check the lemmas).
+  val vars = (
+    queue, uq, execs, results, jset, dset, skey, ckey, nextTok, counter,
+    groupSaved, partKeys, doneKey, dispatched, bodyArgs, bodyArgsSize,
+    chordError, errors, errorAfterDispatch, dispatchAfterError, premature,
+    used, lastAction, steps,
+  )
+  temporal settles: bool =
+    weakFair(work, vars) implies
+      eventually(always(quiet and (dispatched > 0 or chordError)))
 
   val safety: bool =
     atMostOnce and noPremature and argsComplete and noErrorAfterDispatch

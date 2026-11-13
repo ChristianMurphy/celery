@@ -16,6 +16,9 @@
    "witnesses": [
     "noSuccessEver"
    ],
+   "temporal": [
+    "settles"
+   ],
    "apalache": [
     "rtw",
     "mongo",
@@ -52,6 +55,9 @@
     "neverDispatched",
     "neverFailed",
     "neverQuiet"
+   ],
+   "temporal": [
+    "settles"
    ],
    "apalache": [],
    "fast": [
@@ -863,6 +869,21 @@
    "violations": []
   },
   {
+   "id": "resultstate.settles",
+   "spec": "resultstate.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run that keeps going ends for good with every run having written all it had to.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; weak fairness of `step` (the spec has no faults)",
+   "source": "the spec: the conclusion of `progress` and `stepOrQuiet`, checked by TLC over every fair behavior of `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
    "id": "chord.atMostOnce",
    "spec": "chord.qnt",
    "definition": "atMostOnce",
@@ -1297,6 +1318,21 @@
    "statement": "Some run ends.",
    "assumptions": "",
    "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "chord.settles",
+   "spec": "chord.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, with the body dispatched or the chord failed. It fails exactly where a lemma fails.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; weak fairness of `work` (every action but the faults), none for the faults; `chord_unlock` retries have a budget of 2",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
    "instances": "all",
    "evidence": "",
    "witness": "",

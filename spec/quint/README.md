@@ -100,7 +100,7 @@ and TLC is the one inside that jar.
 | Tier | What | Time |
 |---|---|---|
 | fast | the catalog and the checklist; typecheck; `type_errors.py`; one simulator run per listed instance (at most 30) with the properties and `steps <= D` as invariants, the expected violations as witnesses, and the 300 traces read back to count actions and outcomes; `--all` for every instance | about 70 s; 4 min with `--all` |
-| full | TLC: every reachable state of every instance, D, every property, the quiet-stop check, and a shortest counterexample per expected violation. Apalache on the result-state instances: `steps <= D` at depth D + 1, then each property at depth D | about 70 min |
+| full | TLC: every reachable state of every instance, D, every property, the quiet-stop check, a shortest counterexample per expected violation, and `settles` over every fair behavior where a spec has it. Apalache on the result-state instances: `steps <= D` at depth D + 1, then each property at depth D | about 70 min |
 | long | Apalache on the chord and transport instances (an hour's timeout each), a 20,000 sample simulator run | not run |
 
 The fast tier keeps, for every spec, one instance that passes every
@@ -179,11 +179,11 @@ an int, a part-return outcome on a count action, a misspelled protocol (every
 guard false, so every property held), and a store named `"redis"`, which the
 untyped spec checked silently as its last branch, `"es"`.
 
-## Liveness in three lemmas
+## Liveness: three lemmas and one formula
 
-Quint's simulator does not check temporal properties, so liveness is three
-checks that a model checker can do completely, under the same names in
-every spec:
+Quint's simulator and Apalache's bounded search check invariants, not
+temporal properties, so liveness is three checks that every engine can do,
+under the same names in every spec:
 
 1. `progress`: every run is finite. Each spec counts its steps. Where a
    spec has a closed-form measure (`chord.qnt`, `resultstate.qnt`: what the
@@ -204,11 +204,34 @@ every spec:
 Together: every run ends within D steps, in a state that has ended. An
 instance that breaks 3 has a run that hangs.
 
-The fairness assumption is in the fault budgets: a fault (a lost worker, a
-duplicate delivery, a timeout) happens a bounded number of times, and a
-recovery step (a restore, a reconnect, a retry) is never refused forever,
-because a state where one is enabled is not quiet. These are exhaustive
-checks of small instances, not proofs for all sizes.
+A quiet state is not a final one while a fault budget is left: a duplicate
+delivery after it starts the work again. Lemma 3 is therefore checked in
+every quiet state, not only in the last.
+
+`chord.qnt` and `resultstate.qnt` also state the conclusion as one temporal
+property, which TLC checks over every fair behavior in the full tier
+(`quint compile --temporal`, then `PROPERTY` in TLC's configuration):
+
+```quint
+temporal settles: bool =
+  weakFair(work, vars) implies
+    eventually(always(quiet and (dispatched > 0 or chordError)))
+```
+
+`step` is `any { work, fault }`: `work` is what the code and the clock do on
+their own, `fault` is every action that uses up a fault budget. The fairness
+is on `work` only, so no fault has to happen and any that the budgets allow
+may. `check.py` requires `settles` to fail exactly where a lemma fails; a
+difference would mean the lemmas and the formula do not say the same thing.
+The lemmas stay, because the simulator and Apalache cannot check the
+formula, and because `steps <= D` gives a bound that it does not. The other
+specs have the lemmas only.
+
+The fairness assumption of the lemmas is in the fault budgets: a fault (a
+lost worker, a duplicate delivery, a timeout) happens a bounded number of
+times, and a recovery step (a restore, a reconnect, a retry) is never
+refused forever, because a state where one is enabled is not quiet. These
+are exhaustive checks of small instances, not proofs for all sizes.
 
 ## How to add a model
 

@@ -336,6 +336,14 @@ module resultstate {
     steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula: a run that keeps going ends, for good, with
+  // every run having written all it had to. The spec has no faults, so the
+  // fairness is on every action. It is the conclusion of the lemmas above,
+  // checked on its own by TLC with stepOrQuiet as the step.
+  val vars = (stored, pc, writes, forgets, observed, prev, lastAction, steps)
+  temporal settles: bool =
+    weakFair(step, vars) implies eventually(always(quiet))
 }
 
 // ---- instances: one per store --------------------------------------------

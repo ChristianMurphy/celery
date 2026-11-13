@@ -13,7 +13,8 @@ properties.json has two parts.
 its ``Action`` type, the SHAs its citations are pinned to, its properties
 and witnesses in table order, the instances of the fast tier, one instance
 that passes every property (so that a model that goes vacuous shows up),
-how lemma 1 of the liveness argument is established, and whether the
+how lemma 1 of the liveness argument is established, the temporal
+properties TLC checks for it (``temporal``, optional), and whether the
 checklist is enforced for it or only reported (``grandfathered``).
 
 ``properties``: one entry per property: id, the spec and the definition in
@@ -96,12 +97,14 @@ def check(cat: dict | None = None) -> list[str]:
         fast += len(s['fast'])
         text = (ROOT / s['family'] / spec).read_text()
         # an entry per property and witness, and per lemma
-        for name in s['properties'] + s['witnesses'] + ['stepOrQuiet',
-                                                         'progress']:
+        temporal = s.get('temporal', [])
+        for name in s['properties'] + s['witnesses'] + temporal + [
+                'stepOrQuiet', 'progress']:
             if name not in ents:
                 errors.append(f'{spec}: {name} has no catalog entry')
         for name, e in ents.items():
-            if name not in s['properties'] + s['witnesses'] + list(LEMMAS):
+            if name not in (s['properties'] + s['witnesses'] + temporal
+                            + list(LEMMAS)):
                 errors.append(f'{spec}: catalog entry {name} is not checked')
             if e['kind'] not in KINDS:
                 errors.append(f'{e["id"]}: kind {e["kind"]}')
@@ -112,6 +115,10 @@ def check(cat: dict | None = None) -> list[str]:
                     and not (name == 'progress'
                              and s['progress'] == NO_MEASURE):
                 errors.append(f'{e["id"]}: no definition {name} in {spec}')
+            if name in temporal and not re.search(
+                    rf'^\s*temporal {name}\b', text, re.M):
+                errors.append(f'{e["id"]}: {name} is not a temporal '
+                              f'definition in {spec}')
             if e['kind'] == 'witness' or name == 'stepOrQuiet':
                 continue
             if e.get('witness') not in s['witnesses'] \
@@ -227,7 +234,8 @@ def property_table(cat: dict, spec: str) -> str:
     rows = ['| Property | Kind | Statement | Pattern | Source |',
             '|---|---|---|---|---|']
     order = s['properties'] + [n for n in LEMMAS if n in ents
-                               and n not in s['properties']] + s['witnesses']
+                               and n not in s['properties']] \
+        + s.get('temporal', []) + s['witnesses']
     for name in order:
         e = ents[name]
         text = e['statement']
