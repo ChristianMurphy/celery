@@ -244,8 +244,8 @@ MUTANTS = [
      "      | Interval => wall - procOf(p).last >= R\n      | Cron => nextOcc(procOf(p).last) <= wall",
      "      | Interval => wall - procOf(p).last >= R\n      | Cron => nextOcc(procOf(p).last) + R <= wall"),
     ('beat: a new entry that starts two periods ahead', 'beat.qnt', 'cron_none', 'quietDone',
-     "last: if (saved.get(b) < 0) wall else saved.get(b), lastSync: -1 })),",
-     "last: if (saved.get(b) < 0) wall + 2 * R else saved.get(b), lastSync: -1 })),"),
+     "last: if (saved.get(fileOf(b)) < 0) wall else saved.get(fileOf(b)),",
+     "last: if (saved.get(fileOf(b)) < 0) wall + 2 * R else saved.get(fileOf(b)),"),
     # handlers.qnt: one mutant per property
     ('handlers: a pool result that runs the failure hooks again', 'handlers.qnt', 'raises_default', 'hooksOnce',
      "requeued' = requeued, runs' = runs, stored' = stored, setHooks(cur),", "requeued' = requeued, runs' = runs, stored' = stored, setHooks(failHooks(cur, true)),"),
