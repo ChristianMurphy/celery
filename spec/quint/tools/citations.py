@@ -52,7 +52,8 @@ HELPERS = {'init', 'step', 'work', 'fault', 'stutter', 'stepOrQuiet', 'did',
            'setConn', 'restoreAll', 'keepObs', 'setRun', 'dinit',
            'dkeep', 'inner', 'keepRedis', 'keepClient', 'keepKv',
            'keepDispatch', 'keepErrors', 'markError', 'setHooks',
-           'keepRun', 'keepControl'}
+           'keepRun', 'keepControl', 'innerWork',
+           'innerFault'}
 
 
 def repo(name: str) -> Path | None:

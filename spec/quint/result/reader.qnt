@@ -411,23 +411,38 @@ module reader {
   }
 
   // ---- step ----
-  action step: bool = any {
+  // What the code and the clock do on their own.
+  action work: bool = any {
     { nondet t = TASKS.oneOf()
       any {
         writeStarted(t),
         { nondet s = Set(Success, Failure).oneOf() writeFinal(t, s) },
-        { nondet s = LATE.oneOf() writeLate(t, s) },
-        expire(t),
       } },
-    expireGroup, save, restore,
+    save, restore,
     { nondet r = READERS.oneOf()
       any {
-        start(r), refetch(r), resubscribe(r), cut(r),
-        { nondet p = Set(AtSave, AtRestore, AtRead).oneOf() backendError(r, p) },
+        start(r), refetch(r), resubscribe(r),
         { nondet t = TASKS.oneOf()
           any { pollRead(r, t), subscribe(r, t), firstRead(r, t), drain(r, t) } },
       } },
   }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    { nondet t = TASKS.oneOf()
+      any {
+        { nondet s = LATE.oneOf() writeLate(t, s) },
+        expire(t),
+      } },
+    expireGroup,
+    { nondet r = READERS.oneOf()
+      any {
+        cut(r),
+        { nondet p = Set(AtSave, AtRestore, AtRead).oneOf() backendError(r, p) },
+      } },
+  }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ----------------------------------------------------------
   // invariants
@@ -471,6 +486,14 @@ module reader {
     lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
   // In a quiet state every reader has ended: it has every answer, or its
   // save, restore or read raised, or the restore found nothing.
   val quietDone: bool = quiet implies READERS.forall(r =>

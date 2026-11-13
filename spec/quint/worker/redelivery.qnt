@@ -724,17 +724,30 @@ module redelivery {
     did(Tick),
   }
 
-  action inner: bool = any {
-    publish, restoreVisible, tick, expire, republish,
+  // What the code and the clock do on their own.
+  action innerWork: bool = any {
+    publish, restoreVisible, tick,
     { nondet w = WORKERS.oneOf()
       any {
-        deliver(w), start(w), dedupSkip(w), dedupReadFails(w), finish(w), ack(w),
-        { nondet at = Set(AtStartedWrite, AtSuccessWrite).oneOf() backendFails(w, at) },
+        deliver(w), start(w), dedupSkip(w), finish(w), ack(w),
         consumerTimeout(w), exit(w), restart(w), notice(w),
+      } },
+  }
+
+  // What may happen and need not: each of these uses up a budget.
+  action innerFault: bool = any {
+    expire, republish,
+    { nondet w = WORKERS.oneOf()
+      any {
+        dedupReadFails(w),
+        { nondet at = Set(AtStartedWrite, AtSuccessWrite).oneOf() backendFails(w, at) },
         kill(w), cutOff(w),
       } },
     { nondet what = Set(LostReady, LostRecord).oneOf() loseData(what) },
   }
+
+  action inner: bool = any { innerWork, innerFault }
+  action work: bool = all { innerWork, prevCopies' = copies }
   action step: bool = all { inner, prevCopies' = copies }
 
   // ---- properties ----------------------------------------------------------
@@ -782,6 +795,14 @@ module redelivery {
     lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
   // A quiet state has a final result or a finished run, or the broker
   // dead-lettered the task.
   val quietDone: bool =

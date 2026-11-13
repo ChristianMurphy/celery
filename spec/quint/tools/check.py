@@ -57,6 +57,11 @@ EXPECTED = HERE / 'expected.json'
 #: than the samples, quint keeps the longest runs, and an action that ends a
 #: run early (an interrupt, a lost worker) is never among them.
 TRACES = 300
+#: The full tier checks a temporal property on instances with at most this
+#: many reachable states; the long tier checks it on every instance. The
+#: search for a fair behavior takes about twice as long as the search of
+#: the states, and an instance of reader.qnt has 9 million.
+TEMPORAL_STATES = 1_000_000
 SCRATCH = tlc.SCRATCH
 
 
@@ -283,7 +288,8 @@ def fast(names: list[str], only: str | None, samples: int | None, seed: str,
 
 # ---- full tier -------------------------------------------------------------
 def search(spec: Spec, inst: str, tla: Path, exp: dict,
-           temporal_tla: Path | None = None) -> dict:
+           temporal_tla: Path | None = None,
+           temporal_limit: int | None = None) -> dict:
     """Exhaustive search of one instance: the properties expected to hold in
     one pass (with the longest run and the quiet-stop check), then each
     expected violation on its own for its shortest counterexample, then
@@ -321,6 +327,9 @@ def search(spec: Spec, inst: str, tla: Path, exp: dict,
                                   else r['result'])
     res['temporal'] = {}
     for prop in spec.temporal if temporal_tla else []:
+        if temporal_limit is not None and res['states'] > temporal_limit:
+            res['temporal'][prop] = 'skipped'
+            continue
         r = tlc.run_tlc(temporal_tla, None, temporal=prop)
         res['secs'] += r['secs']
         res['temporal'][prop] = (r['trace'] if r['result'] == 'violated'
@@ -395,7 +404,9 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
             res = dict(zip(insts, ex.map(
                 lambda i: search(spec, i, tlas[i],
                                  exp.get(spec.file, {}).get(i, {}),
-                                 ttlas.get(i)), insts)))
+                                 ttlas.get(i),
+                                 None if long else TEMPORAL_STATES),
+                insts)))
         report[spec.file] = res
         cols = spec.props + spec.witnesses
         print(f'\n{spec.file} (TLC, every reachable state; compile '
@@ -405,7 +416,9 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
               + (f' Temporal: {", ".join(spec.temporal)}, over every fair '
                  'behavior; it must fail exactly where a liveness lemma '
                  'does, and its number is the states before the one that '
-                 'repeats (not a shortest trace).' if spec.temporal else ''))
+                 'repeats (not a shortest trace). Instances with more '
+                 f'than {TEMPORAL_STATES} states: long tier only.'
+                 if spec.temporal else ''))
         print('| instance | D | states | violated | reachable (witnesses) | '
               'stops only when quiet | time |')
         print('|---|---|---|---|---|---|---|')
@@ -424,6 +437,9 @@ def full(names: list[str], only: str | None, jobs: int, update: bool,
                     cells['witnesses' if prop in spec.witnesses
                           else 'props'].append(cell)
             for prop, got in r['temporal'].items():
+                if got == 'skipped':
+                    cells['props'].append(f'{prop} (long tier)')
+                    continue
                 want_holds = lemmas_hold(r)
                 if (got == 'holds') != want_holds or got in ('error',
                                                              'timeout'):

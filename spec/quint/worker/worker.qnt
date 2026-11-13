@@ -801,7 +801,8 @@ module worker {
 
   // The choices are made next to the actions that use them: the simulator
   // and TLC try every combination of the choices in scope for every action.
-  action step: bool = any {
+  // What the code and the clock do on their own.
+  action work: bool = any {
     {
       nondet m = MSGS.oneOf()
       publish(m)
@@ -811,19 +812,38 @@ module worker {
       nondet m = MSGS.oneOf()
       any {
         deliver(c, m), lostPop(c, m), etaDue(c, m), write(c, m), accept(c, m),
-        finish(c, m), finishDropped(c, m), hang(c, m), readResult(c, m),
-        restoreVisible(m, c),
+        finish(c, m), finishDropped(c, m), readResult(c, m),
+        all { restoreWhy(m, c) != HeldPastTimeout, restoreVisible(m, c) },
       }
     },
     {
       nondet c = WORKERS.oneOf()
+      // restart has a budget and is no fault: a supervisor starts a dead
+      // worker again, and "quiet" counts a worker that can be restarted as
+      // one that can act.
+      any { exit(c), heal(c), noticeLoss(c), reconnect(c), restart(c) }
+    },
+    brokerRestart,
+  }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    {
+      nondet c = WORKERS.oneOf()
+      nondet m = MSGS.oneOf()
       any {
-        sigterm(c), exit(c), kill(c), restart(c), partition(c), cutOff(c),
-        reset(c), heal(c), noticeLoss(c), reconnect(c),
+        hang(c, m),
+        all { restoreWhy(m, c) == HeldPastTimeout, restoreVisible(m, c) },
       }
     },
-    crash, brokerRestart,
+    {
+      nondet c = WORKERS.oneOf()
+      any { sigterm(c), kill(c), partition(c), cutOff(c), reset(c) }
+    },
+    crash,
   }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ---------------------------------------------------------
   def published: Set[MsgId] = MSGS.exclude(unpublished)
@@ -902,4 +922,12 @@ module worker {
     ops' = ops, used' = used, lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
 }

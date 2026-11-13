@@ -97,6 +97,9 @@
     "neverDuplicated",
     "neverPutBack"
    ],
+   "temporal": [
+    "settles"
+   ],
    "apalache": [],
    "fast": [
     "pr_credit_timeout"
@@ -128,6 +131,9 @@
    "witnesses": [
     "neverQuiet",
     "neverTwice"
+   ],
+   "temporal": [
+    "settles"
    ],
    "apalache": [],
    "fast": [
@@ -225,6 +231,9 @@
     "neverTwice",
     "neverSkipped"
    ],
+   "temporal": [
+    "settles"
+   ],
    "apalache": [],
    "fast": [
     "redis_late_short"
@@ -253,6 +262,9 @@
     "neverQuiet",
     "neverRetried",
     "neverFailed"
+   ],
+   "temporal": [
+    "settles"
    ],
    "apalache": [],
    "fast": [
@@ -289,6 +301,9 @@
     "neverRevokedStored",
     "neverRevokeApplied"
    ],
+   "temporal": [
+    "settles"
+   ],
    "apalache": [],
    "fast": [
     "checkaccept_expire"
@@ -315,6 +330,9 @@
     "neverQuiet",
     "neverAnswered",
     "neverFailed"
+   ],
+   "temporal": [
+    "settles"
    ],
    "apalache": [],
    "fast": [
@@ -1592,6 +1610,21 @@
    "violations": []
   },
   {
+   "id": "redis_transport.settles",
+   "spec": "redis_transport.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, and `quietDone` holds there. It fails exactly where a lemma fails.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; weak fairness of `work` (every action that uses no fault budget), none for the faults",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
    "id": "worker.exactlyOnce",
    "spec": "worker.qnt",
    "definition": "exactlyOnce",
@@ -1904,6 +1937,21 @@
    "statement": "Some run starts a task twice.",
    "assumptions": "",
    "source": "docs/getting-started/backends-and-brokers/redis.rst:315-320 (celery 768e476): a task not acknowledged within the visibility timeout \"will be redelivered to another worker and executed\"",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "worker.settles",
+   "spec": "worker.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, and `quietDone` holds there. It fails exactly where a lemma fails.",
+   "assumptions": "fault budgets are finite; the checks are exhaustive searches of small instances (two messages or two header tasks, two or three processes), not proofs for all sizes; the visibility timeout always passes for a record nothing will ack; weak fairness of `work` (every action that uses no fault budget), none for the faults",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
    "instances": "all",
    "evidence": "",
    "witness": "",
@@ -3145,6 +3193,21 @@
    "violations": []
   },
   {
+   "id": "retry.settles",
+   "spec": "retry.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, and `quietDone` holds there. It fails exactly where a lemma fails.",
+   "assumptions": "one acks_late task with max_retries 1 (two attempts), each run's body returns or calls self.retry(countdown=0); two workers with one pool process each; the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only; weak fairness of `work` (every action that uses no fault budget), none for the faults",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
    "id": "redelivery.outcomeVisible",
    "spec": "redelivery.qnt",
    "definition": "outcomeVisible",
@@ -3189,6 +3252,21 @@
      "note": "a backend error at the STARTED write (the body never runs) or the SUCCESS write (it ran): internal error, FAILURE if the backend takes that write, the message acked either way; result_backend_always_retry gets past a transient error (redis_retry_backenderr passes)"
     }
    ]
+  },
+  {
+   "id": "redelivery.settles",
+   "spec": "redelivery.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, and `quietDone` holds there. It fails exactly where a lemma fails.",
+   "assumptions": "one task message; one or two workers with one pool process each; a coarse clock (run length and timeout in units; maximal progress); a Redis broker, a RabbitMQ classic or quorum queue; weak fairness of `work` (every action that uses no fault budget), none for the faults",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
   },
   {
    "id": "revoke.noRunAfterRevokeKnown",
@@ -3524,6 +3602,21 @@
    "violations": []
   },
   {
+   "id": "revoke.settles",
+   "spec": "revoke.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, and `quietDone` holds there. It fails exactly where a lemma fails.",
+   "assumptions": "task 1 may be revoked once (by id or by stamped header) and may carry expires, task 2 (in some instances) is an ordinary task; two workers with one pool process each (two in s2); the abstract delivery environment (lib/delivery.qnt); a key-value result store that refuses to replace SUCCESS only; weak fairness of `work` (every action that uses no fault budget), none for the faults",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
    "id": "reader.readersAgree",
    "spec": "reader.qnt",
    "definition": "readersAgree",
@@ -3697,6 +3790,21 @@
    "statement": "A task stores FAILURE.",
    "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only",
    "source": "sanity",
+   "instances": "all",
+   "evidence": "",
+   "witness": "",
+   "mutant": "",
+   "violations": []
+  },
+  {
+   "id": "reader.settles",
+   "spec": "reader.qnt",
+   "definition": "settles",
+   "kind": "liveness",
+   "pattern": "Existence of a point after which quiet holds for ever (stabilisation), globally, under weak fairness; the three lemmas in one formula",
+   "statement": "A run in which the code keeps working ends for good in a quiet state, and `quietDone` holds there. It fails exactly where a lemma fails.",
+   "assumptions": "two tasks of one group, each written STARTED then SUCCESS or FAILURE; two client processes, the one that applied the group (it saves the GroupResult, and owns the RPC reply queue) and another one (it restores the GroupResult by id); each joins the group; a reader waits by polling (base.py wait_for), by Redis pub/sub (the ResultConsumer) or by rpc://; AsyncResult keeps the first ready state it reads; a key-value store refuses to replace SUCCESS only; weak fairness of `work` (every action that uses no fault budget), none for the faults",
+   "source": "the spec: the conclusion of `progress`, `stepOrQuiet` and `quietDone`, checked by TLC over every fair behavior of `stepOrQuiet`",
    "instances": "all",
    "evidence": "",
    "witness": "",

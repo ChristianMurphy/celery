@@ -259,18 +259,25 @@ module retry {
   }
 
   // ---- step ----
-  action step: bool = any {
+  // What the code and the clock do on their own.
+  action work: bool = any {
     apply,
     { nondet w = WORKERS.oneOf()
       any {
-        bodyReturns(w), bodyRetries(w), retryRefused(w), storeRetry(w),
-        publishRetry(w), ack(w),
-        loseNode(w),
+        bodyReturns(w), bodyRetries(w), storeRetry(w), publishRetry(w),
+        ack(w),
         { nondet att = ATTEMPTS.oneOf() deliver(w, att) },
       } },
+  }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    { nondet w = WORKERS.oneOf() any { retryRefused(w), loseNode(w) } },
     { nondet m = Set(M(0), M(1)).oneOf() duplicate(m) },
     { nondet x = stored.sent.oneOf() lateCopy(x) },
   }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ----------------------------------------------------------
   // invariants
@@ -299,6 +306,14 @@ module retry {
     keepObs, used' = used, lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
   // A quiet task has a final result.
   val quietDone: bool = quiet implies final(stored.res)
   // No write replaces a newer attempt's state, or a ready state of its own

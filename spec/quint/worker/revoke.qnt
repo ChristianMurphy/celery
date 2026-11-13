@@ -654,20 +654,32 @@ module revoke {
   }
 
   // ---- step ----
-  action step: bool = any {
-    revokeTask, ctlDup, expire,
-    { nondet m = TASKS.oneOf() any { apply(m), duplicate(m) } },
+  // What the code and the clock do on their own.
+  action work: bool = any {
+    revokeTask, expire,
+    { nondet m = TASKS.oneOf() apply(m) },
     { nondet w = WORKERS.oneOf()
       any {
         ctlApply(w), toPool(w), accept(w), acceptDiscards(w), finish(w),
-        ackRun(w), cut(w), reconnect(w), goCold(w), exit(w), kill(w),
-        restart(w),
-        { nondet fails = Set(false, true).oneOf() ctlWrite(w, fails) },
+        ackRun(w), reconnect(w), goCold(w), exit(w), restart(w),
+        ctlWrite(w, false),
         { nondet m = TASKS.oneOf() receive(w, m) },
+      } },
+  }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    ctlDup,
+    { nondet m = TASKS.oneOf() duplicate(m) },
+    { nondet w = WORKERS.oneOf()
+      any {
+        cut(w), kill(w), ctlWrite(w, true),
         { nondet at = Set(AtReceive, AtPool).oneOf() discardFails(w, at) },
         { nondet how = Set(WarmStop, SoftStop, ColdStop).oneOf() halt(w, how) },
       } },
   }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ----------------------------------------------------------
   // invariants
@@ -710,6 +722,14 @@ module revoke {
     used' = used, lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
   // A quiet system has nothing held: every message settled.
   val quietDone: bool = quiet implies TASKS.forall(m => Q::copies.get(m) == NO_COPIES)
 

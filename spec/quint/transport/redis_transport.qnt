@@ -398,6 +398,17 @@ module redis_transport {
     did(Crash(c), 0),
   }
 
+  // Why the record e can be restored now.
+  def restoreReason(e: Entry): RestoreReason = {
+    val holder = consumers.get(e.by)
+    if (not(isAlive(holder))) HolderDead
+    else if (liveOf(holder).held.contains(e.m)) HeldTooLong
+    else if (stranded(e)) Stranded else ReplyTooLong
+  }
+  // A restore of e uses up a timeout budget.
+  def needsTimeout(e: Entry): bool =
+    restoreReason(e) == HeldTooLong or restoreReason(e) == ReplyTooLong
+
   // restore_visible (:660-686) by any live consumer: a record older than
   // the visibility timeout goes back to the queue (restore_by_tag
   // :688-699), with a wake token on the PR. Free of charge when the
@@ -406,10 +417,7 @@ module redis_transport {
   action restore(c: ConsumerId, e: Entry): bool = {
     val holder = consumers.get(e.by)
     val h = liveOf(holder)
-    val reason: RestoreReason =
-      if (not(isAlive(holder))) HolderDead
-      else if (h.held.contains(e.m)) HeldTooLong
-      else if (stranded(e)) Stranded else ReplyTooLong
+    val reason: RestoreReason = restoreReason(e)
     // the holder's reply for this very pop is now as old as the timeout
     val late = isAlive(holder) and isReply(h.poll)
                and replyOf(h.poll).m == e.m and replyOf(h.poll).score == e.score
@@ -472,13 +480,13 @@ module redis_transport {
   // ---- step ----
   // The choices are made next to the actions that use them: the simulator
   // and TLC try every combination of the choices in scope for every action.
-  action step: bool = any {
+  // What the code and the clock do on their own.
+  action work: bool = any {
     {
       nondet c = CONSUMERS.oneOf()
       any {
         sendPop(c), popEmpty(c), waitAfterEmpty(c), wakeUp(c), waitTimeout(c),
-        receive(c),
-        crash(c), loseCredit(c), regainCredit(c),
+        receive(c), regainCredit(c),
       }
     },
     {
@@ -488,20 +496,37 @@ module redis_transport {
     {
       nondet c = CONSUMERS.oneOf()
       nondet m = MSGS.oneOf()
-      any {
-        ack(c, m),
-        {
-          nondet mismatch = Set(true, false).oneOf()
-          serverPop(c, m, mismatch)
-        },
-      }
+      any { ack(c, m), serverPop(c, m, false) }
     },
     {
       nondet c = CONSUMERS.oneOf()
       nondet e = unacked.oneOf()
-      any { restore(c, e), renewOthers(c, e) }
+      any {
+        all { not(needsTimeout(e)), restore(c, e) },
+        renewOthers(c, e),
+      }
     },
   }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    {
+      nondet c = CONSUMERS.oneOf()
+      any { crash(c), loseCredit(c) }
+    },
+    {
+      nondet c = CONSUMERS.oneOf()
+      nondet m = MSGS.oneOf()
+      serverPop(c, m, true)
+    },
+    {
+      nondet c = CONSUMERS.oneOf()
+      nondet e = unacked.oneOf()
+      all { needsTimeout(e), restore(c, e) }
+    },
+  }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ----------------------------------------------------------
   def published: Set[MsgId] = MSGS.exclude(unpublished)
@@ -589,4 +614,12 @@ module redis_transport {
     lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
 }
