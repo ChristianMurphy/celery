@@ -185,6 +185,14 @@ module nested {
     lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run that keeps going ends in
+  // a quiet state, for good, and that state has ended. The spec has no
+  // fault budgets (its events are part of the scenario), so the fairness
+  // is on every action. Every action raises "steps", so that names the
+  // steps that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(step, steps) implies eventually(always(quiet and quietDone))
   // At the end the outer body ran or is stored FAILURE.
   val quietDone: bool = quiet implies done(body)
   // At the end, if a header task failed, the errback was called.

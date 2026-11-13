@@ -395,20 +395,37 @@ module chain {
     did(Duplicate(m)),
   }
 
-  action step: bool = any {
+  // The run of w stores a result that cannot be encoded.
+  def unencodableFor(w: WorkerId): bool = job(w).m == MA and CFG.unencodable
+
+  // What the code and the clock do on their own.
+  action work: bool = any {
     apply,
     {
       nondet w = WORKERS.oneOf()
       any {
         body(w), sendLink(w), sendNext(w), store(w), ack(w),
-        bodyRaises(w), refused(w), storeRaises(w), encodeFails(w),
-        childLost(w),
-        loseNode(w),
+        bodyRaises(w), encodeFails(w),
+        // a result that cannot be encoded always raises: no budget
+        all { unencodableFor(w), storeRaises(w) },
         { nondet m = TASKS.oneOf() any { deliver(w, m), dedupSkip(w, m) } },
+      }
+    },
+  }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    {
+      nondet w = WORKERS.oneOf()
+      any {
+        refused(w), childLost(w), loseNode(w),
+        all { not(unencodableFor(w)), storeRaises(w) },
       }
     },
     { nondet m = TASKS.oneOf() duplicate(m) },
   }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ----------------------------------------------------------
   // invariants
@@ -438,6 +455,14 @@ module chain {
     keepObs, used' = used, lastAction' = lastAction, steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
   // A quiet chain has ended: a and b have a final result, and so has l
   // if it was sent. (Which final results is what the invariants are about.)
   val quietDone: bool = quiet implies and {

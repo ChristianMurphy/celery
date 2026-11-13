@@ -98,6 +98,8 @@ def check(cat: dict | None = None) -> list[str]:
         text = (ROOT / s['family'] / spec).read_text()
         # an entry per property and witness, and per lemma
         temporal = s.get('temporal', [])
+        if 'settles' not in temporal:
+            errors.append(f'{spec}: no temporal property `settles`')
         for name in s['properties'] + s['witnesses'] + temporal + [
                 'stepOrQuiet', 'progress']:
             if name not in ents:

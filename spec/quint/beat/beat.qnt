@@ -253,11 +253,19 @@ module beat {
   }
 
   // ---- step ----
-  action step: bool = any {
-    advance, clockJump,
-    { nondet b = BEATS.oneOf()
-      any { start(b), tick(b), kill(b), stop(b), pause(b) } },
+  // What the code and the clock do on their own.
+  action work: bool = any {
+    advance,
+    { nondet b = BEATS.oneOf() any { start(b), tick(b) } },
   }
+
+  // What may happen and need not: each of these uses up a budget.
+  action fault: bool = any {
+    clockJump,
+    { nondet b = BEATS.oneOf() any { kill(b), stop(b), pause(b) } },
+  }
+
+  action step: bool = any { work, fault }
 
   // ---- properties ----------------------------------------------------------
   // invariants
@@ -282,6 +290,14 @@ module beat {
     steps' = steps,
   }
   action stepOrQuiet: bool = any { step, stutter }
+
+  // Liveness in one formula (../README.md): a run in which the code keeps
+  // working ends in a quiet state, for good, and that state has ended. The
+  // fairness is on "work" only: no fault has to happen, and any that the
+  // budgets allow may. Every action raises "steps", so that names the
+  // steps of "work" that count. Checked by TLC with stepOrQuiet as the step.
+  temporal settles: bool =
+    weakFair(work, steps) implies eventually(always(quiet and quietDone))
   // At the end a running scheduler has sent within the last run_every.
   val quietDone: bool = quiet implies (watch < 0 or tt - watch <= R)
 

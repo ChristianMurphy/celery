@@ -100,7 +100,7 @@ and TLC is the one inside that jar.
 | Tier | What | Time |
 |---|---|---|
 | fast | the catalog and the checklist; typecheck; `type_errors.py`; one simulator run per listed instance (at most 30) with the properties and `steps <= D` as invariants, the expected violations as witnesses, and the 300 traces read back to count actions and outcomes; `--all` for every instance | about 70 s; 4 min with `--all` |
-| full | TLC: every reachable state of every instance, D, every property, the quiet-stop check, a shortest counterexample per expected violation, and `settles` over every fair behavior where a spec has it. Apalache on the result-state instances: `steps <= D` at depth D + 1, then each property at depth D | about 70 min |
+| full | TLC: every reachable state of every instance, D, every property, the quiet-stop check, a shortest counterexample per expected violation, and `settles` over every fair behavior (instances of up to a million states). Apalache on the result-state instances: `steps <= D` at depth D + 1, then each property at depth D | about 70 min |
 | long | Apalache on the chord and transport instances (an hour's timeout each), a 20,000 sample simulator run | not run |
 
 The fast tier keeps, for every spec, one instance that passes every
@@ -208,11 +208,9 @@ A quiet state is not a final one while a fault budget is left: a duplicate
 delivery after it starts the work again. Lemma 3 is therefore checked in
 every quiet state, not only in the last.
 
-Eight specs (`chord.qnt`, `resultstate.qnt`, `redis_transport.qnt`,
-`worker.qnt`, `redelivery.qnt`, `revoke.qnt`, `reader.qnt`, `retry.qnt`) also
-state the conclusion as one temporal property, which TLC checks over every
-fair behavior in the full tier (`quint compile --temporal`, then `PROPERTY`
-in TLC's configuration):
+Every spec also states the conclusion as one temporal property, `settles`,
+which TLC checks over every fair behavior in the full tier (`quint compile
+--temporal`, then `PROPERTY` in TLC's configuration):
 
 ```quint
 temporal settles: bool =
@@ -220,17 +218,25 @@ temporal settles: bool =
 ```
 
 (`chord.qnt` spells out `quietDone` and lists its variables in place of
-`steps`; `resultstate.qnt` has no faults, so its fairness is on `step`.)
+`steps`.)
 
+In the ten specs with fault budgets (`chord`, `redis_transport`, `worker`,
+`redelivery`, `revoke`, `reader`, `retry`, `publisher`, `chain`, `beat`),
 `step` is `any { work, fault }`: `work` is what the code and the clock do on
 their own, `fault` is every action that uses up a fault budget. The fairness
 is on `work` only, so no fault has to happen and any that the budgets allow
-may. Every action raises `steps`, so `weakFair(work, steps)` is fairness of
-every step of `work`. `check.py` requires `settles` to fail exactly where a
-lemma fails; a difference would mean the lemmas and the formula do not say
-the same thing. It found one: `worker.qnt`'s `restart` has a budget, and
-`quiet` counts a dead worker that can be restarted as one that can act, so
-`restart` is recovery and belongs to `work`.
+may. The other sixteen have no budgets: their events are part of the
+scenario, and the fairness is on `step`. Every action raises `steps`, so
+`weakFair(work, steps)` is fairness of every step of `work`.
+
+`check.py` requires `settles` to fail exactly where a lemma fails; a
+difference would mean the lemmas and the formula do not say the same thing.
+It found two actions that have a budget, or share an action with one, and
+are no faults. `worker.qnt`'s `restart` has a budget, and `quiet` counts a
+dead worker that can be restarted as one that can act, so `restart` is
+recovery and belongs to `work`. `chain.qnt`'s `storeRaises` uses a budget
+for a backend error, and none for a result that cannot be encoded, which
+raises every time: that case belongs to `work`.
 
 The search for a fair behavior takes about twice as long as the search of
 the states. The full tier runs it on instances of up to a million states;
@@ -238,8 +244,7 @@ the long tier on all (the pub/sub instances of `reader.qnt` have 0.5 to 9
 million).
 
 The lemmas stay, because the simulator and Apalache cannot check the
-formula, and because `steps <= D` gives a bound that it does not. The other
-18 specs have the lemmas only.
+formula, and because `steps <= D` gives a bound that it does not.
 
 The fairness assumption of the lemmas is in the fault budgets: a fault (a
 lost worker, a duplicate delivery, a timeout) happens a bounded number of
@@ -256,6 +261,8 @@ are exhaustive checks of small instances, not proofs for all sizes.
    running anything: statement, kind, pattern, assumptions, source.
 3. Give every property a witness (a state that shows it is not vacuous) and
    a spec mutant in `tools/mutate_spec.py` that makes it fail.
+   State `settles` after `stepOrQuiet` and list it under `temporal`; with
+   fault budgets, split `step` into `work` and `fault` first.
 4. Run `python3 tools/check.py --tier full --only <spec> --update-expected`
    and give every violation a reason in the catalog.
 5. List at most a few instances for the fast tier, one of which passes
