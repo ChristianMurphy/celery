@@ -415,6 +415,38 @@ class test_State:
         assert list(r.state.alive_workers())
         assert r.state.workers['utest1'].alive
 
+    def test_task_ignored(self):
+        tid = uuid()
+
+        class ev_task_ignored(replay):
+
+            def setup(self):
+                self.events = [
+                    Event('worker-online', hostname='utest1'),
+                    Event('task-received', uuid=tid, name='task1',
+                          hostname='utest1'),
+                    Event('task-started', uuid=tid, hostname='utest1'),
+                    Event('task-ignored', uuid=tid, hostname='utest1'),
+                    # a started event that arrives late
+                    Event('task-started', uuid=tid, hostname='utest1',
+                          clock=3),
+                ]
+
+        r = ev_task_ignored(State())
+        next(r), next(r), next(r)
+        task = r.state.tasks[tid]
+        assert task.state == states.STARTED
+        assert task.ignored is None
+
+        next(r)
+        assert task.state == states.IGNORED
+        assert task.ignored
+        assert task.timestamp == task.ignored
+        assert task.as_dict()['ignored'] == task.ignored
+
+        next(r)
+        assert task.state == states.IGNORED
+
     def test_task_states(self):
         r = ev_task_states(State())
 

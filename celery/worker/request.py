@@ -702,7 +702,10 @@ class Request:
                     )
             return self.reject(requeue=exc.requeue)
         elif isinstance(exc, Ignore):
-            return self.acknowledge()
+            self.acknowledge()
+            # The last event of this run: without it a monitor shows the
+            # task as started for ever.
+            return self.send_event('task-ignored')
         elif isinstance(exc, Retry):
             return self.on_retry(exc_info)
 

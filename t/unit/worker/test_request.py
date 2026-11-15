@@ -354,6 +354,19 @@ class test_Request(RequestCase):
         req.on_failure(einfo)
         req.on_ack.assert_called_with(req_logger, req.connection_errors)
 
+    def test_on_failure_Ignore_sends_task_ignored(self):
+        # The last event of the run: a monitor would otherwise show the
+        # task as started for ever.
+        try:
+            raise Ignore()
+        except Ignore:
+            einfo = ExceptionInfo(internal=True)
+        req = self.get_request(self.add.s(2, 2))
+        req.on_failure(einfo)
+        sent = [c.args[0] for c in req.eventer.send.call_args_list]
+        assert sent == ['task-ignored']
+        req.eventer.send.assert_called_with('task-ignored', uuid=req.id)
+
     def test_on_failure_Reject_rejects(self):
         einfo = None
         try:

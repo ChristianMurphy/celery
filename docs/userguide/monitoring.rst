@@ -757,6 +757,21 @@ task-rejected
 The task was rejected by the worker, possibly to be re-queued or moved to a
 dead letter queue.
 
+.. event:: task-ignored
+
+task-ignored
+~~~~~~~~~~~~
+
+:signature: ``task-ignored(uuid)``
+
+.. versionadded:: 5.7.1
+
+The task raised :exc:`~celery.exceptions.Ignore`: the worker acknowledged
+the message and stored no state for it. This is the last event of the run,
+so a task that stored its own state before raising
+:exc:`~celery.exceptions.Ignore` has that state in the result backend and
+``IGNORED`` in event monitors.
+
 .. event:: task-revoked
 
 task-revoked
